@@ -7,7 +7,7 @@
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
--- Stability   :  provisional
+-- Stability   :  beta
 -- Portability :  portable
 --
 -- An efficient implementation of maps from strings to values.
@@ -179,7 +179,7 @@ instance Functor Trie where
 -- and sets. If no keys were prefixes of other keys it'd make sense
 -- as a decision-tree; but since keys /can/ prefix, tries formed
 -- from shorter keys can shadow the results from longer keys due
--- to the 'unionL'. But it does seem to follow the laws... What
+-- to the 'unionL'. It does seem to follow the laws though... What
 -- computation could this possibly represent?
 --
 --  1. return x >>= f  == f x
@@ -401,7 +401,7 @@ member q = isJust . lookup q
 -- Single-value modification functions (recurse and clone spine)
 ---------------------------------------------------------------}
 
--- We should CPS on Empty to avoid cloning spine if no change.
+-- TODO: We should CPS on Empty to avoid cloning spine if no change.
 -- Difficulties arise with the calls to 'branch' and 'arc'. Will
 -- have to create a continuation chain, so no savings on memory
 -- allocation; but would have savings on held memory, if they're

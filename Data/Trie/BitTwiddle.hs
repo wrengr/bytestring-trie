@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-name-shadowing #-}
+{-# OPTIONS_GHC -cpp -fglasgow-exts #-}
 
 ----------------------------------------------------------------
 --                                                  ~ 2008.12.19
@@ -8,7 +9,7 @@
 -- License     :  BSD3
 -- Maintainer  :  libraries@haskell.org, wren@community.haskell.org
 -- Stability   :  provisional
--- Portability :  portable
+-- Portability :  portable (with CPP)
 --
 -- Functions to treat 'Word' as a bit-vector for big-endian patricia
 -- trees. This code is duplicated from "Data.IntMap". The only
@@ -27,19 +28,13 @@ module Data.Trie.BitTwiddle
 import Data.Bits
 import Data.Trie.ByteStringInternal (ByteStringElem)
 
-{-
 #if __GLASGOW_HASKELL__ >= 503
-import GHC.Word
-import GHC.Exts ( Word(..), Int(..), shiftRL# )
+import GHC.Exts  ( Word(..), Int(..), shiftRL# )
 #elif __GLASGOW_HASKELL__
-import Word
-import GlaExts ( Word(..), Int(..), shiftRL# )
+import GlaExts   ( Word(..), Int(..), shiftRL# )
 #else
--}
-import Data.Word
-{-
+import Data.Word (Word)
 #endif
--}
 
 ----------------------------------------------------------------
 
@@ -58,16 +53,12 @@ natToElem :: Word -> KeyElem
 natToElem w = fromIntegral w
 
 shiftRL :: Word -> Int -> Word
-{-
 #if __GLASGOW_HASKELL__
 -- GHC: use unboxing to get @shiftRL@ inlined.
 shiftRL (W# x) (I# i) = W# (shiftRL# x i)
 #else
--}
 shiftRL x i = shiftR x i
-{-
 #endif
--}
 
 
 {---------------------------------------------------------------

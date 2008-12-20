@@ -7,7 +7,7 @@
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
--- Stability   :  provisional
+-- Stability   :  beta
 -- Portability :  portable
 --
 -- Additional convenience versions of the generic functions.
@@ -88,7 +88,7 @@ disunion = mergeBy (\_ _ -> Nothing)
 unionWith :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
 unionWith f = mergeBy (\x y -> Just (f x y))
 
-{- TODO:
+{- TODO: (efficiently)
 difference, intersection
 -}
 

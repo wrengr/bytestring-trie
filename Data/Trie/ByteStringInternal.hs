@@ -7,7 +7,7 @@
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
--- Stability   :  provisional
+-- Stability   :  beta
 -- Portability :  portable
 --
 -- Helper functions on 'ByteString's for "Data.Trie".
@@ -31,7 +31,7 @@ import Foreign.Ptr           (Ptr, plusPtr, castPtr)
 import Foreign.Storable      (Storable(..))
 import Foreign.Marshal.Alloc (alloca)
 import System.IO.Unsafe      (unsafePerformIO)
-import Data.Bits             ((.&.))
+import Data.Bits
 ----------------------------------------------------------------
 
 type ByteStringElem = Word8 -- Associated type of ByteString
@@ -82,7 +82,8 @@ isLittleEndian = unsafePerformIO $ alloca $ \p -> do
     case b of
         0x01 -> return True
         0x04 -> return False
-        _    -> error "non-standard endianness! Contact the maintainer."
+        _    -> error ("non-standard endianness detected! "
+                       ++ "Contact the Data.Trie maintainer.")
 
 ----------------------------------------------------------------
 -- | Returns the longest shared prefix and the two remaining suffixes

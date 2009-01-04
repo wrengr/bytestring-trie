@@ -30,7 +30,7 @@ Library
                    , Data.Trie.Convenience
     Other-Modules:   Data.Trie.BitTwiddle
                    , Data.Trie.ByteStringInternal
-    Build-Depends:   base, bytestring
+    Build-Depends:   base, bytestring, binary
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

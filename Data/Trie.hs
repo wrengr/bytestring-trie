@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2008.12.19
+--                                                  ~ 2009.01.03
 -- |
 -- Module      :  Data.Trie
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -55,11 +55,12 @@ import Data.Trie.ByteStringInternal
 import Data.Trie.BitTwiddle
 
 import Data.Maybe          (isJust)
-import Control.Monad       (liftM)
+import Control.Monad       (liftM, liftM3, liftM4)
 import Control.Applicative (Applicative(..), (<$>))
 import Data.Monoid         (Monoid(..))
 import Data.Foldable       (Foldable(foldMap))
 import Data.Traversable    (Traversable(traverse))
+import Data.Binary
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
@@ -212,6 +213,24 @@ instance Traversable Trie where
     traverse f (Arc k (Just v) t) = Arc k . Just <$> f v <*> traverse f t
     traverse f (Branch p m l r)   = Branch p m <$> traverse f l <*> traverse f r
 
+instance Binary a => Binary (Trie a) where
+    put Empty            = put (0 :: Word8)
+    put (Arc k m t)      = do put (1 :: Word8)
+                              put k
+                              put m
+                              put t
+    put (Branch p m l r) = do put (2 :: Word8)
+                              put p
+                              put m
+                              put l
+                              put r
+    
+    get = do tag <- get :: Get Word8
+             case tag of
+                 0 -> return Empty
+                 1 -> liftM3 Arc get get get
+                 _ -> liftM4 Branch get get get get
+
 {---------------------------------------------------------------
 -- Smart constructors and helper functions for building tries
 ---------------------------------------------------------------}
@@ -352,7 +371,7 @@ lookupBy_ f z a = go
     go _    Empty             = z
     
     go q   (Arc k mv t)
-        | not (S.null k')     = a (Arc k' mv t)
+        | not (S.null k')     = if S.null q' then a (Arc k' mv t) else z
         | S.null q'           = f mv t
         | otherwise           = go q' t
         where

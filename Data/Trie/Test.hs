@@ -21,6 +21,12 @@ vocab2trie :: [String] -> T.Trie Int
 vocab2trie  = T.fromList . flip zip [0..] . map packC2W
 
 ----------------------------------------------------------------
+main :: IO ()
+main  = do HU.runTestTT $ HU.TestList
+                        [ tests_Submap
+                        ]
+           return ()
+
 testEqual ::  (Show a, Eq a) => String -> a -> a -> HU.Test
 testEqual s a b =
     HU.TestLabel s $ HU.TestCase $ HU.assertEqual "" a b
@@ -29,13 +35,21 @@ testEqual s a b =
 tests_Submap :: HU.Test
 tests_Submap = HU.TestLabel "submap"
     $ HU.TestList
-    [ testEqual "prefix of arc matches" (T.null $ T.submap fo t) False
-    , testEqual "split of arc fails"    (T.null $ T.submap fi t) True
+    [ nullSubmap "split on arc fails"    fi   True
+    , nullSubmap "prefix of arc matches" fo   False
+    , nullSubmap "suffix of empty fails" food True
+    , nullSubmap "missing branch fails"  bag  True
+    , nullSubmap "at a branch matches"   ba   False
     ]
     where
-    t  = vocab2trie ["foo", "bar", "baz"]
-    fo = packC2W "fo"
-    fi = packC2W "fi"
+    t    = vocab2trie ["foo", "bar", "baz"]
+    fi   = packC2W "fi"
+    fo   = packC2W "fo"
+    food = packC2W "food"
+    ba   = packC2W "ba"
+    bag  = packC2W "bag"
+    
+    nullSubmap s q b = testEqual s (T.null $ T.submap q t) b
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

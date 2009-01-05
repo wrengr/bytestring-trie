@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.03
+--                                                  ~ 2009.01.04
 -- |
 -- Module      :  Data.Trie
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -145,9 +145,9 @@ data Trie a = Empty
                      {-# UNPACK #-} !Mask
                                     !(Trie a)
                                     !(Trie a)
-    -- deriving Eq
-    -- BUG? is this right for Prefix/Mask regardless of insertion order?
-
+    deriving Eq
+    -- Prefix/Mask should be deterministic regardless of insertion order
+    -- TODO: verify this is so.
 
 -- | Visualization fuction for debugging.
 showTrie :: (Show a) => Trie a -> String

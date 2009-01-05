@@ -36,7 +36,7 @@ vocab2trie  = T.fromList . flip zip [0..] . map packC2W
 main :: IO ()
 main  = do HU.runTestTT $ HU.TestList
                         [ test_Submap
-                        -- , test_Insert
+                        , test_Insert
                         ]
            return ()
 
@@ -65,18 +65,23 @@ test_Submap = HU.TestLabel "submap"
     nullSubmap s q b = testEqual s (T.null $ T.submap q t) b
 
 ----------------------------------------------------------------
-{- -- BUG: requires Eq a => Eq (Trie a) which we don't have yet
+-- requires Eq (Trie a) and, in case it fails, Show (Trie a)
 test_Insert :: HU.Test
 test_Insert = HU.TestLabel "insert"
     $ HU.TestList
     [ testEqual "insertion is commutative for prefix/superfix"
-        (T.insert aba 0 $ T.insert abaissed 1 $ T.empty)
-        (T.insert abaissed 1 $ T.insert aba 0 $ T.empty)
+        (T.insert aba o $ T.insert abaissed i $ T.empty)
+        (T.insert abaissed i $ T.insert aba o $ T.empty)
     ]
     where
     aba      = packC2W "aba"
     abaissed = packC2W "abaissed"
--}
+    
+    o = 0::Int
+    i = 1::Int
+
+instance Show a => Show (T.Trie a) where
+    show = T.showTrie
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

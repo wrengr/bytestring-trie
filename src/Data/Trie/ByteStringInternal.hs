@@ -16,7 +16,7 @@
 
 module Data.Trie.ByteStringInternal
     ( ByteString, ByteStringElem
-    , unsafeWordHead
+    {-, unsafeWordHead-}
     , splitMaximalPrefix
     ) where
 
@@ -27,20 +27,25 @@ import Data.Word
 import Control.Monad
 
 import Foreign.ForeignPtr    (ForeignPtr, withForeignPtr)
-import Foreign.Ptr           (Ptr, plusPtr, castPtr)
+import Foreign.Ptr           (Ptr, plusPtr{-, castPtr-})
 import Foreign.Storable      (Storable(..))
-import Foreign.Marshal.Alloc (alloca)
 import System.IO.Unsafe      (unsafePerformIO)
+{-
+import Foreign.Marshal.Alloc (alloca)
 import Data.Bits
+-}
 ----------------------------------------------------------------
 
 type ByteStringElem = Word8 -- Associated type of ByteString
 
+{- -- Not used at present
 -- | The size of 'Word' in bytes.
+{-# INLINE sizeOfWord #-}
 sizeOfWord :: Int
 sizeOfWord  = sizeOf (undefined :: Word)
 
 ----------------------------------------------------------------
+
 -- | Return the first natural 'Word' worth of string, padding by
 -- zeros as necessary. The position of elements within the word
 -- varies by architecture, hence this function is quasi-unsafe to
@@ -91,6 +96,8 @@ isLittleEndian = unsafePerformIO $ alloca $ \p -> do
         0x04 -> return False
         _    -> error ("non-standard endianness detected! "
                        ++ "Contact the Data.Trie maintainer.")
+
+-- End unused code -}
 
 ----------------------------------------------------------------
 -- | Returns the longest shared prefix and the two remaining suffixes

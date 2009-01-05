@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2008.12.12
+--                                                  ~ 2009.01.04
 -- |
 -- Module      :  Data.Trie.ByteStringInternal.Test
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -10,32 +10,28 @@
 -- Stability   :  provisional
 -- Portability :  portable
 --
--- Helper functions on 'ByteString's for "Data.ByteStringTrie".
+-- Testing helper functions on 'ByteString's.
 ----------------------------------------------------------------
 
 
 module Data.Trie.ByteStringInternal.Test where
 import Data.Trie.ByteStringInternal
+import Data.Trie.Test (packC2W)
 
-import qualified Data.ByteString as S
-import Data.ByteString.Internal (c2w)
 ----------------------------------------------------------------
 
-pk :: String -> S.ByteString
-pk = S.pack . map c2w
-
-
+-- TODO: make this into an HUnit test
 test :: IO ()
 test  = do
     cmp hello
-    cmp $ pk "hi"
-    cmp $ pk "heat"
-    cmp $ pk "hell" -- This is the tricky one
-    cmp $ pk "jello"
+    cmp $ packC2W "hi"
+    cmp $ packC2W "heat"
+    cmp $ packC2W "hell" -- This is the tricky one
+    cmp $ packC2W "jello"
     where
     cmp y = do putStrLn . show . splitMaximalPrefix hello $ y
                putStrLn . show . (\(a,b,c) -> (a,c,b)) . splitMaximalPrefix y $ hello
                putStrLn "\n"
-    hello = pk "hello"
+    hello = packC2W "hello"
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

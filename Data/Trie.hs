@@ -145,6 +145,9 @@ data Trie a = Empty
                      {-# UNPACK #-} !Mask
                                     !(Trie a)
                                     !(Trie a)
+    -- deriving Eq
+    -- BUG? is this right for Prefix/Mask regardless of insertion order?
+
 
 -- | Visualization fuction for debugging.
 showTrie :: (Show a) => Trie a -> String
@@ -270,6 +273,7 @@ branchMerge p1 t1  p2 t2
 -- It would be better if Arc used
 -- Data.ByteString.TrieInternal.wordHead somehow, that way
 -- we can see 4/8/?*Word8 at a time instead of just one.
+-- But that makes maintaining invariants ...difficult :(
 getPrefix :: Trie a -> Prefix
 getPrefix (Branch p _ _ _) = p
 getPrefix (Arc k _ _)      | S.null k  = 0 -- for lack of a better
@@ -447,14 +451,20 @@ alterBy f_ q_ x_
         qh = errorLogHead "alterBy" q
     
     go q t_@(Arc k mv t)
-        | not (S.null k') = case nothing q' of
-                            Empty -> t_
-                            l     -> let r = Arc k' mv t
-                                     in (if S.null p
-                                         then id
-                                         else Arc p Nothing)
-                                             (branchMerge (getPrefix l) l
-                                                          (getPrefix r) r)
+        | not (S.null k') =
+            if S.null q'
+            then                         -- add node to middle of arc
+                arc p (f Nothing) (Arc k' mv t)
+            else                         -- add branch off of middle of arc
+                case nothing q' of
+                Empty -> t_              -- Nothing to add, reuse old arc
+                l     -> let r = Arc k' mv t
+                         in (if S.null p -- inlined 'arc'
+                                then id
+                                else Arc p Nothing)
+                            (branchMerge (getPrefix l) l
+                                         (getPrefix r) r)
+        
         | S.null q'       = arc k (f mv) t
         | otherwise       = arc k mv (go q' t)
         where

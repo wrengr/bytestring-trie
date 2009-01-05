@@ -1,5 +1,17 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
+----------------------------------------------------------------
+--                                                  ~ 2009.01.04
+-- |
+-- Module      :  Data.Trie.Test
+-- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
+-- License     :  BSD3
+-- Maintainer  :  wren@community.haskell.org
+-- Stability   :  provisional
+-- Portability :  portable
+--
+-- Testing 'Trie's.
+----------------------------------------------------------------
 module Data.Trie.Test where
 
 import qualified Data.Trie as T
@@ -23,7 +35,8 @@ vocab2trie  = T.fromList . flip zip [0..] . map packC2W
 ----------------------------------------------------------------
 main :: IO ()
 main  = do HU.runTestTT $ HU.TestList
-                        [ tests_Submap
+                        [ test_Submap
+                        -- , test_Insert
                         ]
            return ()
 
@@ -32,8 +45,8 @@ testEqual s a b =
     HU.TestLabel s $ HU.TestCase $ HU.assertEqual "" a b
 
 ----------------------------------------------------------------
-tests_Submap :: HU.Test
-tests_Submap = HU.TestLabel "submap"
+test_Submap :: HU.Test
+test_Submap = HU.TestLabel "submap"
     $ HU.TestList
     [ nullSubmap "split on arc fails"    fi   True
     , nullSubmap "prefix of arc matches" fo   False
@@ -50,6 +63,20 @@ tests_Submap = HU.TestLabel "submap"
     bag  = packC2W "bag"
     
     nullSubmap s q b = testEqual s (T.null $ T.submap q t) b
+
+----------------------------------------------------------------
+{- -- BUG: requires Eq a => Eq (Trie a) which we don't have yet
+test_Insert :: HU.Test
+test_Insert = HU.TestLabel "insert"
+    $ HU.TestList
+    [ testEqual "insertion is commutative for prefix/superfix"
+        (T.insert aba 0 $ T.insert abaissed 1 $ T.empty)
+        (T.insert abaissed 1 $ T.insert aba 0 $ T.empty)
+    ]
+    where
+    aba      = packC2W "aba"
+    abaissed = packC2W "abaissed"
+-}
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

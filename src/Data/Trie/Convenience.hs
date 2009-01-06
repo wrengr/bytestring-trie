@@ -32,6 +32,7 @@ module Data.Trie.Convenience
     ) where
 
 import Data.Trie
+import Data.Trie.Internal (lookupBy_)
 import Data.List     (foldl')
 import Control.Monad (liftM)
 
@@ -47,12 +48,14 @@ import Control.Monad (liftM)
 -- and worst-case to worst-case (which is which is swapped when
 -- reversing the list or changing which function is used).
 
+{-# INLINE fromListL #-}
 fromListL :: [(KeyString,a)] -> Trie a
 fromListL = foldl' (flip $ uncurry $ insertIfAbsent) empty
 
 -- | This version is just an alias for 'fromList'. It is a good
 -- producer for list fusion. Worst-case behavior is somewhat worse
 -- than worst-case for 'fromListL'.
+{-# INLINE fromListR #-}
 fromListR :: [(KeyString,a)] -> Trie a
 fromListR = fromList
 

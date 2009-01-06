@@ -15,6 +15,7 @@
 module Data.Trie.Test where
 
 import qualified Data.Trie as T
+import qualified Data.Trie.Internal as T (showTrie)
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Internal as S (c2w)
 

@@ -28,6 +28,7 @@ Description:    An efficient finite map from (byte)strings to values.
 Library
     Hs-Source-Dirs:  src
     Exposed-Modules: Data.Trie
+                   , Data.Trie.Internal
                    , Data.Trie.Convenience
     Other-Modules:   Data.Trie.BitTwiddle
                    , Data.Trie.ByteStringInternal

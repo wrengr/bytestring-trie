@@ -17,7 +17,7 @@ module Main where
 
 import qualified Data.Trie as T
 import Data.Trie.Convenience (insertIfAbsent)
-import Data.List             (foldl')
+import Data.List             (foldl', sort)
 import qualified Data.ByteString as S
 import Data.ByteString.Internal (c2w)
 
@@ -42,8 +42,18 @@ main  = do
     microbench "fromListR obverse" (T.null . fromListR . getList xs)
     microbench "fromListL obverse" (T.null . fromListL . getList xs)
     
+    putStrLn ""
     microbench "fromListR reverse" (T.null . fromListR . getList' xs)
     microbench "fromListL reverse" (T.null . fromListL . getList' xs)
+    
+    -- Sorting forces it into the obverse order at O(n log n) cost
+    putStrLn ""
+    putStrLn ""
+    microbench "fromListR obverse sorted" (T.null . fromListR . sort . getList xs)
+    microbench "fromListL obverse sorted" (T.null . fromListL . sort . getList xs)
+    putStrLn ""
+    microbench "fromListR reverse sorted" (T.null . fromListR . sort . getList' xs)
+    microbench "fromListL reverse sorted" (T.null . fromListL . sort . getList' xs)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

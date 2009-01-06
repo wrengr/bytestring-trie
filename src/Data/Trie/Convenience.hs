@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.04
+--                                                  ~ 2009.01.05
 -- |
 -- Module      :  Data.Trie.Convenience
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -25,7 +25,7 @@ module Data.Trie.Convenience
     
     -- ** Conversion functions
     -- $fromList
-    , fromListL, fromListR
+    , fromListL, fromListR, fromListS
     
     -- * 'mergeBy' variants
     , disunion, unionWith
@@ -33,8 +33,8 @@ module Data.Trie.Convenience
 
 import Data.Trie
 import Data.Trie.Internal (lookupBy_)
-import Data.List     (foldl')
-import Control.Monad (liftM)
+import Data.List          (foldl', sortBy)
+import Control.Monad      (liftM)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
@@ -43,7 +43,7 @@ import Control.Monad (liftM)
 -- Just like 'fromList' both of these functions convert an association
 -- list into a trie, with earlier values shadowing later ones when
 -- keys conflict. Depending on the order of keys in the list, there
--- can be as much as 4x speed difference between the two. Yet,
+-- can be as much as 5x speed difference between the two. Yet,
 -- performance is about the same when matching best-case to best-case
 -- and worst-case to worst-case (which is which is swapped when
 -- reversing the list or changing which function is used).
@@ -58,6 +58,14 @@ fromListL = foldl' (flip $ uncurry $ insertIfAbsent) empty
 {-# INLINE fromListR #-}
 fromListR :: [(KeyString,a)] -> Trie a
 fromListR = fromList
+
+-- | This version sorts the list before folding over it. This adds
+-- /O(n log n)/ overhead and requires the whole list be in memory
+-- at once, but it ensures that the list is in best-case order. The
+-- benefits generally outweigh the costs.
+{-# INLINE fromListS #-}
+fromListS :: [(KeyString,a)] -> Trie a
+fromListS = fromListR . sortBy (\(k,_) (q,_) -> k `compare` q)
 
 
 ----------------------------------------------------------------

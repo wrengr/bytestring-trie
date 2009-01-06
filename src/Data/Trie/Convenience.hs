@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2008.12.19
+--                                                  ~ 2009.01.04
 -- |
 -- Module      :  Data.Trie.Convenience
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -23,16 +23,41 @@ module Data.Trie.Convenience
     , adjustWithKey
     , update, updateWithKey
     
+    -- ** Conversion functions
+    -- $fromList
+    , fromListL, fromListR
+    
     -- * 'mergeBy' variants
     , disunion, unionWith
     ) where
 
 import Data.Trie
+import Data.List     (foldl')
 import Control.Monad (liftM)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
+-- $fromList
+-- Just like 'fromList' both of these functions convert an association
+-- list into a trie, with earlier values shadowing later ones when
+-- keys conflict. Depending on the order of keys in the list, there
+-- can be as much as 4x speed difference between the two. Yet,
+-- performance is about the same when matching best-case to best-case
+-- and worst-case to worst-case (which is which is swapped when
+-- reversing the list or changing which function is used).
+
+fromListL :: [(KeyString,a)] -> Trie a
+fromListL = foldl' (flip $ uncurry $ insertIfAbsent) empty
+
+-- | This version is just an alias for 'fromList'. It is a good
+-- producer for list fusion. Worst-case behavior is somewhat worse
+-- than worst-case for 'fromListL'.
+fromListR :: [(KeyString,a)] -> Trie a
+fromListR = fromList
+
+
+----------------------------------------------------------------
 -- | Lookup a key, returning a default value if it's not found.
 lookupWithDefault :: a -> KeyString -> Trie a -> a
 lookupWithDefault x = lookupBy_ (\mv _ -> case mv of
@@ -84,7 +109,7 @@ updateLookupWithKey :: (Key -> a -> Maybe a) -> Key -> ByteStringTrie a -> (Mayb
 disunion :: Trie a -> Trie a -> Trie a
 disunion = mergeBy (\_ _ -> Nothing)
 
--- | Combine two tries, using a function to resolve conflicts
+-- | Combine two tries, using a function to resolve conflicts.
 unionWith :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
 unionWith f = mergeBy (\x y -> Just (f x y))
 

@@ -21,8 +21,8 @@
 --	Workshop on ML, September 1998, pages 77-86,
 --	<http://www.cse.ogi.edu/~andy/pub/finite.htm>
 --
---    * D.R. Morrison, \"/PATRICIA -- Practical Algorithm To Retrieve
---	Information Coded In Alphanumeric/\", Journal of the ACM, 15(4),
+--    * D.R. Morrison, \"/PATRICIA -- Practical Algorithm To Retrieve/
+--	/Information Coded In Alphanumeric/\", Journal of the ACM, 15(4),
 --	October 1968, pages 514-534.
 ----------------------------------------------------------------
 

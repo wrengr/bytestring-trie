@@ -357,10 +357,12 @@ lookupBy_ f z a = go
     where
     go _    Empty             = z
     
-    go q   (Arc k mv t)
-        | not (S.null k')     = if S.null q' then a (Arc k' mv t) else z
-        | S.null q'           = f mv t
-        | otherwise           = go q' t
+    go q   (Arc k mv t) =
+        case (not $ S.null k', S.null q') of
+             (True,  True)  -> a (Arc k' mv t)
+             (True,  False) -> z
+             (False, True)  -> f mv t
+             (False, False) -> go q' t
         where
         (_,k',q') = splitMaximalPrefix k q
         
@@ -435,23 +437,24 @@ alterBy f_ q_ x_
         where
         qh = errorLogHead "alterBy" q
     
-    go q t_@(Arc k mv t)
-        | not (S.null k') =
-            if S.null q'
-            then                         -- add node to middle of arc
-                arc p (f Nothing) (Arc k' mv t)
-            else                         -- add branch off of middle of arc
-                case nothing q' of
-                Empty -> t_              -- Nothing to add, reuse old arc
-                l     -> let r = Arc k' mv t
-                         in (if S.null p -- inlined 'arc'
-                                then id
-                                else Arc p Nothing)
-                            (branchMerge (getPrefix l) l
-                                         (getPrefix r) r)
-        
-        | S.null q'       = arc k (f mv) t
-        | otherwise       = arc k mv (go q' t)
+    go q t_@(Arc k mv t) =
+        case (not $ S.null k', S.null q') of
+             (True,  True)  -> -- add node to middle of arc
+                               arc p (f Nothing) (Arc k' mv t)
+             (True,  False) ->
+                        case nothing q' of
+                        Empty -> t_ -- Nothing to add, reuse old arc
+                        l     -> arc' (branchMerge (getPrefix l) l
+                                                   (getPrefix r) r)
+                                 where
+                                 r = Arc k' mv t
+                                 
+                                 -- inlined version of 'arc'
+                                 arc' | S.null p  = id
+                                      | otherwise = Arc p Nothing
+                                 
+             (False, True)  -> arc k (f mv) t
+             (False, False) -> arc k mv (go q' t)
         where
         (p,k',q') = splitMaximalPrefix k q
 

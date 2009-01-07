@@ -35,7 +35,7 @@ module Data.Trie
     , empty, null, singleton, size
     
     -- * Conversion functions
-    , toList, fromList
+    , fromList, toListBy, toList, keys
     
     -- * Query functions
     , lookupBy, lookup, member, submap
@@ -70,6 +70,14 @@ import Control.Monad (liftM)
 {-# INLINE fromList #-}
 fromList :: [(KeyString,a)] -> Trie a
 fromList = foldr (uncurry insert) empty
+
+-- | Convert trie into association list. Keys will be in sorted order.
+toList :: Trie a -> [(KeyString,a)]
+toList  = toListBy (,)
+
+-- | Return all keys in the trie, in sorted order.
+keys :: Trie a -> [KeyString]
+keys  = toListBy const
 
 
 {---------------------------------------------------------------

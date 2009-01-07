@@ -24,7 +24,7 @@ module Data.Trie.Internal
     , empty, null, singleton, size
     
     -- * Conversion functions
-    , toList
+    , toListBy
     
     -- * Query functions
     , lookupBy_, submap
@@ -329,15 +329,27 @@ size' (Arc _ (Just _) t) f n = size' t f $! n + 1
 -- Conversion functions 
 ---------------------------------------------------------------}
 
--- BUG: Inefficient for now
--- TODO: rewrite to support list fusion
+-- Still rather inefficient
+-- 
+-- TODO: rewrite list-catenation to be lazier (real CPS instead of
+-- function building? is the function building really better than
+-- (++) anyways?)
+-- TODO: the @q@ accumulator should be lazy ByteString and only
+-- forced by @f@
 --
--- | Convert trie into association list. Keys will be in sorted order.
-toList :: Trie a -> [(KeyString,a)]
-toList Empty            = []
-toList (Branch _ _ l r) = toList l ++ toList r
-toList (Arc k mv t)     = maybe [] (\v -> [(k,v)]) mv
-                          ++ map (\(q,x) -> (S.append k q, x)) (toList t)
+-- | Convert a trie into a list using a function. Resulting values
+-- are in sorted order according to the keys.
+toListBy :: (KeyString -> a -> b) -> Trie a -> [b]
+toListBy f = \t -> go S.empty t []
+    where
+    go _ Empty            = id
+    go q (Branch _ _ l r) = go q l . go q r
+    go q (Arc k mv t)     = case mv of
+                            Nothing -> rest
+                            Just v  -> (f k' v :) . rest
+                          where
+                          rest = go k' t
+                          k'   = S.append q k
 
 
 {---------------------------------------------------------------

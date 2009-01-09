@@ -8,99 +8,137 @@ typedef unsigned long      Word32;
 typedef unsigned long long Word64;
 
 /* Hopefully this makes Nat the most optimal size, or the same as int */
-#ifdef __hDataTrie_Nat32__
+#ifdef __hDataTrie_Nat64__
+	typedef Word64 Nat;
+#elif defined (__hDataTrie_Nat32__)
 	typedef Word32 Nat;
 #else
-#	ifdef __hDataTrie_Nat64__
-		typedef Word64 Nat;
-#	else
-		/* No definition, unknown architecture */
-#	endif
+	/* No definition. Unknown architecture.
+	 * Maybe it'd be worth supporting 16-bit as well...?
+	 * or maybe fail back to 8-bit?
+	 */
 #endif
 
+/* cf also <http://www.monkeyspeak.com/alignment/> */
+#define NAT_MISALIGNMENT(p) (((int)(p)) % sizeof(Nat))
 
-int indexOfDifference(void* p1, void* p2, int bytes) {
+
+#define READ_WORD8(p) (*((Word8*) (p)))
+#define READ_NAT(p)   (*((Nat*)   (p)))
+
+
+/* ---------------------------------------------------------- */
+/* Compare up to the first @limit@ bytes of @p1@ against @p2@
+ * and return the first index where they differ. */
+int indexOfDifference(void* p1, void* p2, int limit) {
 	int i = 0;
+	if (limit <= 0) return i;
+	
 	
 	/* Munge until Nat-aligned */
-	// TODO
-	
-	
-	/* Tail-call, checking a Nat at a time until we find
-	 * a mismatch.
-	 */
-	#define READ_NAT(p) (*((Nat*) (p)))
-	
-	Nat diff = READ_NAT(p1+i) ^ READ_NAT(p2+i);
-	while (i + sizeof(Nat) <= bytes && diff != 0) {
-		i += sizeof(Nat);
-		diff = READ_NAT(p1+i) ^ READ_NAT(p2+i);
+	{
+		int x1 = NAT_MISALIGNMENT(p1);
+		int x2 = NAT_MISALIGNMENT(p2);
+		if (x1 != x2) {
+			/* BUG: what if they're misaligned differently?
+			 * For now we'll use Word8 all the way */
+			x1 = limit;
+		}
+		while (i < x1) {
+			if (READ_WORD8(p1+i) == READ_WORD8(p2+i)) {
+				++i;
+			} else {
+				return i;
+			}
+		}
+		if (x1 == limit) {
+			return limit;
+		} else {
+			/* Fall through */
+		}
 	}
 	
 	
-	/* Clean up incomplete Nat at the end of the strings */
-	if (!( i + sizeof(Nat) <= bytes )) {
-		Nat highestBit = 1 << (bytes * sizeof(Word8) -1);
+	/* Check a Nat at a time until we find a mismatch */
+	Nat diff;
+	do {
+		diff = READ_NAT(p1+i) ^ READ_NAT(p2+i);
 		
-		// BUG: this is bigendian, not littleendian
+		/* If the diff is valid and zero, then increment the loop */
+		if (i + sizeof(Nat) <= limit && diff == 0) {
+			i += sizeof(Nat);
+		} else {
+			break;
+		}
+	} while (i < limit);
+	
+	
+	/* Clean up incomplete Nat at the end of the strings */
+	if (i + sizeof(Nat) > limit) {
+		// BUG: this is bigendian, not littleendian. And probably wrong too.
+		Nat highestBit = 1 << ((limit-i) * sizeof(Word8));
 		diff &= (~(highestBit-1)) ^ highestBit;
 		
-		if (0 == diff) {
-			return (i+bytes);
-		}
+		if (0 == diff) return limit;
 	}
 	
 	
 	/* Found a difference. Do binary search to identify first
 	 * byte in Nat which doesn't match. Maybe it'd be faster
 	 * to specialize the Word16 and Word8 iterations so that
-	 * we never have to leave Nat size...
+	 * we never have to leave Nat size...?
 	 */
 	Word32 w32;
-	#ifdef __hDataTrie_Nat32__
-		w32 = diff;
-	#else
+	#ifdef __hDataTrie_Nat64__
 	#	ifdef __hDataTrie_isLittleEndian__
-			Word32 first32 = diff & 0x00000000FFFFFFFFull;
+			Word32 first32 = (Word32) (diff & 0x00000000FFFFFFFFull);
 	#	else
-			Word32 first32 = diff & 0xFFFFFFFF00000000ull;
+			Word32 first32 = (Word32)((diff & 0xFFFFFFFF00000000ull) >> 4);
 	#	endif
 		if (0 == first32) {
 			i += 4;
 	#		ifdef __hDataTrie_isLittleEndian__
-				w32 = diff & 0xFFFFFFFF00000000ull;
+				w32 = (Word32)((diff & 0xFFFFFFFF00000000ull) >> 4);
 	#		else
-				w32 = diff & 0x00000000FFFFFFFFull;
+				w32 = (Word32) (diff & 0x00000000FFFFFFFFull);
 	#		endif
 		} else {
 			w32 = first32;
 		}
+	#elif defined (__hDataTrie_Nat32__)
+		w32 = diff;
+	#else
+		/* WTF? */
 	#endif
 	
 	
 	Word16 w16;
-	#ifdef __hDataTrie_isLittleEndian__
-		Word16 first16 = w32 & 0x0000FFFF;
-	#else
-		Word16 first16 = w32 & 0xFFFF0000;
-	#endif
-	if (0 == first16) {
-		i += 2;
+	#if defined (__hDataTrie_Nat32__) || defined (__hDataTrie_Nat64__)
 	#	ifdef __hDataTrie_isLittleEndian__
-			w16 = w32 & 0xFFFF0000;
+			Word16 first16 = (Word16) (w32 & 0x0000FFFF);
 	#	else
-			w16 = w32 & 0x0000FFFF;
+			Word16 first16 = (Word16)((w32 & 0xFFFF0000) >> 2);
 	#	endif
-	} else {
-		w16 = first16;
-	}
+		if (0 == first16) {
+			i += 2;
+	#		ifdef __hDataTrie_isLittleEndian__
+				w16 = (Word16)((w32 & 0xFFFF0000) >> 2);
+	#		else
+				w16 = (Word16) (w32 & 0x0000FFFF);
+	#		endif
+		} else {
+			w16 = first16;
+		}
+	#else
+		/* WTF? */
+	#endif
 	
 	
 	Word8 w8;
 	#ifdef __hDataTrie_isLittleEndian__
-		Word8 first8 = w16 & 0x00FF;
+		Word8 first8 = (Word8) (w16 & 0x00FF);
 	#else
-		Word8 first8 = w16 & 0xFF00;
+		Word8 first8 = (Word8)((w16 & 0xFF00) >> 1);
 	#endif
 	if (0 == first8) {
 		i += 1;
@@ -108,3 +146,5 @@ int indexOfDifference(void* p1, void* p2, int bytes) {
 	
 	return i;
 }
+/* ---------------------------------------------------------- */
+/* ----------------------------------------------------- fin. */

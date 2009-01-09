@@ -362,7 +362,8 @@ toListBy f = \t -> go S.empty t []
 -- exactly reachable the default value is used; if the middle of
 -- an arc is reached, the second function argument is used.
 --
--- This function is intended for internal use.
+-- This function is intended for internal use. For the public-facing
+-- version, see @lookupBy@ in "Data.Trie".
 lookupBy_ :: (Maybe a -> Trie a -> b) -> b -> (Trie a -> b)
           -> KeyString -> Trie a -> b
 lookupBy_ f z a = go
@@ -393,7 +394,10 @@ lookupBy_ f z a = go
 
 
 -- This function needs to be here, not in "Data.Trie", because of
--- 'arc' which isn't exported.
+-- 'arc' which isn't exported. We could use the monad instance
+-- instead, though it'd be far more circuitous.
+--     arc k Nothing  t === singleton k () >> t
+--     arc k (Just v) t === singleton k v  >>= unionR t . singleton S.empty
 --
 -- | Return the subtrie containing all keys beginning with a prefix.
 {-# INLINE submap #-}
@@ -508,9 +512,13 @@ mergeBy f t0@(Branch p0 m0 l0 r0) t1@(Branch p1 m1 l1 r1)
 mergeBy f t0_ t1_ =
     case (t0_,t1_) of
     (Arc k0 mv0 t0, Arc k1 mv1 t1)
-        | S.null k0 -> arc k0 mv0 (mergeBy f t0 t1_)
-        | S.null k1 -> arc k1 mv1 (mergeBy f t1 t0_)
-        | m' == 0   ->
+        -- BWUH: but why isn't this first case caught by m'==0 ?
+        --       Nor does it raise the error, that it should there...
+        | S.null k0 && S.null k1 -> arc k0 (mergeMaybe f mv0 mv1)
+                                               (mergeBy f t0 t1)
+        | S.null k0              -> arc k0 mv0 (mergeBy f t0 t1_)
+        |              S.null k1 -> arc k1 mv1 (mergeBy f t1 t0_)
+        | m' == 0                ->
             let (pk,k0',k1') = splitMaximalPrefix k0 k1
             in if S.null pk
             then error "mergeBy: no mask, but no prefix string"
@@ -528,11 +536,7 @@ mergeBy f t0_ t1_ =
                                       , t0
                                       , Arc k1' mv1 t1
                                       )
-                     (True, True)  -> ( case (mv0,mv1) of
-                                             (Nothing,Nothing) -> Nothing
-                                             (Nothing,Just _)  -> mv1
-                                             (Just _, Nothing) -> mv0
-                                             (Just v0,Just v1) -> f v0 v1
+                     (True, True)  -> ( mergeMaybe f mv0 mv1
                                       , t0
                                       , t1
                                       )
@@ -557,6 +561,11 @@ mergeBy f t0_ t1_ =
     m' = branchMask p0 p1
     p' = mask p0 m'
 
+mergeMaybe :: (a -> a -> Maybe a) -> Maybe a -> Maybe a -> Maybe a
+mergeMaybe _ Nothing      Nothing  = Nothing
+mergeMaybe _ Nothing mv1@(Just _)  = mv1
+mergeMaybe _ mv0@(Just _) Nothing  = mv0
+mergeMaybe f (Just v0)   (Just v1) = f v0 v1
 
 {---------------------------------------------------------------
 -- Mapping functions

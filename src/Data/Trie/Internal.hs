@@ -512,8 +512,6 @@ mergeBy f t0@(Branch p0 m0 l0 r0) t1@(Branch p1 m1 l1 r1)
 mergeBy f t0_ t1_ =
     case (t0_,t1_) of
     (Arc k0 mv0 t0, Arc k1 mv1 t1)
-        -- BWUH: but why isn't this first case caught by m'==0 ?
-        --       Nor does it raise the error, that it should there...
         | S.null k0 && S.null k1 -> arc k0 (mergeMaybe f mv0 mv1)
                                                (mergeBy f t0 t1)
         | S.null k0              -> arc k0 mv0 (mergeBy f t0 t1_)
@@ -522,25 +520,13 @@ mergeBy f t0_ t1_ =
             let (pk,k0',k1') = splitMaximalPrefix k0 k1
             in if S.null pk
             then error "mergeBy: no mask, but no prefix string"
-            else let
-                 (mv',t',t'') = case (S.null k0', S.null k1') of
-                     (False,False) -> ( Nothing
-                                      , Arc k0' mv0 t0
-                                      , Arc k1' mv1 t1
-                                      )
-                     (False,True)  -> ( mv1
-                                      , Arc k0' mv0 t0
-                                      , t1
-                                      )
-                     (True, False) -> ( mv0
-                                      , t0
-                                      , Arc k1' mv1 t1
-                                      )
-                     (True, True)  -> ( mergeMaybe f mv0 mv1
-                                      , t0
-                                      , t1
-                                      )
-                 in arc pk mv' (mergeBy f t' t'')
+            else let arcMerge mv' t1' t2' = arc pk mv' (mergeBy f t1' t2')
+                 in case (S.null k0', S.null k1') of
+                     (True, True)  -> arcMerge (mergeMaybe f mv0 mv1) t0 t1
+                     (True, False) -> arcMerge mv0 t0 (Arc k1' mv1 t1)
+                     (False,True)  -> arcMerge mv1 t1 (Arc k0' mv0 t0)
+                     (False,False) -> arcMerge Nothing (Arc k0' mv0 t0)
+                                                       (Arc k1' mv1 t1)
     
     (Arc _ _ _, Branch _p1 m1 l r)
         | nomatch p0 p1 m1 -> branchMerge p1 t1_  p0 t0_

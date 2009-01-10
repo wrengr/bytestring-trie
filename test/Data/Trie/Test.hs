@@ -17,7 +17,7 @@ module Data.Trie.Test (packC2W, main) where
 import qualified Data.Trie                as T
 import qualified Data.Trie.Internal       as T (showTrie)
 import qualified Data.ByteString          as S
-import qualified Data.ByteString.Internal as S (c2w)
+import qualified Data.ByteString.Internal as S (c2w, w2c)
 
 import qualified Test.HUnit          as HU
 import qualified Test.QuickCheck     as QC
@@ -25,6 +25,7 @@ import qualified Test.SmallCheck     as SC
 -- import qualified Test.LazySmallCheck as LSC
 -- import qualified Test.SparseCheck    as PC
 
+import Data.Monoid
 import Control.Monad (liftM)
 import Data.List     (nubBy, sortBy)
 import Data.Ord      (comparing)
@@ -52,26 +53,28 @@ main  = do
                  ]
     putStrLn ""
     
-    {-
-    putStrLn "smallcheck @ ():"
-    checkSmall (prop_insert  :: Word -> () -> T.Trie () -> Bool)
-    checkSmall (prop_submap1 :: Word -> T.Trie () -> Bool)
-    checkSmall (prop_submap2 :: Word -> T.Trie () -> Bool)
-    checkSmall (prop_toList  :: T.Trie () -> Bool)
-    checkSmall (prop_fromList_toList :: [(Word, ())] -> Bool)
-    putStrLn ""
-    -}
-    
     putStrLn "quickcheck @ Int:"
-    checkQuick (prop_insert  :: Word -> Int -> T.Trie Int -> Bool)
-    checkQuick (prop_submap1 :: Word -> T.Trie Int -> Bool)
-    checkQuick (prop_submap2 :: Word -> T.Trie Int -> Bool)
-    checkQuick (prop_toList  :: T.Trie Int -> Bool)
-    checkQuick (prop_fromList_toList :: [(Word, Int)] -> Bool)
+    checkQuick 500 (prop_insert  :: Word -> Int -> T.Trie Int -> Bool)
+    checkQuick 500 (prop_submap1 :: Word -> T.Trie Int -> Bool)
+    checkQuick 500 (prop_submap2 :: Word -> T.Trie Int -> Bool)
+    checkQuick 500 (prop_submap3 :: Word -> T.Trie Int -> Bool)
+    checkQuick 500 (prop_toList  :: T.Trie Int -> Bool)
+    checkQuick 500 (prop_fromList_toList :: [(Word, Int)] -> Bool)
+    putStrLn ""
+    
+    putStrLn "smallcheck @ ():" -- Beware the exponential!
+    SC.smallCheck 3 (prop_insert  :: Word -> () -> T.Trie () -> Bool)
+    SC.smallCheck 3 (prop_submap1 :: Word -> T.Trie () -> Bool)
+    SC.smallCheck 3 (prop_submap2 :: Word -> T.Trie () -> Bool)
+    -- SC.smallCheck 3 (prop_submap3 :: Word -> T.Trie () -> Bool)
+    SC.smallCheck 4 (prop_toList  :: T.Trie () -> Bool)
+    SC.smallCheck 5 (prop_fromList_toList :: [(Word, ())] -> Bool)
     putStrLn ""
     where
-    checkQuick = QC.check (QC.defaultConfig { QC.configMaxTest = 500 })
-    checkSmall = SC.smallCheck 20
+    checkQuick n = QC.check (QC.defaultConfig
+                            { QC.configMaxTest = n 
+                            , QC.configMaxFail = 1000 `max` 10*n
+                            })
 
 testEqual ::  (Show a, Eq a) => String -> a -> a -> HU.Test
 testEqual s a b =
@@ -141,7 +144,7 @@ letters = ['a'..'m']
 
 instance QC.Arbitrary Letter where
     arbitrary = Letter `fmap` QC.elements letters
-    -- coarbitrary
+    -- coarbitrary -- used in QCv1, separated in QCv2
 
 newtype Word = Word { unWord :: S.ByteString }
     deriving (Eq, Ord)
@@ -155,7 +158,7 @@ instance QC.Arbitrary Word where
         s <- QC.vector k
         c <- QC.arbitrary -- We only want non-empty strings.
         return . Word . packC2W $ map unLetter (c:s)
-    -- coarbitrary
+    -- coarbitrary -- used in QCv1, separated in QCv2
 
 instance (QC.Arbitrary a) => QC.Arbitrary (T.Trie a) where
     arbitrary = QC.sized $ \n -> do
@@ -163,9 +166,10 @@ instance (QC.Arbitrary a) => QC.Arbitrary (T.Trie a) where
         labels <- map unWord `fmap` QC.vector k
         elems  <- QC.vector k
         return . T.fromList $ zip labels elems
-    -- coarbitrary
+    -- coarbitrary -- used in QCv1, separated in QCv2
 
-
+----------------------------------------------------------------
+-- cf <http://www.cs.york.ac.uk/fp/darcs/smallcheck/README>
 -- type Series a = Int -> [a]
 
 instance SC.Serial Letter where
@@ -174,33 +178,57 @@ instance SC.Serial Letter where
                        return $ \c -> f (fromEnum (unLetter c) - fromEnum 'a')
     
 instance SC.Serial Word where
-    series d = liftM (Word . packC2W . map unLetter)(SC.series d :: [[Letter]])
-    -- coseries :: Series b -> Series (a -> b)
+    series      d = liftM (Word . packC2W . map unLetter)
+                          (SC.series d :: [[Letter]])
     
-{-
-instance (SC.Serial a) => SC.Serial (Trie a) where
-    series :: Series a
-    coseries :: Series b -> Series (a -> b)
--}
+    coseries rs d = do y <- SC.alts0 rs d
+                       f <- SC.alts2 rs d
+                       return $ \(Word xs) ->
+                           if S.null xs
+                           then y
+                           else f (Letter . S.w2c $ S.head xs)
+                                  (Word $ S.tail xs)
+
+instance (Monoid a, SC.Serial a) => SC.Serial (T.Trie a) where
+    series =      SC.cons0 T.empty
+           SC.\/  SC.cons3 arcHACK
+           SC.\/  SC.cons2 mappend
+           where
+           arcHACK (Word k) Nothing  t = T.singleton k () >> t
+           arcHACK (Word k) (Just v) t = T.singleton k v
+                                         >>= T.unionR t . T.singleton S.empty
+    
+    -- coseries :: Series b -> Series (Trie a -> b)
 
 
 ----------------------------------------------------------------
+-- | If you insert a value, you can look it up
 prop_insert :: (Eq a) => Word -> a -> T.Trie a -> Bool
 prop_insert (Word k) v t =
     (T.lookup k . T.insert k v $ t) == Just v
 
+-- | All keys in a submap are keys in the supermap
 prop_submap1 :: Word -> T.Trie a -> Bool
 prop_submap1 (Word k) t =
     all (`T.member` t) . T.keys . T.submap k $ t
 
+-- | All keys in a submap have the query as a prefix
 prop_submap2 :: Word -> T.Trie a -> Bool
 prop_submap2 (Word k) t =
     all (S.isPrefixOf k) . T.keys . T.submap k $ t
 
+-- | All values in a submap are the same in the supermap
+prop_submap3 :: (Eq a) => Word -> T.Trie a -> Bool
+prop_submap3 (Word k) t =
+    (\q -> T.lookup q t' == T.lookup q t) `all` T.keys t'
+    where t' = T.submap k t
+
+-- | Keys are ordered when converting to a list
 prop_toList :: T.Trie a -> Bool
 prop_toList t = ordered (T.keys t)
     where ordered xs = and (zipWith (<=) xs (drop 1 xs))
 
+-- | 'fromList' takes the first value for a given key
 prop_fromList_toList :: (Eq a) => [(Word, a)] -> Bool
 prop_fromList_toList assocs =
     (T.toList . T.fromList) === (nubBy (apFst (==)) . sortBy (comparing fst))

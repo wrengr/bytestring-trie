@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.05
+--                                                  ~ 2009.01.10
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -243,6 +243,7 @@ branch p m l     r     = Branch p m l r
 
 
 -- | Smart constructor to prune @Arc@s that lead nowhere.
+-- N.B if mv=Just then doesn't check whether t=epsilon. It's up to callers to ensure that invariant isn't broken.
 arc :: KeyString -> Maybe a -> Trie a -> Trie a
 arc k mv@(Just _)   t                            = Arc k mv t
 arc _    Nothing    Empty                        = Empty
@@ -366,8 +367,12 @@ toListBy f = \t -> go S.empty t []
 -- version, see @lookupBy@ in "Data.Trie".
 lookupBy_ :: (Maybe a -> Trie a -> b) -> b -> (Trie a -> b)
           -> KeyString -> Trie a -> b
-lookupBy_ f z a = go
+lookupBy_ f z a = let 
+    isBranch (Branch _ _ _ _) = True
+    isBranch _                = False
+    in \q t -> if S.null q && isBranch t then f Nothing t else go q t
     where
+                                          
     go _    Empty             = z
     
     go q   (Arc k mv t) =
@@ -398,6 +403,8 @@ lookupBy_ f z a = go
 -- instead, though it'd be far more circuitous.
 --     arc k Nothing  t === singleton k () >> t
 --     arc k (Just v) t === singleton k v  >>= unionR t . singleton S.empty
+--         (...except 'arc' doesn't do the invariant correction
+--           of (>>=) for t=epsilon)
 --
 -- | Return the subtrie containing all keys beginning with a prefix.
 {-# INLINE submap #-}
@@ -528,11 +535,16 @@ mergeBy f t0_ t1_ =
                      (False,False) -> arcMerge Nothing (Arc k0' mv0 t0)
                                                        (Arc k1' mv1 t1)
     
+    -- Deal with epsilons. Could be hoisted if we use @go@ style
+    (Arc k0 mv0@(Just _) t0, Branch _ _ _ _)
+        | S.null k0        -> arc k0 mv0 (mergeBy f t0 t1_)
+    (Branch _ _ _ _, Arc k1 mv1@(Just _) t1)
+        | S.null k1        -> arc k1 mv1 (mergeBy f t1 t0_)
+        
     (Arc _ _ _, Branch _p1 m1 l r)
         | nomatch p0 p1 m1 -> branchMerge p1 t1_  p0 t0_
         | zero p0 m1       -> branch p1 m1 (mergeBy f t0_ l) r
         | otherwise        -> branch p1 m1 l (mergeBy f t0_ r)
-    
     (Branch _p0 m0 l r, Arc _ _ _)
         | nomatch p1 p0 m0 -> branchMerge p0 t0_  p1 t1_
         | zero p1 m0       -> branch p0 m0 (mergeBy f t1_ l) r

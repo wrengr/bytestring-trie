@@ -367,22 +367,20 @@ toListBy f = \t -> go S.empty t []
 -- version, see @lookupBy@ in "Data.Trie".
 lookupBy_ :: (Maybe a -> Trie a -> b) -> b -> (Trie a -> b)
           -> KeyString -> Trie a -> b
-lookupBy_ f z a = let 
-    isBranch (Branch _ _ _ _) = True
-    isBranch _                = False
-    in \q t -> if S.null q && isBranch t then f Nothing t else go q t
+lookupBy_ f z a = lookupBy_'
     where
-                                          
-    go _    Empty             = z
+    lookupBy_' q t@(Branch _ _ _ _) | S.null q = f Nothing t
+    lookupBy_' q t                             = go q t
+    
+    go _    Empty       = z
     
     go q   (Arc k mv t) =
-        case (not $ S.null k', S.null q') of
-             (True,  True)  -> a (Arc k' mv t)
-             (True,  False) -> z
-             (False, True)  -> f mv t
-             (False, False) -> go q' t
-        where
-        (_,k',q') = splitMaximalPrefix k q
+        let (_,k',q')   = splitMaximalPrefix k q
+        in case (not $ S.null k', S.null q') of
+                (True,  True)  -> a (Arc k' mv t)
+                (True,  False) -> z
+                (False, True)  -> f mv t
+                (False, False) -> go q' t
         
     go q t_@(Branch _ _ _ _) = findArc t_
         where
@@ -461,25 +459,24 @@ alterBy f_ q_ x_
         qh = errorLogHead "alterBy" q
     
     go q t_@(Arc k mv t) =
-        case (not $ S.null k', S.null q') of
-             (True,  True)  -> -- add node to middle of arc
-                               arc p (f Nothing) (Arc k' mv t)
-             (True,  False) ->
-                        case nothing q' of
-                        Empty -> t_ -- Nothing to add, reuse old arc
-                        l     -> arc' (branchMerge (getPrefix l) l
-                                                   (getPrefix r) r)
-                                 where
-                                 r = Arc k' mv t
-                                 
-                                 -- inlined version of 'arc'
-                                 arc' | S.null p  = id
-                                      | otherwise = Arc p Nothing
-                                 
-             (False, True)  -> arc k (f mv) t
-             (False, False) -> arc k mv (go q' t)
-        where
-        (p,k',q') = splitMaximalPrefix k q
+        let (p,k',q') = splitMaximalPrefix k q
+        in case (not $ S.null k', S.null q') of
+                (True,  True)  -> -- add node to middle of arc
+                                  arc p (f Nothing) (Arc k' mv t)
+                (True,  False) ->
+                           case nothing q' of
+                           Empty -> t_ -- Nothing to add, reuse old arc
+                           l     -> arc' (branchMerge (getPrefix l) l
+                                                      (getPrefix r) r)
+                                    where
+                                    r = Arc k' mv t
+                                    
+                                    -- inlined version of 'arc'
+                                    arc' | S.null p  = id
+                                         | otherwise = Arc p Nothing
+                                    
+                (False, True)  -> arc k (f mv) t
+                (False, False) -> arc k mv (go q' t)
 
 
 {---------------------------------------------------------------
@@ -519,6 +516,8 @@ mergeBy f t0@(Branch p0 m0 l0 r0) t1@(Branch p1 m1 l1 r1)
 mergeBy f t0_ t1_ =
     case (t0_,t1_) of
     (Arc k0 mv0 t0, Arc k1 mv1 t1)
+        -- First case to deal with epsilons, could be hoisted with @go@ style
+        -- Maybe could hoist the first three, iff the m'==0 doesn't cause it
         | S.null k0 && S.null k1 -> arc k0 (mergeMaybe f mv0 mv1)
                                                (mergeBy f t0 t1)
         | S.null k0              -> arc k0 mv0 (mergeBy f t0 t1_)
@@ -564,6 +563,7 @@ mergeMaybe _ Nothing      Nothing  = Nothing
 mergeMaybe _ Nothing mv1@(Just _)  = mv1
 mergeMaybe _ mv0@(Just _) Nothing  = mv0
 mergeMaybe f (Just v0)   (Just v1) = f v0 v1
+
 
 {---------------------------------------------------------------
 -- Mapping functions

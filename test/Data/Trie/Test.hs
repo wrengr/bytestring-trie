@@ -54,27 +54,28 @@ main  = do
     putStrLn ""
     
     putStrLn "quickcheck @ Int:"
-    checkQuick 500 (prop_insert  :: Word -> Int -> T.Trie Int -> Bool)
-    checkQuick 500 (prop_submap1 :: Word -> T.Trie Int -> Bool)
-    checkQuick 500 (prop_submap2 :: Word -> T.Trie Int -> Bool)
-    checkQuick 500 (prop_submap3 :: Word -> T.Trie Int -> Bool)
+    checkQuick 500 (prop_insert  :: Str -> Int -> T.Trie Int -> Bool)
+    checkQuick 500 (prop_submap1 :: Str -> T.Trie Int -> Bool)
+    checkQuick 500 (prop_submap2 :: Str -> T.Trie Int -> Bool)
+    checkQuick 500 (prop_submap3 :: Str -> T.Trie Int -> Bool)
     checkQuick 500 (prop_toList  :: T.Trie Int -> Bool)
-    checkQuick 500 (prop_fromList_toList :: [(Word, Int)] -> Bool)
+    checkQuick 500 (prop_fromList_toList :: [(Str, Int)] -> Bool)
     putStrLn ""
     
     putStrLn "smallcheck @ ():" -- Beware the exponential!
-    SC.smallCheck 3 (prop_insert  :: Word -> () -> T.Trie () -> Bool)
-    SC.smallCheck 3 (prop_submap1 :: Word -> T.Trie () -> Bool)
-    SC.smallCheck 3 (prop_submap2 :: Word -> T.Trie () -> Bool)
-    -- SC.smallCheck 3 (prop_submap3 :: Word -> T.Trie () -> Bool)
-    SC.smallCheck 4 (prop_toList  :: T.Trie () -> Bool)
-    SC.smallCheck 5 (prop_fromList_toList :: [(Word, ())] -> Bool)
+    checkSmall 3 (prop_insert  :: Str -> () -> T.Trie () -> Bool)
+    checkSmall 3 (prop_submap1 :: Str -> T.Trie () -> Bool)
+    checkSmall 3 (prop_submap2 :: Str -> T.Trie () -> Bool)
+    -- checkSmall 3 (prop_submap3 :: Str -> T.Trie () -> Bool)
+    checkSmall 4 (prop_toList  :: T.Trie () -> Bool)
+    checkSmall 5 (prop_fromList_toList :: [(Str, ())] -> Bool)
     putStrLn ""
     where
-    checkQuick n = QC.check (QC.defaultConfig
-                            { QC.configMaxTest = n 
-                            , QC.configMaxFail = 1000 `max` 10*n
-                            })
+    checkQuick n   = QC.check (QC.defaultConfig
+                              { QC.configMaxTest = n 
+                              , QC.configMaxFail = 1000 `max` 10*n
+                              })
+    checkSmall d f = SC.smallCheck d f >> putStrLn ""
 
 testEqual ::  (Show a, Eq a) => String -> a -> a -> HU.Test
 testEqual s a b =
@@ -146,24 +147,24 @@ instance QC.Arbitrary Letter where
     arbitrary = Letter `fmap` QC.elements letters
     -- coarbitrary -- used in QCv1, separated in QCv2
 
-newtype Word = Word { unWord :: S.ByteString }
+newtype Str = Str { unStr :: S.ByteString }
     deriving (Eq, Ord)
 
-instance Show Word where
-    show (Word s) = "Word {unWord = packC2W " ++ show s ++ " }"
+instance Show Str where
+    show (Str s) = "Str {unStr = packC2W " ++ show s ++ " }"
 
-instance QC.Arbitrary Word where
+instance QC.Arbitrary Str where
     arbitrary = QC.sized $ \n -> do
         k <- QC.choose (0,n)
         s <- QC.vector k
         c <- QC.arbitrary -- We only want non-empty strings.
-        return . Word . packC2W $ map unLetter (c:s)
+        return . Str . packC2W $ map unLetter (c:s)
     -- coarbitrary -- used in QCv1, separated in QCv2
 
 instance (QC.Arbitrary a) => QC.Arbitrary (T.Trie a) where
     arbitrary = QC.sized $ \n -> do
         k      <- QC.choose (0,n)
-        labels <- map unWord `fmap` QC.vector k
+        labels <- map unStr `fmap` QC.vector k
         elems  <- QC.vector k
         return . T.fromList $ zip labels elems
     -- coarbitrary -- used in QCv1, separated in QCv2
@@ -177,25 +178,26 @@ instance SC.Serial Letter where
     coseries rs d = do f <- SC.coseries rs d
                        return $ \c -> f (fromEnum (unLetter c) - fromEnum 'a')
     
-instance SC.Serial Word where
-    series      d = liftM (Word . packC2W . map unLetter)
+instance SC.Serial Str where
+    series      d = liftM (Str . packC2W . map unLetter)
                           (SC.series d :: [[Letter]])
     
     coseries rs d = do y <- SC.alts0 rs d
                        f <- SC.alts2 rs d
-                       return $ \(Word xs) ->
+                       return $ \(Str xs) ->
                            if S.null xs
                            then y
                            else f (Letter . S.w2c $ S.head xs)
-                                  (Word $ S.tail xs)
+                                  (Str $ S.tail xs)
 
+-- This instance needs some work. The smart constructures ensure only correct values, but there are redundancies.
 instance (Monoid a, SC.Serial a) => SC.Serial (T.Trie a) where
     series =      SC.cons0 T.empty
            SC.\/  SC.cons3 arcHACK
            SC.\/  SC.cons2 mappend
            where
-           arcHACK (Word k) Nothing  t = T.singleton k () >> t
-           arcHACK (Word k) (Just v) t = T.singleton k v
+           arcHACK (Str k) Nothing  t = T.singleton k () >> t
+           arcHACK (Str k) (Just v) t = T.singleton k v
                                          >>= T.unionR t . T.singleton S.empty
     
     -- coseries :: Series b -> Series (Trie a -> b)
@@ -203,23 +205,23 @@ instance (Monoid a, SC.Serial a) => SC.Serial (T.Trie a) where
 
 ----------------------------------------------------------------
 -- | If you insert a value, you can look it up
-prop_insert :: (Eq a) => Word -> a -> T.Trie a -> Bool
-prop_insert (Word k) v t =
+prop_insert :: (Eq a) => Str -> a -> T.Trie a -> Bool
+prop_insert (Str k) v t =
     (T.lookup k . T.insert k v $ t) == Just v
 
 -- | All keys in a submap are keys in the supermap
-prop_submap1 :: Word -> T.Trie a -> Bool
-prop_submap1 (Word k) t =
+prop_submap1 :: Str -> T.Trie a -> Bool
+prop_submap1 (Str k) t =
     all (`T.member` t) . T.keys . T.submap k $ t
 
 -- | All keys in a submap have the query as a prefix
-prop_submap2 :: Word -> T.Trie a -> Bool
-prop_submap2 (Word k) t =
+prop_submap2 :: Str -> T.Trie a -> Bool
+prop_submap2 (Str k) t =
     all (S.isPrefixOf k) . T.keys . T.submap k $ t
 
 -- | All values in a submap are the same in the supermap
-prop_submap3 :: (Eq a) => Word -> T.Trie a -> Bool
-prop_submap3 (Word k) t =
+prop_submap3 :: (Eq a) => Str -> T.Trie a -> Bool
+prop_submap3 (Str k) t =
     (\q -> T.lookup q t' == T.lookup q t) `all` T.keys t'
     where t' = T.submap k t
 
@@ -229,10 +231,10 @@ prop_toList t = ordered (T.keys t)
     where ordered xs = and (zipWith (<=) xs (drop 1 xs))
 
 -- | 'fromList' takes the first value for a given key
-prop_fromList_toList :: (Eq a) => [(Word, a)] -> Bool
+prop_fromList_toList :: (Eq a) => [(Str, a)] -> Bool
 prop_fromList_toList assocs =
     (T.toList . T.fromList) === (nubBy (apFst (==)) . sortBy (comparing fst))
-    $ map (first unWord) assocs
+    $ map (first unStr) assocs
 
 ----------------------------------------------------------------
 -- | Lift a function to apply to the first of pairs, retaining the second.

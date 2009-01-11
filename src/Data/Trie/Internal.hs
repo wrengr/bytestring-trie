@@ -165,6 +165,25 @@ showTrie t = shows' id t ""
 -- Trie instances
 ---------------------------------------------------------------}
 
+instance Binary a => Binary (Trie a) where
+    put Empty            = put (0 :: Word8)
+    put (Arc k m t)      = do put (1 :: Word8)
+                              put k
+                              put m
+                              put t
+    put (Branch p m l r) = do put (2 :: Word8)
+                              put p
+                              put m
+                              put l
+                              put r
+    
+    get = do tag <- get :: Get Word8
+             case tag of
+                 0 -> return Empty
+                 1 -> liftM3 Arc get get get
+                 _ -> liftM4 Branch get get get get
+
+
 instance Functor Trie where
     fmap _ Empty              = Empty
     fmap f (Arc k Nothing  t) = Arc k Nothing      (fmap f t)
@@ -198,6 +217,10 @@ instance Monoid a => Monoid (Trie a) where
     mappend = mergeBy $ \x y -> Just (x `mappend` y)
 
 
+-- Not a MonadPlus for any definition I can think of.
+
+
+-- TODO: cf toListBy. We should provide foldr and foldl directly
 instance Foldable Trie where
     foldMap _ Empty              = mempty
     foldMap f (Arc _ Nothing  t) = foldMap f t
@@ -212,23 +235,27 @@ instance Traversable Trie where
     traverse f (Branch p m l r)   = Branch p m <$> traverse f l <*> traverse f r
 
 
-instance Binary a => Binary (Trie a) where
-    put Empty            = put (0 :: Word8)
-    put (Arc k m t)      = do put (1 :: Word8)
-                              put k
-                              put m
-                              put t
-    put (Branch p m l r) = do put (2 :: Word8)
-                              put p
-                              put m
-                              put l
-                              put r
-    
-    get = do tag <- get :: Get Word8
-             case tag of
-                 0 -> return Empty
-                 1 -> liftM3 Arc get get get
-                 _ -> liftM4 Branch get get get get
+{---------------------------------------------------------------
+-- Mapping functions
+---------------------------------------------------------------}
+
+-- | Apply a function to all values, potentially removing them.
+filterMap :: (a -> Maybe b) -> Trie a -> Trie b
+filterMap _ Empty              = empty
+filterMap f (Arc k Nothing  t) = arc k Nothing (filterMap f t)
+filterMap f (Arc k (Just v) t) = arc k (f v)   (filterMap f t)
+filterMap f (Branch p m l r)   = branch p m (filterMap f l) (filterMap f r)
+
+-- | Generic version of 'fmap'. This function is notably more
+-- expensive than 'fmap' or 'filterMap' because we have to reconstruct
+-- the keys.
+mapBy :: (KeyString -> a -> Maybe b) -> Trie a -> Trie b
+mapBy f = go S.empty
+    where
+    go _ Empty              = empty
+    go q (Arc k Nothing  t) = arc k Nothing  (go q' t) where q' = S.append q k
+    go q (Arc k (Just v) t) = arc k (f q' v) (go q' t) where q' = S.append q k
+    go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
 
 {---------------------------------------------------------------
@@ -261,8 +288,8 @@ branchMerge :: Prefix -> Trie a -> Prefix -> Trie a -> Trie a
 branchMerge _ Empty _ t2    = t2
 branchMerge _  t1   _ Empty = t1
 branchMerge p1 t1  p2 t2
-    | zero p1 m = Branch p m t1 t2
-    | otherwise = Branch p m t2 t1
+    | zero p1 m             = Branch p m t1 t2
+    | otherwise             = Branch p m t2 t1
     where
     m = branchMask p1 p2
     p = mask p1 m
@@ -273,10 +300,10 @@ branchMerge p1 t1  p2 t2
 -- we can see 4/8/?*Word8 at a time instead of just one.
 -- But that makes maintaining invariants ...difficult :(
 getPrefix :: Trie a -> Prefix
-getPrefix (Branch p _ _ _) = p
-getPrefix (Arc k _ _)      | S.null k  = 0 -- for lack of a better
-                           | otherwise = S.head k
-getPrefix Empty            = error "getPrefix: no Prefix of Empty"
+getPrefix (Branch p _ _ _)        = p
+getPrefix (Arc k _ _) | S.null k  = 0 -- for lack of a better value
+                      | otherwise = S.head k
+getPrefix Empty                   = error "getPrefix: no Prefix of Empty"
 
 
 {---------------------------------------------------------------
@@ -335,8 +362,10 @@ size' (Arc _ (Just _) t) f n = size' t f $! n + 1
 -- TODO: rewrite list-catenation to be lazier (real CPS instead of
 -- function building? is the function building really better than
 -- (++) anyways?)
+--
 -- TODO: the @q@ accumulator should be lazy ByteString and only
--- forced by @f@
+-- forced by @f@. It's already non-strict, but we should ensure
+-- O(n) not O(n^2) when it's forced.
 --
 -- | Convert a trie into a list using a function. Resulting values
 -- are in sorted order according to the keys.
@@ -369,9 +398,11 @@ lookupBy_ :: (Maybe a -> Trie a -> b) -> b -> (Trie a -> b)
           -> KeyString -> Trie a -> b
 lookupBy_ f z a = lookupBy_'
     where
+    -- | Deal with epsilon query (when there is no epsilon value)
     lookupBy_' q t@(Branch _ _ _ _) | S.null q = f Nothing t
     lookupBy_' q t                             = go q t
     
+    -- | The main recursion
     go _    Empty       = z
     
     go q   (Arc k mv t) =
@@ -402,14 +433,14 @@ lookupBy_ f z a = lookupBy_'
 --     arc k Nothing  t === singleton k () >> t
 --     arc k (Just v) t === singleton k v  >>= unionR t . singleton S.empty
 --         (...except 'arc' doesn't do the invariant correction
---           of (>>=) for t=epsilon)
+--           of (>>=) for epsilon`elem`t)
 --
 -- | Return the subtrie containing all keys beginning with a prefix.
 {-# INLINE submap #-}
 submap :: KeyString -> Trie a -> Trie a
 submap q = lookupBy_ (arc q) empty (arc q Nothing) q
-{- -- Disable superfluous error checking.
-   -- @submap'@ would replace the first argument to @lookupBy_@
+{-  -- Disable superfluous error checking.
+    -- @submap'@ would replace the first argument to @lookupBy_@
     where
     submap' Nothing Empty       = errorEmptyAfterNothing "submap"
     submap' Nothing (Arc _ _ _) = errorArcAfterNothing   "submap"
@@ -425,7 +456,7 @@ errorArcAfterNothing   s = errorInvariantBroken s "Arc after Nothing"
 
 errorEmptyAfterNothing  :: String -> a
 errorEmptyAfterNothing s = errorInvariantBroken s "Empty after Nothing"
--}
+-- -}
 
 
 {---------------------------------------------------------------
@@ -448,6 +479,7 @@ alterBy f_ q_ x_
     where
     f         = f_ q_ x_
     nothing q = arc q (f Nothing) Empty
+    
     
     go q Empty            = nothing q
     
@@ -488,105 +520,93 @@ alterBy f_ q_ x_
 --    where t = map (\s -> (pk s, 0))
 --                  ["heat","hello","hoi","apple","appa","hell","appb","appc"]
 --
--- TODO: switch to 'go', closing over @f@.
---
 -- | Combine two tries, using a function to resolve collisions.
 -- This can only define the space of functions between union and
 -- symmetric difference but, with those two, all set operations can
 -- be defined (albeit inefficiently).
 mergeBy :: (a -> a -> Maybe a) -> Trie a -> Trie a -> Trie a
-mergeBy _ Empty t1    = t1
-mergeBy _ t0    Empty = t0
-
--- /O(n+m)/ for this part where /n/ and /m/ are sizes of the branchings
-mergeBy f t0@(Branch p0 m0 l0 r0) t1@(Branch p1 m1 l1 r1)
-    | shorter m0 m1  = union0
-    | shorter m1 m0  = union1
-    | p0 == p1       = branch p0 m0 (mergeBy f l0 l1) (mergeBy f r0 r1)
-    | otherwise      = branchMerge p0 t0 p1 t1
+mergeBy f = mergeBy'
     where
-    union0  | nomatch p1 p0 m0  = branchMerge p0 t0 p1 t1
-            | zero p1 m0        = branch p0 m0 (mergeBy f l0 t1) r0
-            | otherwise         = branch p0 m0 l0 (mergeBy f r0 t1)
+    -- | Deals with epsilon entries, before recursing into @go@
+    mergeBy'
+        t0_@(Arc k0 mv0 t0)
+        t1_@(Arc k1 mv1 t1)
+        | S.null k0 && S.null k1 = arc k0 (mergeMaybe f mv0 mv1) (go t0 t1)
+        | S.null k0              = arc k0 mv0 (go t0 t1_)
+        |              S.null k1 = arc k1 mv1 (go t1 t0_)
+    mergeBy'
+        (Arc k0 mv0@(Just _) t0)
+        t1_@(Branch _ _ _ _)
+        | S.null k0              = arc k0 mv0 (go t0 t1_)
+    mergeBy'
+        t0_@(Branch _ _ _ _)
+        (Arc k1 mv1@(Just _) t1)
+        | S.null k1              = arc k1 mv1 (go t1 t0_)
+    mergeBy' t0_ t1_             = go t0_ t1_
     
-    union1  | nomatch p0 p1 m1  = branchMerge p0 t0 p1 t1
-            | zero p0 m1        = branch p1 m1 (mergeBy f t0 l1) r1
-            | otherwise         = branch p1 m1 l1 (mergeBy f t0 r1)
-
-mergeBy f t0_ t1_ =
-    case (t0_,t1_) of
-    (Arc k0 mv0 t0, Arc k1 mv1 t1)
-        -- First case to deal with epsilons, could be hoisted with @go@ style
-        -- Maybe could hoist the first three, iff the m'==0 doesn't cause it
-        | S.null k0 && S.null k1 -> arc k0 (mergeMaybe f mv0 mv1)
-                                               (mergeBy f t0 t1)
-        | S.null k0              -> arc k0 mv0 (mergeBy f t0 t1_)
-        |              S.null k1 -> arc k1 mv1 (mergeBy f t1 t0_)
-        | m' == 0                ->
-            let (pk,k0',k1') = splitMaximalPrefix k0 k1
-            in if S.null pk
-            then error "mergeBy: no mask, but no prefix string"
-            else let arcMerge mv' t1' t2' = arc pk mv' (mergeBy f t1' t2')
-                 in case (S.null k0', S.null k1') of
-                     (True, True)  -> arcMerge (mergeMaybe f mv0 mv1) t0 t1
-                     (True, False) -> arcMerge mv0 t0 (Arc k1' mv1 t1)
-                     (False,True)  -> arcMerge mv1 t1 (Arc k0' mv0 t0)
-                     (False,False) -> arcMerge Nothing (Arc k0' mv0 t0)
-                                                       (Arc k1' mv1 t1)
     
-    -- Deal with epsilons. Could be hoisted if we use @go@ style
-    (Arc k0 mv0@(Just _) t0, Branch _ _ _ _)
-        | S.null k0        -> arc k0 mv0 (mergeBy f t0 t1_)
-    (Branch _ _ _ _, Arc k1 mv1@(Just _) t1)
-        | S.null k1        -> arc k1 mv1 (mergeBy f t1 t0_)
+    -- | The main recursion
+    go Empty t1    = t1
+    go t0    Empty = t0
+    
+    -- /O(n+m)/ for this part where /n/ and /m/ are sizes of the branchings
+    go  t0@(Branch p0 m0 l0 r0)
+        t1@(Branch p1 m1 l1 r1)
+        | shorter m0 m1  = union0
+        | shorter m1 m0  = union1
+        | p0 == p1       = branch p0 m0 (go l0 l1) (go r0 r1)
+        | otherwise      = branchMerge p0 t0 p1 t1
+        where
+        union0  | nomatch p1 p0 m0  = branchMerge p0 t0 p1 t1
+                | zero p1 m0        = branch p0 m0 (go l0 t1) r0
+                | otherwise         = branch p0 m0 l0 (go r0 t1)
         
-    (Arc _ _ _, Branch _p1 m1 l r)
-        | nomatch p0 p1 m1 -> branchMerge p1 t1_  p0 t0_
-        | zero p0 m1       -> branch p1 m1 (mergeBy f t0_ l) r
-        | otherwise        -> branch p1 m1 l (mergeBy f t0_ r)
-    (Branch _p0 m0 l r, Arc _ _ _)
-        | nomatch p1 p0 m0 -> branchMerge p0 t0_  p1 t1_
-        | zero p1 m0       -> branch p0 m0 (mergeBy f t1_ l) r
-        | otherwise        -> branch p0 m0 l (mergeBy f t1_ r)
+        union1  | nomatch p0 p1 m1  = branchMerge p0 t0 p1 t1
+                | zero p0 m1        = branch p1 m1 (go t0 l1) r1
+                | otherwise         = branch p1 m1 l1 (go t0 r1)
     
-    -- Inlined branchMerge. Both tries are disjoint @Arc@s now.
-    _ | zero p0 m' -> Branch p' m' t0_ t1_
-    _              -> Branch p' m' t1_ t0_
-    where
-    p0 = getPrefix t0_
-    p1 = getPrefix t1_
-    m' = branchMask p0 p1
-    p' = mask p0 m'
+    go t0_ t1_ = go' t0_ t1_
+        where
+        p0 = getPrefix t0_
+        p1 = getPrefix t1_
+        m' = branchMask p0 p1
+        p' = mask p0 m'
+        
+        go' (Arc k0 mv0 t0)
+            (Arc k1 mv1 t1)
+            | m' == 0 =
+                let (pre,k0',k1') = splitMaximalPrefix k0 k1
+                in if S.null pre
+                then error "mergeBy: no mask, but no prefix string"
+                else let {-# INLINE arcMerge #-}
+                         arcMerge mv' t1' t2' = arc pre mv' (go t1' t2')
+                     in case (S.null k0', S.null k1') of
+                         (True, True)  -> arcMerge (mergeMaybe f mv0 mv1) t0 t1
+                         (True, False) -> arcMerge mv0 t0 (Arc k1' mv1 t1)
+                         (False,True)  -> arcMerge mv1 t1 (Arc k0' mv0 t0)
+                         (False,False) -> arcMerge Nothing (Arc k0' mv0 t0)
+                                                           (Arc k1' mv1 t1)
+        go' (Arc _ _ _)
+            (Branch _p1 m1 l r)
+            | nomatch p0 p1 m1 = branchMerge p1 t1_  p0 t0_
+            | zero p0 m1       = branch p1 m1 (go t0_ l) r
+            | otherwise        = branch p1 m1 l (go t0_ r)
+        go' (Branch _p0 m0 l r)
+            (Arc _ _ _)
+            | nomatch p1 p0 m0 = branchMerge p0 t0_  p1 t1_
+            | zero p1 m0       = branch p0 m0 (go t1_ l) r
+            | otherwise        = branch p0 m0 l (go t1_ r)
+        
+        -- Inlined branchMerge. Both tries are disjoint @Arc@s now.
+        go' _ _ | zero p0 m'   = Branch p' m' t0_ t1_
+        go' _ _                = Branch p' m' t1_ t0_
 
+{-# INLINE mergeMaybe #-}
 mergeMaybe :: (a -> a -> Maybe a) -> Maybe a -> Maybe a -> Maybe a
 mergeMaybe _ Nothing      Nothing  = Nothing
 mergeMaybe _ Nothing mv1@(Just _)  = mv1
 mergeMaybe _ mv0@(Just _) Nothing  = mv0
 mergeMaybe f (Just v0)   (Just v1) = f v0 v1
-
-
-{---------------------------------------------------------------
--- Mapping functions
----------------------------------------------------------------}
-
--- | Generic version of 'fmap'. This function is notably more
--- expensive than 'fmap' or 'filterMap' because we have to reconstruct
--- the keys.
-mapBy :: (KeyString -> a -> Maybe b) -> Trie a -> Trie b
-mapBy f = go S.empty
-    where
-    go _ Empty              = empty
-    go q (Arc k Nothing  t) = arc k Nothing  (go q' t) where q' = S.append q k
-    go q (Arc k (Just v) t) = arc k (f q' v) (go q' t) where q' = S.append q k
-    go q (Branch p m l r)   = branch p m (go q l) (go q r)
-
-
--- | Apply a function to all values, potentially removing them.
-filterMap :: (a -> Maybe b) -> Trie a -> Trie b
-filterMap _ Empty              = empty
-filterMap f (Arc k Nothing  t) = arc k Nothing (filterMap f t)
-filterMap f (Arc k (Just v) t) = arc k (f v)   (filterMap f t)
-filterMap f (Branch p m l r)   = branch p m (filterMap f l) (filterMap f r)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

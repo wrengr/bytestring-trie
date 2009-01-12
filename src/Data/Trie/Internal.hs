@@ -474,11 +474,16 @@ errorEmptyAfterNothing s = errorInvariantBroken s "Empty after Nothing"
 alterBy :: (KeyString -> a -> Maybe a -> Maybe a)
          -> KeyString -> a -> Trie a -> Trie a
 alterBy f_ q_ x_
-    | S.null q_ = mergeBy (\x y -> f_ q_ x (Just y)) (singleton q_ x_) 
+    | S.null q_ = alterEpsilon
     | otherwise = go q_
     where
     f         = f_ q_ x_
     nothing q = arc q (f Nothing) Empty
+    
+    alterEpsilon t_@Empty                    = arc q_ (f Nothing) t_
+    alterEpsilon t_@(Branch _ _ _ _)         = arc q_ (f Nothing) t_
+    alterEpsilon t_@(Arc k mv t) | S.null k  = arc q_ (f mv)      t
+                                 | otherwise = arc q_ (f Nothing) t_
     
     
     go q Empty            = nothing q

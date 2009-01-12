@@ -1,14 +1,18 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+{-# LANGUAGE MultiParamTypeClasses
+           , FlexibleInstances
+           , FlexibleContexts
+           #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.04
+--                                                  ~ 2009.01.11
 -- |
 -- Module      :  Data.Trie.Test
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  provisional
--- Portability :  portable
+-- Portability :  semi-portable (MPTC,...)
 --
 -- Testing 'Trie's.
 ----------------------------------------------------------------
@@ -50,24 +54,35 @@ main  = do
                  [ test_Union
                  , test_Submap
                  , test_Insert
+                 , test_Delete
                  ]
     putStrLn ""
     
     putStrLn "quickcheck @ Int:"
-    checkQuick 500 (prop_insert  :: Str -> Int -> T.Trie Int -> Bool)
-    checkQuick 500 (prop_submap1 :: Str -> T.Trie Int -> Bool)
-    checkQuick 500 (prop_submap2 :: Str -> T.Trie Int -> Bool)
-    checkQuick 500 (prop_submap3 :: Str -> T.Trie Int -> Bool)
-    checkQuick 500 (prop_toList  :: T.Trie Int -> Bool)
-    checkQuick 500 (prop_fromList_toList :: [(Str, Int)] -> Bool)
+    checkQuick 500  (prop_insert        :: Str -> Int -> T.Trie Int -> Bool)
+    checkQuick 5000 (prop_singleton     :: Str -> Int -> Bool)
+    checkQuick 500  (prop_size_insert   :: Str -> Int -> T.Trie Int -> QC.Property)
+    checkQuick 500  (prop_size_delete   :: Str -> Int -> T.Trie Int -> QC.Property)
+    checkQuick 500  (prop_insert_delete :: Str -> Int -> T.Trie Int -> QC.Property)
+    checkQuick 500  (prop_delete_lookup :: Str -> T.Trie Int -> QC.Property)
+    checkQuick 500  (prop_submap1       :: Str -> T.Trie Int -> Bool)
+    checkQuick 500  (prop_submap2       :: Str -> T.Trie Int -> Bool)
+    checkQuick 500  (prop_submap3       :: Str -> T.Trie Int -> Bool)
+    checkQuick 500  (prop_toList        :: T.Trie Int -> Bool)
+    checkQuick 500  (prop_fromList_toList :: [(Str, Int)] -> Bool)
     putStrLn ""
     
     putStrLn "smallcheck @ ():" -- Beware the exponential!
-    checkSmall 3 (prop_insert  :: Str -> () -> T.Trie () -> Bool)
-    checkSmall 3 (prop_submap1 :: Str -> T.Trie () -> Bool)
-    checkSmall 3 (prop_submap2 :: Str -> T.Trie () -> Bool)
+    checkSmall 3 (prop_insert        :: Str -> () -> T.Trie () -> Bool)
+    checkSmall 7 (prop_singleton     :: Str -> () -> Bool)
+    checkSmall 3 (prop_size_insert   :: Str -> () -> T.Trie () -> SC.Property)
+    checkSmall 3 (prop_size_delete   :: Str -> () -> T.Trie () -> SC.Property)
+    checkSmall 3 (prop_insert_delete :: Str -> () -> T.Trie () -> SC.Property)
+    checkSmall 3 (prop_delete_lookup :: Str -> T.Trie () -> SC.Property)
+    checkSmall 3 (prop_submap1       :: Str -> T.Trie () -> Bool)
+    checkSmall 3 (prop_submap2       :: Str -> T.Trie () -> Bool)
     -- checkSmall 3 (prop_submap3 :: Str -> T.Trie () -> Bool)
-    checkSmall 4 (prop_toList  :: T.Trie () -> Bool)
+    checkSmall 4 (prop_toList        :: T.Trie () -> Bool)
     checkSmall 5 (prop_fromList_toList :: [(Str, ())] -> Bool)
     putStrLn ""
     where
@@ -133,6 +148,16 @@ test_Insert = HU.TestLabel "insert"
 instance Show a => Show (T.Trie a) where
     show = T.showTrie
 
+
+test_Delete :: HU.Test
+test_Delete = HU.TestLabel "delete"
+    $ HU.TestList
+    [ testEqual "deleting epsilon from empty trie is empty"
+        (T.delete epsilon T.empty) (T.empty :: T.Trie Int)
+    ]
+    where
+    epsilon = packC2W ""
+
 ----------------------------------------------------------------
 -- TODO: we need a better instance of Arbitrary for lists to make them longer than our smallcheck depth.
 -- 
@@ -190,7 +215,7 @@ instance SC.Serial Str where
                            else f (Letter . S.w2c $ S.head xs)
                                   (Str $ S.tail xs)
 
--- This instance needs some work. The smart constructures ensure only correct values, but there are redundancies.
+-- TODO: This instance really needs some work. The smart constructures ensure only valid values are generated, but there are redundancies and inefficiencies.
 instance (Monoid a, SC.Serial a) => SC.Serial (T.Trie a) where
     series =      SC.cons0 T.empty
            SC.\/  SC.cons3 arcHACK
@@ -201,13 +226,50 @@ instance (Monoid a, SC.Serial a) => SC.Serial (T.Trie a) where
                                          >>= T.unionR t . T.singleton S.empty
     
     -- coseries :: Series b -> Series (Trie a -> b)
+    coseries = error "coseries@Trie: not implemented"
 
-
+----------------------------------------------------------------
 ----------------------------------------------------------------
 -- | If you insert a value, you can look it up
 prop_insert :: (Eq a) => Str -> a -> T.Trie a -> Bool
 prop_insert (Str k) v t =
     (T.lookup k . T.insert k v $ t) == Just v
+
+-- | A singleton, is.
+prop_singleton :: (Eq a) => Str -> a -> Bool
+prop_singleton (Str k) v =
+    T.insert k v T.empty == T.singleton k v
+
+-- | Deal with QC/SC polymorphism issues because of (==>)
+-- Fundeps would be nice here, but |b->a is undecidable, and |a->b is wrong
+class CheckGuard a b where
+    (==>) :: Bool -> a -> b
+
+instance (QC.Testable a) => CheckGuard a QC.Property where
+    (==>) = (QC.==>)
+
+instance (SC.Testable a) => CheckGuard a SC.Property where
+    (==>) = (SC.==>)
+
+prop_size_insert :: (Eq a, CheckGuard Bool b) => Str -> a -> T.Trie a -> b
+prop_size_insert (Str k) v t = not (k `T.member` t) ==> (
+    (T.size . T.insert k v) === ((1+) . T.size)
+    $ t)
+
+prop_size_delete :: (Eq a, CheckGuard Bool b) => Str -> a -> T.Trie a -> b
+prop_size_delete (Str k) v t = not (k `T.member` t) ==> (
+    (T.size . T.delete k . T.insert k v) === T.size
+    $ t)
+
+prop_insert_delete :: (Eq a, CheckGuard Bool b) => Str -> a -> T.Trie a -> b
+prop_insert_delete (Str k) v t = not (k `T.member` t) ==> (
+    (T.delete k . T.insert k v) === id
+    $ t)
+
+prop_delete_lookup :: (Eq a, CheckGuard Bool b) => Str -> T.Trie a -> b
+prop_delete_lookup (Str k) t = not (k `T.member` t) ==> (
+    (T.lookup k . T.delete k) === const Nothing
+    $ t)
 
 -- | All keys in a submap are keys in the supermap
 prop_submap1 :: Str -> T.Trie a -> Bool

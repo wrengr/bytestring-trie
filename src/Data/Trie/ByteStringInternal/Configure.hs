@@ -61,9 +61,15 @@ main = do
             then printLn "#define __hDataTrie_Nat32__"
             else printLn "#define __hDataTrie_Nat64__"
         printLn ""
-        printLn "int indexOfDifference(void* p1, void* p2, int limit);"
-        printLn ""
+        printLn "#ifdef __cplusplus"
+        printLn "extern \"C\"{"
         printLn "#endif"
+        printLn "int indexOfDifference(const void* p1, const void* p2, const int limit);"
+        printLn "#ifdef __cplusplus"
+        printLn "}"
+        printLn "#endif"
+        printLn ""
+        printLn "#endif /* __hDataTrie__ */"
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

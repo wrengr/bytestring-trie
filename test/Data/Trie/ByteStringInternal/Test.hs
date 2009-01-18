@@ -29,8 +29,8 @@ test  = do
     cmp $ packC2W "hell" -- This is the tricky one
     cmp $ packC2W "jello"
     where
-    cmp y = do putStrLn . show . splitMaximalPrefix hello $ y
-               putStrLn . show . (\(a,b,c) -> (a,c,b)) . splitMaximalPrefix y $ hello
+    cmp y = do putStrLn . show . breakMaximalPrefix hello $ y
+               putStrLn . show . (\(a,b,c) -> (a,c,b)) . breakMaximalPrefix y $ hello
                putStrLn "\n"
     hello = packC2W "hello"
 ----------------------------------------------------------------

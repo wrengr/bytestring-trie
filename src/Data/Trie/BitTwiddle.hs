@@ -38,9 +38,6 @@ import Data.Word (Word)
 
 ----------------------------------------------------------------
 
--- TODO: Natural word size, is 4*Word8 on my machine. Which means
--- it'll be more efficient to Branch by the first 4 bytes instead
--- of just one...
 type KeyElem = ByteStringElem 
 type Prefix  = KeyElem 
 type Mask    = KeyElem 

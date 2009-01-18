@@ -40,13 +40,14 @@ import Control.Monad      (liftM)
 ----------------------------------------------------------------
 
 -- $fromList
--- Just like 'fromList' both of these functions convert an association
+-- Just like 'fromList' all of these functions convert an association
 -- list into a trie, with earlier values shadowing later ones when
 -- keys conflict. Depending on the order of keys in the list, there
--- can be as much as 5x speed difference between the two. Yet,
--- performance is about the same when matching best-case to best-case
--- and worst-case to worst-case (which is which is swapped when
--- reversing the list or changing which function is used).
+-- can be as much as 5x speed difference between the left and right
+-- variants. Yet, performance is about the same when matching
+-- best-case to best-case and worst-case to worst-case (which is
+-- which is swapped when reversing the list or changing which
+-- function is used).
 
 {-# INLINE fromListL #-}
 fromListL :: [(KeyString,a)] -> Trie a

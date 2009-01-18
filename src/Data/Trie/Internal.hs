@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.10
+--                                                  ~ 2009.01.16
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -12,13 +12,18 @@
 --
 -- Internal definition of the 'Trie' data type and generic functions
 -- for manipulating them. Almost everything here is re-exported
--- from "Data.Trie".
+-- from "Data.Trie", which is the preferred API for users. This
+-- module is for developers who need deeper (and potentially fragile)
+-- access to the abstract type.
 ----------------------------------------------------------------
 
 module Data.Trie.Internal
     (
     -- * Data types
       Trie(), KeyString, KeyElem, showTrie
+    
+    -- * Functions for 'ByteString's
+    , breakMaximalPrefix
     
     -- * Basic functions
     , empty, null, singleton, size
@@ -57,12 +62,18 @@ import Data.Binary
 
 
 {---------------------------------------------------------------
--- ByteString Big-endian Patricia Trie
+-- ByteString Big-endian Patricia Trie datatype
 ---------------------------------------------------------------}
 type KeyString = ByteString 
 type KeyElem   = ByteStringElem 
 
-{- Idealized:
+{-
+In our idealized representation, we use a (directed) discrete graph
+to represent our finite state machine. To organize the set of
+outgoing arcs from a given Node we have ArcSet be a big-endian
+patricia tree like Data.IntMap. In order to simplify things we then
+go through a series of derivations.
+
 data Node a   = Accept a (ArcSet a)
               | Reject   (Branch a)          -- Invariant: Must be Branch
 data Arc a    = Arc    KeyString (Node a)    -- Invariant: never empty string
@@ -99,7 +110,9 @@ data Trie a   = Empty
 
 
 -- Squash Empty/None and Arc/Start together:
--- (Complicates invariants about non-empty strings and Node's recursion)
+-- (This complicates invariants about non-empty strings and Node's
+-- recursion, but those can be circumvented by using smart
+-- constructors.)
 data Node a = Node (Maybe a) (ArcSet a)
 data Trie a = Empty
             | Arc    KeyString (Node a)
@@ -115,10 +128,9 @@ data Trie a = Empty
 --     nonaccepting variants
 --
 -- [2] Maybe we shouldn't unpack the KeyString. We could specialize
--- or inline the splitMaximalPrefix function to prevent constructing
+-- or inline the breakMaximalPrefix function to prevent constructing
 -- a new KeyString from the parts...
 -}
-
 -- | A map from 'ByteString's to @a@. For all the generic functions,
 -- note that tries are strict in the @Maybe@ but not in @a@.
 --
@@ -138,7 +150,22 @@ data Trie a = Empty
                                     !(Trie a)
     deriving Eq
     -- Prefix/Mask should be deterministic regardless of insertion order
-    -- TODO: verify this is so.
+    -- TODO: prove this is so.
+
+
+-- TODO? add Ord instance like Data.Map?
+
+{---------------------------------------------------------------
+-- Trie instances: serialization et cetera
+---------------------------------------------------------------}
+
+-- This instance does not unveil the innards of our abstract type.
+-- It doesn't emit truly proper Haskell code though, since ByteStrings
+-- are printed as (ASCII) Strings, but that's not our fault. (Also
+-- 'fromList' is in "Data.Trie" instead of here.)
+instance (Show a) => Show (Trie a) where
+    showsPrec p t = showParen (p > 10)
+                  $ ("Data.Trie.fromList "++) . shows (toListBy (,) t)
 
 
 -- | Visualization fuction for debugging.
@@ -161,11 +188,9 @@ showTrie t = shows' id t ""
         in  s' . shows' (ss . (spaces s' ++)) t'
 
 
-{---------------------------------------------------------------
--- Trie instances
----------------------------------------------------------------}
+-- TODO?? a Read instance? hrm... should I?
 
-instance Binary a => Binary (Trie a) where
+instance (Binary a) => Binary (Trie a) where
     put Empty            = put (0 :: Word8)
     put (Arc k m t)      = do put (1 :: Word8)
                               put k
@@ -184,11 +209,30 @@ instance Binary a => Binary (Trie a) where
                  _ -> liftM4 Branch get get get get
 
 
+{---------------------------------------------------------------
+-- Trie instances: Abstract Nonsense
+---------------------------------------------------------------}
+
 instance Functor Trie where
     fmap _ Empty              = Empty
     fmap f (Arc k Nothing  t) = Arc k Nothing      (fmap f t)
     fmap f (Arc k (Just v) t) = Arc k (Just (f v)) (fmap f t)
     fmap f (Branch p m l r)   = Branch p m (fmap f l) (fmap f r)
+
+
+-- TODO: cf toListBy. We should provide foldr and foldl directly
+instance Foldable Trie where
+    foldMap _ Empty              = mempty
+    foldMap f (Arc _ Nothing  t) = foldMap f t
+    foldMap f (Arc _ (Just v) t) = f v `mappend` foldMap f t
+    foldMap f (Branch _ _ l r)   = foldMap f l `mappend` foldMap f r
+
+
+instance Traversable Trie where
+    traverse _ Empty              = pure Empty
+    traverse f (Arc k Nothing  t) = Arc k Nothing        <$> traverse f t
+    traverse f (Arc k (Just v) t) = Arc k . Just <$> f v <*> traverse f t
+    traverse f (Branch p m l r)   = Branch p m <$> traverse f l <*> traverse f r
 
 
 -- Does this even make sense? It's not nondeterminism like lists
@@ -212,31 +256,38 @@ instance Monad Trie where
                                unionL = mergeBy (\x _ -> Just x)
 
 
-instance Monoid a => Monoid (Trie a) where
+-- This instance is more sensible than Data.IntMap and Data.Map's
+instance (Monoid a) => Monoid (Trie a) where
     mempty  = empty
     mappend = mergeBy $ \x y -> Just (x `mappend` y)
 
 
--- Not a MonadPlus for any definition I can think of.
-
-
--- TODO: cf toListBy. We should provide foldr and foldl directly
-instance Foldable Trie where
-    foldMap _ Empty              = mempty
-    foldMap f (Arc _ Nothing  t) = foldMap f t
-    foldMap f (Arc _ (Just v) t) = f v `mappend` foldMap f t
-    foldMap f (Branch _ _ l r)   = foldMap f l `mappend` foldMap f r
-
-
-instance Traversable Trie where
-    traverse _ Empty              = pure Empty
-    traverse f (Arc k Nothing  t) = Arc k Nothing        <$> traverse f t
-    traverse f (Arc k (Just v) t) = Arc k . Just <$> f v <*> traverse f t
-    traverse f (Branch p m l r)   = Branch p m <$> traverse f l <*> traverse f r
+-- Since the Monoid instance isn't natural in @a@, I can't think
+-- of any other sensible instance for MonadPlus. It's as specious
+-- as Maybe, IO, and STM's instances though.
+--
+-- MonadPlus laws: <http://www.haskell.org/haskellwiki/MonadPlus>
+--  1. <Trie a, mzero, mplus> forms a monoid
+--  2. mzero >>= f        === mzero
+--  3. m >> mzero         === mzero
+--  4. mplus m n >>= k    === mplus (m >>= k) (n >>= k)
+--  4' mplus (return a) n === return a
+{-
+-- Follows #1, #1, and #3. But it does something like 4' instead
+-- of actually doing #4 (since we'd merge the trees generated by
+-- @k@ for conflicting values)
+--
+-- TODO: cf Control.Applicative.Alternative (base-4, but not Hugs).
+-- But (<*>) gets odd when the function is not 'pure'... maybe
+-- helpful though.
+instance MonadPlus Trie where
+    mzero = empty
+    mplus = unionL where unionL = mergeBy (\x _ -> Just x)
+-}
 
 
 {---------------------------------------------------------------
--- Mapping functions
+-- Extra mapping functions
 ---------------------------------------------------------------}
 
 -- | Apply a function to all values, potentially removing them.
@@ -406,7 +457,7 @@ lookupBy_ f z a = lookupBy_'
     go _    Empty       = z
     
     go q   (Arc k mv t) =
-        let (_,k',q')   = splitMaximalPrefix k q
+        let (_,k',q')   = breakMaximalPrefix k q
         in case (not $ S.null k', S.null q') of
                 (True,  True)  -> a (Arc k' mv t)
                 (True,  False) -> z
@@ -496,7 +547,7 @@ alterBy f_ q_ x_
         qh = errorLogHead "alterBy" q
     
     go q t_@(Arc k mv t) =
-        let (p,k',q') = splitMaximalPrefix k q
+        let (p,k',q') = breakMaximalPrefix k q
         in case (not $ S.null k', S.null q') of
                 (True,  True)  -> -- add node to middle of arc
                                   arc p (f Nothing) (Arc k' mv t)
@@ -580,7 +631,7 @@ mergeBy f = mergeBy'
         go' (Arc k0 mv0 t0)
             (Arc k1 mv1 t1)
             | m' == 0 =
-                let (pre,k0',k1') = splitMaximalPrefix k0 k1
+                let (pre,k0',k1') = breakMaximalPrefix k0 k1
                 in if S.null pre
                 then error "mergeBy: no mask, but no prefix string"
                 else let {-# INLINE arcMerge #-}

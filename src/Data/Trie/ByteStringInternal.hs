@@ -10,14 +10,14 @@
 -- Stability   :  beta
 -- Portability :  portable
 --
--- Helper functions on 'ByteString's for "Data.Trie".
+-- Helper functions on 'ByteString's for "Data.Trie.Internal".
 ----------------------------------------------------------------
 
 
 module Data.Trie.ByteStringInternal
     ( ByteString, ByteStringElem
     {-, unsafeWordHead-}
-    , splitMaximalPrefix
+    , breakMaximalPrefix
     ) where
 
 import qualified Data.ByteString as S
@@ -102,9 +102,9 @@ isLittleEndian = unsafePerformIO $ alloca $ \p -> do
 ----------------------------------------------------------------
 -- | Returns the longest shared prefix and the two remaining suffixes
 -- for a pair of strings.
-splitMaximalPrefix :: ByteString -> ByteString
+breakMaximalPrefix :: ByteString -> ByteString
                    -> (ByteString, ByteString, ByteString)
-splitMaximalPrefix
+breakMaximalPrefix
     str1@(PS s1 off1 len1)
     str2@(PS s2 off2 len2)
     | len1 == 0 = (S.empty, S.empty, str2)
@@ -133,9 +133,10 @@ ptrElemOff p i = p `plusPtr` (i * sizeOf (unsafePerformIO (peek p)))
 newPS :: ForeignPtr ByteStringElem -> Int -> Int -> ByteString
 newPS s o l = if l <= 0 then S.empty else PS s o l
 
+-- | fix associativity bug
 {-# INLINE (!$) #-}
 (!$) :: (a -> b) -> a -> b
-(!$)  = ($!) -- fix associativity bug
+(!$)  = ($!)
 
 
 -- | Calculates the first index where values differ.

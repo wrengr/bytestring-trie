@@ -64,7 +64,8 @@ fromListR :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListR #-}
 fromListR = fromList
 
-
+-- TODO: compare performance against a fromListL definition, adjusting the sort
+--
 -- | This version sorts the list before folding over it. This adds
 -- /O(n log n)/ overhead and requires the whole list be in memory
 -- at once, but it ensures that the list is in best-case order. The

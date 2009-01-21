@@ -1,7 +1,10 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
+-- For list fusion on toListBy
+{-# LANGUAGE CPP #-}
+
 ----------------------------------------------------------------
---                                                  ~ 2009.01.16
+--                                                  ~ 2009.01.20
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -28,8 +31,8 @@ module Data.Trie.Internal
     -- * Basic functions
     , empty, null, singleton, size
     
-    -- * Conversion functions
-    , toListBy
+    -- * Conversion and folding functions
+    , foldrWithKey, toListBy
     
     -- * Query functions
     , lookupBy_, submap
@@ -57,6 +60,10 @@ import Data.Monoid         (Monoid(..))
 import Data.Foldable       (Foldable(foldMap))
 import Data.Traversable    (Traversable(traverse))
 import Data.Binary
+
+#ifdef __GLASGOW_HASKELL__
+import GHC.Exts (build)
+#endif
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
@@ -359,6 +366,7 @@ getPrefix Empty                   = error "getPrefix: no Prefix of Empty"
 ---------------------------------------------------------------}
 
 errorLogHead :: String -> ByteString -> ByteStringElem
+{-# NOINLINE errorLogHead #-}
 errorLogHead s q | S.null q  = error (s ++": found null subquery")
                  | otherwise = S.head q
 
@@ -412,22 +420,50 @@ size' (Arc _ (Just _) t) f n = size' t f $! n + 1
 -- (++) anyways?)
 --
 -- TODO: the @q@ accumulator should be lazy ByteString and only
--- forced by @f@. It's already non-strict, but we should ensure
+-- forced by @fcons@. It's already non-strict, but we should ensure
 -- O(n) not O(n^2) when it's forced.
 --
--- | Convert a trie into a list using a function. Resulting values
--- are in sorted order according to the keys.
-toListBy :: (ByteString -> a -> b) -> Trie a -> [b]
-toListBy f = \t -> go S.empty t []
+-- BUG: not safe for deep strict @fcons@, only for WHNF-strict like (:)
+-- Where to put the strictness to amortize it?
+--
+-- | Convert a trie into a list (in key-sorted order) using a
+-- function, folding the list as we go.
+foldrWithKey :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
+foldrWithKey fcons nil = \t -> go S.empty t nil
     where
     go _ Empty            = id
     go q (Branch _ _ l r) = go q l . go q r
     go q (Arc k mv t)     = case mv of
                             Nothing -> rest
-                            Just v  -> (f k' v :) . rest
+                            Just v  -> (fcons k' v) . rest
                           where
                           rest = go k' t
                           k'   = S.append q k
+
+-- cf Data.ByteString.unpack
+-- <http://hackage.haskell.org/packages/archive/bytestring/0.9.1.4/doc/html/src/Data-ByteString.html>
+--
+-- | Convert a trie into a list using a function. Resulting values
+-- are in key-sorted order.
+toListBy :: (ByteString -> a -> b) -> Trie a -> [b]
+#if !defined(__GLASGOW_HASKELL__)
+-- TODO: should probably inline foldrWithKey
+-- TODO: compare performance of that vs both this and the GHC version
+{-# INLINE toListBy #-}
+toListBy f t = foldrWithKey (((:) .) . f) [] t
+#else
+{-# INLINE toListBy #-}
+-- Written with 'build' to enable the build\/foldr fusion rules.
+toListBy f t = build (toListByFB f t)
+
+-- TODO: should probably have a specialized version for strictness,
+-- and a rule to rewrite generic lazy version into it. As per
+-- Data.ByteString.unpack and the comments there about strictness
+-- and fusion.
+toListByFB :: (ByteString -> a -> b) -> Trie a -> (b -> c -> c) -> c -> c
+{-# INLINE [0] toListByFB #-}
+toListByFB f t cons nil = foldrWithKey ((cons .) . f) nil t
+#endif
 
 
 {---------------------------------------------------------------
@@ -495,14 +531,17 @@ submap q = lookupBy_ (arc q) empty (arc q Nothing) q
     submap' mx      t           = Arc q mx t
     
 errorInvariantBroken :: String -> String -> a
+{-# NOINLINE errorInvariantBroken #-}
 errorInvariantBroken s e =  error (s ++ ": Invariant was broken" ++ e')
     where
     e' = if Prelude.null e then e else ", found: " ++ e
 
 errorArcAfterNothing    :: String -> a
+{-# NOINLINE errorArcAfterNothing #-}
 errorArcAfterNothing   s = errorInvariantBroken s "Arc after Nothing"
 
 errorEmptyAfterNothing  :: String -> a
+{-# NOINLINE errorEmptyAfterNothing #-}
 errorEmptyAfterNothing s = errorInvariantBroken s "Empty after Nothing"
 -- -}
 

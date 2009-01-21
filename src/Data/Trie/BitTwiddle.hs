@@ -1,5 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-name-shadowing #-}
-{-# OPTIONS_GHC -cpp -fglasgow-exts #-}
+-- The GHC Exts are for unboxed primitives
+{-# OPTIONS_GHC -fglasgow-exts #-}
+{-# LANGUAGE CPP #-}
 
 ----------------------------------------------------------------
 --                                                  ~ 2009.01.05

@@ -7,7 +7,7 @@
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
--- Stability   :  beta
+-- Stability   :  provisional
 -- Portability :  portable
 --
 -- Additional convenience versions of the generic functions.
@@ -33,6 +33,7 @@ module Data.Trie.Convenience
 
 import Data.Trie
 import Data.Trie.Internal (lookupBy_)
+import Data.ByteString    (ByteString)
 import Data.List          (foldl', sortBy)
 import Control.Monad      (liftM)
 
@@ -50,14 +51,14 @@ import Control.Monad      (liftM)
 -- function is used).
 
 {-# INLINE fromListL #-}
-fromListL :: [(KeyString,a)] -> Trie a
+fromListL :: [(ByteString,a)] -> Trie a
 fromListL = foldl' (flip $ uncurry $ insertIfAbsent) empty
 
 -- | This version is just an alias for 'fromList'. It is a good
 -- producer for list fusion. Worst-case behavior is somewhat worse
 -- than worst-case for 'fromListL'.
 {-# INLINE fromListR #-}
-fromListR :: [(KeyString,a)] -> Trie a
+fromListR :: [(ByteString,a)] -> Trie a
 fromListR = fromList
 
 -- | This version sorts the list before folding over it. This adds
@@ -65,13 +66,13 @@ fromListR = fromList
 -- at once, but it ensures that the list is in best-case order. The
 -- benefits generally outweigh the costs.
 {-# INLINE fromListS #-}
-fromListS :: [(KeyString,a)] -> Trie a
+fromListS :: [(ByteString,a)] -> Trie a
 fromListS = fromListR . sortBy (\(k,_) (q,_) -> k `compare` q)
 
 
 ----------------------------------------------------------------
 -- | Lookup a key, returning a default value if it's not found.
-lookupWithDefault :: a -> KeyString -> Trie a -> a
+lookupWithDefault :: a -> ByteString -> Trie a -> a
 lookupWithDefault x = lookupBy_ (\mv _ -> case mv of
                                           Nothing -> x
                                           Just v  -> v) x (const x)
@@ -79,39 +80,39 @@ lookupWithDefault x = lookupBy_ (\mv _ -> case mv of
 ----------------------------------------------------------------
 
 -- | Insert a new key, retaining old value on conflict.
-insertIfAbsent :: KeyString -> a -> Trie a -> Trie a
+insertIfAbsent :: ByteString -> a -> Trie a -> Trie a
 insertIfAbsent = alterBy $ \_ x mv -> case mv of
                                       Nothing -> Just x
                                       Just _  -> mv
 
 -- | Insert a new key, with a function to resolve conflicts.
-insertWith :: (a -> a -> a) -> KeyString -> a -> Trie a -> Trie a
+insertWith :: (a -> a -> a) -> ByteString -> a -> Trie a -> Trie a
 insertWith f = alterBy $ \_ x mv -> case mv of
                                     Nothing -> Just x
                                     Just v  -> Just (f x v)
 
-insertWithKey :: (KeyString -> a -> a -> a) -> KeyString -> a -> Trie a -> Trie a
+insertWithKey :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> Trie a
 insertWithKey f = alterBy $ \k x mv -> case mv of
                                     Nothing -> Just x
                                     Just v  -> Just (f k x v)
 
 {- This is a tricky one...
-insertLookupWithKey :: (KeyString -> a -> a -> a) -> KeyString -> a -> Trie a -> (Maybe a, Trie a)
+insertLookupWithKey :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> (Maybe a, Trie a)
 -}
 
 -- | Apply a function to change the value at a key.
-adjustWithKey  :: (KeyString -> a -> a) -> KeyString -> Trie a -> Trie a
+adjustWithKey  :: (ByteString -> a -> a) -> ByteString -> Trie a -> Trie a
 adjustWithKey f q = alterBy (\k _ -> liftM (f k)) q undefined
 
 -- | Apply a function to the value at a key, possibly removing it.
-update :: (a -> Maybe a) -> KeyString -> Trie a -> Trie a
+update :: (a -> Maybe a) -> ByteString -> Trie a -> Trie a
 update        f q = alterBy (\_ _ mx -> mx >>= f) q undefined
 
-updateWithKey :: (KeyString -> a -> Maybe a) -> KeyString -> Trie a -> Trie a
+updateWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> Trie a
 updateWithKey f q = alterBy (\k _ mx -> mx >>= f k) q undefined
 
 {-
-updateLookupWithKey :: (Key -> a -> Maybe a) -> Key -> ByteStringTrie a -> (Maybe a, ByteStringTrie a)
+updateLookupWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> (Maybe a, Trie a)
 -- Also tricky
 -}
 

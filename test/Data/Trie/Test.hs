@@ -19,7 +19,6 @@
 module Data.Trie.Test (packC2W, main) where
 
 import qualified Data.Trie                as T
-import qualified Data.Trie.Internal       as T (showTrie)
 import qualified Data.ByteString          as S
 import qualified Data.ByteString.Internal as S (c2w, w2c)
 
@@ -143,10 +142,6 @@ test_Insert = HU.TestLabel "insert"
     
     o = 0::Int
     i = 1::Int
-
--- Needed by tests to show elements that fail.
-instance Show a => Show (T.Trie a) where
-    show = T.showTrie
 
 
 test_Delete :: HU.Test

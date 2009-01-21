@@ -25,11 +25,11 @@ import Microbench
 import Control.Exception     (evaluate)
 ----------------------------------------------------------------
 
-fromListR, fromListL :: [(T.KeyString, a)] -> T.Trie a
+fromListR, fromListL :: [(S.ByteString, a)] -> T.Trie a
 fromListR = foldr  (uncurry T.insert) T.empty
 fromListL = foldl' (flip $ uncurry $ insertIfAbsent) T.empty
 
-getList, getList'  :: T.KeyString -> Int -> [(T.KeyString, Int)]
+getList, getList'  :: S.ByteString -> Int -> [(S.ByteString, Int)]
 getList  xs n = map (\k -> (k,0)) . S.inits . S.take n $ xs
 getList' xs n = map (\k -> (k,0)) . S.tails . S.take n $ xs
 

@@ -7,7 +7,7 @@
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
--- Stability   :  beta
+-- Stability   :  experimental
 -- Portability :  portable
 --
 -- An efficient implementation of finite maps from strings to values.
@@ -29,7 +29,7 @@
 module Data.Trie
     (
     -- * Data types
-      Trie(), KeyString, KeyElem
+      Trie()
     
     -- * Basic functions
     , empty, null, singleton, size
@@ -54,6 +54,7 @@ import Prelude hiding (null, lookup)
 import qualified Prelude
 
 import Data.Trie.Internal
+import Data.ByteString (ByteString)
 
 import Data.Maybe    (isJust)
 import Control.Monad (liftM)
@@ -68,15 +69,15 @@ import Control.Monad (liftM)
 -- | Convert association list into a trie. On key conflict, values
 -- earlier in the list shadow later ones.
 {-# INLINE fromList #-}
-fromList :: [(KeyString,a)] -> Trie a
+fromList :: [(ByteString,a)] -> Trie a
 fromList = foldr (uncurry insert) empty
 
 -- | Convert trie into association list. Keys will be in sorted order.
-toList :: Trie a -> [(KeyString,a)]
+toList :: Trie a -> [(ByteString,a)]
 toList  = toListBy (,)
 
 -- | Return all keys in the trie, in sorted order.
-keys :: Trie a -> [KeyString]
+keys :: Trie a -> [ByteString]
 keys  = toListBy const
 
 
@@ -87,18 +88,18 @@ keys  = toListBy const
 -- | Generic function to find a value (if it exists) and the subtrie
 -- rooted at the prefix.
 {-# INLINE lookupBy #-}
-lookupBy :: (Maybe a -> Trie a -> b) -> KeyString -> Trie a -> b
+lookupBy :: (Maybe a -> Trie a -> b) -> ByteString -> Trie a -> b
 lookupBy f = lookupBy_ f (f Nothing empty) (f Nothing)
 
 -- | Return the value associated with a query string if it exists.
 {-# INLINE lookup #-}
-lookup :: KeyString -> Trie a -> Maybe a
+lookup :: ByteString -> Trie a -> Maybe a
 lookup = lookupBy_ const Nothing (const Nothing)
 
 -- TODO? move to "Data.Trie.Conventience"?
 -- | Does a string have a value in the trie?
 {-# INLINE member #-}
-member :: KeyString -> Trie a -> Bool
+member :: ByteString -> Trie a -> Bool
 member q = isJust . lookup q
 
 
@@ -109,17 +110,17 @@ member q = isJust . lookup q
 -- | Insert a new key. If the key is already present, overrides the
 -- old value
 {-# INLINE insert #-}
-insert    :: KeyString -> a -> Trie a -> Trie a
+insert    :: ByteString -> a -> Trie a -> Trie a
 insert     = alterBy (\_ x _ -> Just x)
                                       
 -- | Apply a function to the value at a key.
 {-# INLINE adjust #-}
-adjust    :: (a -> a) -> KeyString -> Trie a -> Trie a
+adjust    :: (a -> a) -> ByteString -> Trie a -> Trie a
 adjust f q = alterBy (\_ _ -> liftM f) q undefined
 
 -- | Remove the value stored at a key.
 {-# INLINE delete #-}
-delete     :: KeyString -> Trie a -> Trie a
+delete     :: ByteString -> Trie a -> Trie a
 delete    q = alterBy (\_ _ _ -> Nothing) q undefined
 
 

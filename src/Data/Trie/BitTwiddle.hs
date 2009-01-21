@@ -8,7 +8,7 @@
 -- Copyright   :  Copyright (c) Daan Leijen 2002
 -- License     :  BSD3
 -- Maintainer  :  libraries@haskell.org, wren@community.haskell.org
--- Stability   :  provisional
+-- Stability   :  stable
 -- Portability :  portable (with CPP)
 --
 -- Functions to treat 'Word' as a bit-vector for big-endian patricia

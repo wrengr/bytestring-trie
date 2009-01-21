@@ -7,7 +7,7 @@
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
--- Stability   :  beta
+-- Stability   :  experimental
 -- Portability :  portable
 --
 -- Helper functions on 'ByteString's for "Data.Trie.Internal".

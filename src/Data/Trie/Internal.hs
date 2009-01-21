@@ -7,7 +7,7 @@
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
--- Stability   :  beta
+-- Stability   :  provisional
 -- Portability :  portable
 --
 -- Internal definition of the 'Trie' data type and generic functions
@@ -20,7 +20,7 @@
 module Data.Trie.Internal
     (
     -- * Data types
-      Trie(), KeyString, KeyElem, showTrie
+      Trie(), showTrie
     
     -- * Functions for 'ByteString's
     , breakMaximalPrefix
@@ -64,9 +64,6 @@ import Data.Binary
 {---------------------------------------------------------------
 -- ByteString Big-endian Patricia Trie datatype
 ---------------------------------------------------------------}
-type KeyString = ByteString 
-type KeyElem   = ByteStringElem 
-
 {-
 In our idealized representation, we use a (directed) discrete graph
 to represent our finite state machine. To organize the set of
@@ -76,12 +73,12 @@ go through a series of derivations.
 
 data Node a   = Accept a (ArcSet a)
               | Reject   (Branch a)          -- Invariant: Must be Branch
-data Arc a    = Arc    KeyString (Node a)    -- Invariant: never empty string
+data Arc a    = Arc    ByteString (Node a)   -- Invariant: never empty string
 data ArcSet a = None
               | One    {KeyElem} (Arc a)
               | Branch {Prefix} {Mask} (ArcSet a) (ArcSet a)
 data Trie a   = Empty
-              | Start  KeyString (Node a)    -- Maybe empty string [1]
+              | Start  ByteString (Node a)   -- Maybe empty string [1]
 
 [1] If we maintain the invariants on how Nodes recurse, then we
 can't simply have Start(Node a) because we may have a shared prefix
@@ -93,20 +90,20 @@ where the prefix itself is not Accept'ed.
 data Node a   = Accept a (ArcSet a)
               | Reject   (Branch a)
 data ArcSet a = None
-              | Arc    KeyString (Node a)
+              | Arc    ByteString (Node a)
               | Branch {Prefix} {Mask} (ArcSet a) (ArcSet a)
 data Trie a   = Empty
-              | Start  KeyString (Node a)
+              | Start  ByteString (Node a)
 
 
 -- Squash Node together:
 -- (most likely good)
 data Node a   = Node (Maybe a) (ArcSet a)
 data ArcSet a = None
-              | Arc    KeyString (Node a)
+              | Arc    ByteString (Node a)
               | Branch {Prefix} {Mask} (ArcSet a) (ArcSet a)
 data Trie a   = Empty
-              | Start  KeyString (Node a)
+              | Start  ByteString (Node a)
 
 
 -- Squash Empty/None and Arc/Start together:
@@ -115,21 +112,21 @@ data Trie a   = Empty
 -- constructors.)
 data Node a = Node (Maybe a) (ArcSet a)
 data Trie a = Empty
-            | Arc    KeyString (Node a)
+            | Arc    ByteString (Node a)
             | Branch {Prefix} {Mask} (Trie a) (Trie a)
 
 
 -- Squash Node into Arc:
 -- (By this point, pure good)
 -- Unseen invariants:
--- * KeyString non-empty, unless Arc is absolute root of tree
+-- * ByteString non-empty, unless Arc is absolute root of tree
 -- * If (Maybe a) is Nothing, then (Trie a) is Branch
 --   * With views, we could re-expand Arc into accepting and
 --     nonaccepting variants
 --
--- [2] Maybe we shouldn't unpack the KeyString. We could specialize
+-- [2] Maybe we shouldn't unpack the ByteString. We could specialize
 -- or inline the breakMaximalPrefix function to prevent constructing
--- a new KeyString from the parts...
+-- a new ByteString from the parts...
 -}
 -- | A map from 'ByteString's to @a@. For all the generic functions,
 -- note that tries are strict in the @Maybe@ but not in @a@.
@@ -141,7 +138,7 @@ data Trie a = Empty
 -- be curious to know.
 
 data Trie a = Empty
-            | Arc    {-# UNPACK #-} !KeyString
+            | Arc    {-# UNPACK #-} !ByteString
                                     !(Maybe a)
                                     !(Trie a)
             | Branch {-# UNPACK #-} !Prefix
@@ -300,7 +297,7 @@ filterMap f (Branch p m l r)   = branch p m (filterMap f l) (filterMap f r)
 -- | Generic version of 'fmap'. This function is notably more
 -- expensive than 'fmap' or 'filterMap' because we have to reconstruct
 -- the keys.
-mapBy :: (KeyString -> a -> Maybe b) -> Trie a -> Trie b
+mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
 mapBy f = go S.empty
     where
     go _ Empty              = empty
@@ -322,7 +319,7 @@ branch p m l     r     = Branch p m l r
 
 -- | Smart constructor to prune @Arc@s that lead nowhere.
 -- N.B if mv=Just then doesn't check whether t=epsilon. It's up to callers to ensure that invariant isn't broken.
-arc :: KeyString -> Maybe a -> Trie a -> Trie a
+arc :: ByteString -> Maybe a -> Trie a -> Trie a
 arc k mv@(Just _)   t                            = Arc k mv t
 arc _    Nothing    Empty                        = Empty
 arc k    Nothing  t@(Branch _ _ _ _) | S.null k  = t
@@ -361,7 +358,7 @@ getPrefix Empty                   = error "getPrefix: no Prefix of Empty"
 -- Error messages
 ---------------------------------------------------------------}
 
-errorLogHead :: String -> KeyString -> KeyElem
+errorLogHead :: String -> ByteString -> ByteStringElem
 errorLogHead s q | S.null q  = error (s ++": found null subquery")
                  | otherwise = S.head q
 
@@ -386,7 +383,7 @@ null _     = False
 
 -- | /O(1)/, A singleton trie.
 {-# INLINE singleton #-}
-singleton :: KeyString -> a -> Trie a
+singleton :: ByteString -> a -> Trie a
 singleton k v = Arc k (Just v) Empty
 -- For singletons, don't need to verify invariant on arc length >0
 
@@ -420,7 +417,7 @@ size' (Arc _ (Just _) t) f n = size' t f $! n + 1
 --
 -- | Convert a trie into a list using a function. Resulting values
 -- are in sorted order according to the keys.
-toListBy :: (KeyString -> a -> b) -> Trie a -> [b]
+toListBy :: (ByteString -> a -> b) -> Trie a -> [b]
 toListBy f = \t -> go S.empty t []
     where
     go _ Empty            = id
@@ -446,7 +443,7 @@ toListBy f = \t -> go S.empty t []
 -- This function is intended for internal use. For the public-facing
 -- version, see @lookupBy@ in "Data.Trie".
 lookupBy_ :: (Maybe a -> Trie a -> b) -> b -> (Trie a -> b)
-          -> KeyString -> Trie a -> b
+          -> ByteString -> Trie a -> b
 lookupBy_ f z a = lookupBy_'
     where
     -- | Deal with epsilon query (when there is no epsilon value)
@@ -488,7 +485,7 @@ lookupBy_ f z a = lookupBy_'
 --
 -- | Return the subtrie containing all keys beginning with a prefix.
 {-# INLINE submap #-}
-submap :: KeyString -> Trie a -> Trie a
+submap :: ByteString -> Trie a -> Trie a
 submap q = lookupBy_ (arc q) empty (arc q Nothing) q
 {-  -- Disable superfluous error checking.
     -- @submap'@ would replace the first argument to @lookupBy_@
@@ -522,8 +519,8 @@ errorEmptyAfterNothing s = errorInvariantBroken s "Empty after Nothing"
 --
 -- | Generic function to alter a trie by one element with a function
 -- to resolve conflicts (or non-conflicts).
-alterBy :: (KeyString -> a -> Maybe a -> Maybe a)
-         -> KeyString -> a -> Trie a -> Trie a
+alterBy :: (ByteString -> a -> Maybe a -> Maybe a)
+         -> ByteString -> a -> Trie a -> Trie a
 alterBy f_ q_ x_
     | S.null q_ = alterEpsilon
     | otherwise = go q_

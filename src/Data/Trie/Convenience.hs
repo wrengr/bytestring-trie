@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.05
+--                                                  ~ 2009.01.20
 -- |
 -- Module      :  Data.Trie.Convenience
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -10,22 +10,26 @@
 -- Stability   :  provisional
 -- Portability :  portable
 --
--- Additional convenience versions of the generic functions.
+-- Additional convenience functions. In order to keep "Data.Trie"
+-- concise, non-essential and uncommonly used functions have been
+-- moved here. Most of these functions simplify the generic functions
+-- from "Data.Trie", following after the interface for "Data.Map"
+-- and "Data.IntMap".
 ----------------------------------------------------------------
 
 module Data.Trie.Convenience
     (
+    -- * Conversion functions
+    -- $fromList
+      fromListL, fromListR, fromListS
+    
     -- * 'lookupBy' variants
-      lookupWithDefault
+    , lookupWithDefault
     
     -- * 'alterBy' variants
     , insertIfAbsent, insertWith, insertWithKey
     , adjustWithKey
     , update, updateWithKey
-    
-    -- ** Conversion functions
-    -- $fromList
-    , fromListL, fromListR, fromListS
     
     -- * 'mergeBy' variants
     , disunion, unionWith
@@ -39,7 +43,6 @@ import Control.Monad      (liftM)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
-
 -- $fromList
 -- Just like 'fromList' all of these functions convert an association
 -- list into a trie, with earlier values shadowing later ones when
@@ -69,8 +72,6 @@ fromListR = fromList
 fromListS :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListS #-}
 fromListS = fromListR . sortBy (\(k,_) (q,_) -> k `compare` q)
-
-
 
 ----------------------------------------------------------------
 -- | Lookup a key, returning a default value if it's not found.

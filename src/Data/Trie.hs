@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.05
+--                                                  ~ 2009.01.20
 -- |
 -- Module      :  Data.Trie
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -11,7 +11,6 @@
 -- Portability :  portable
 --
 -- An efficient implementation of finite maps from strings to values.
---
 -- The implementation is based on /big-endian patricia trees/, like
 -- "Data.IntMap". We first trie on the elements of "Data.ByteString"
 -- and then trie on the big-endian bit representation of those
@@ -24,18 +23,22 @@
 --    * D.R. Morrison, \"/PATRICIA -- Practical Algorithm To Retrieve/
 --	/Information Coded In Alphanumeric/\", Journal of the ACM, 15(4),
 --	October 1968, pages 514-534.
+--
+-- This module aims to provide an austere interface, while being
+-- detailed enough for most users. For an extended interface with
+-- many additional functions, see "Data.Trie.Convenience".
 ----------------------------------------------------------------
 
 module Data.Trie
     (
-    -- * Data types
+    -- * Data type
       Trie()
     
     -- * Basic functions
     , empty, null, singleton, size
     
     -- * Conversion functions
-    , fromList, toListBy, toList, keys
+    , fromList, toListBy, toList, keys, elems
     
     -- * Query functions
     , lookupBy, lookup, member, submap
@@ -77,10 +80,17 @@ toList :: Trie a -> [(ByteString,a)]
 {-# INLINE toList #-}
 toList  = toListBy (,)
 
+-- FIX? should 'keys' and 'elems' move to Data.Trie.Convenience instead?
+
 -- | Return all keys in the trie, in sorted order.
 keys :: Trie a -> [ByteString]
 {-# INLINE keys #-}
 keys  = toListBy const
+
+-- | Return all values in the trie, in sorted order according to the keys.
+elems :: Trie a -> [a]
+{-# INLINE elems #-}
+elems  = toListBy (flip const)
 
 
 {---------------------------------------------------------------

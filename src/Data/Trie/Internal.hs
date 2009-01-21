@@ -370,7 +370,7 @@ errorLogHead s q | S.null q  = error (s ++": found null subquery")
 -- Basic functions
 ---------------------------------------------------------------}
 
--- | /O(1)/, The empty trie.
+-- | /O(1)/, Construct the empty trie.
 empty :: Trie a
 {-# INLINE empty #-}
 empty = Empty
@@ -381,7 +381,7 @@ null :: Trie a -> Bool
 null Empty = True
 null _     = False
 
--- | /O(1)/, A singleton trie.
+-- | /O(1)/, Construct a singleton trie.
 singleton :: ByteString -> a -> Trie a
 {-# INLINE singleton #-}
 singleton k v = Arc k (Just v) Empty

@@ -102,6 +102,10 @@ isLittleEndian = unsafePerformIO $ alloca $ \p -> do
 ----------------------------------------------------------------
 -- | Returns the longest shared prefix and the two remaining suffixes
 -- for a pair of strings.
+--
+-- >    s == (\(pre,s',z') -> pre `append` s') (breakMaximalPrefix s z)
+-- >    z == (\(pre,s',z') -> pre `append` z') (breakMaximalPrefix s z)
+
 breakMaximalPrefix :: ByteString -> ByteString
                    -> (ByteString, ByteString, ByteString)
 breakMaximalPrefix

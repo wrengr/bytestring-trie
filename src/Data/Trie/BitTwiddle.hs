@@ -42,16 +42,16 @@ type KeyElem = ByteStringElem
 type Prefix  = KeyElem 
 type Mask    = KeyElem 
 
-{-# INLINE elemToNat #-}
 elemToNat :: KeyElem -> Word
+{-# INLINE elemToNat #-}
 elemToNat i = fromIntegral i
 
-{-# INLINE natToElem #-}
 natToElem :: Word -> KeyElem
+{-# INLINE natToElem #-}
 natToElem w = fromIntegral w
 
-{-# INLINE shiftRL #-}
 shiftRL :: Word -> Int -> Word
+{-# INLINE shiftRL #-}
 #if __GLASGOW_HASKELL__
 -- GHC: use unboxing to get @shiftRL@ inlined.
 shiftRL (W# x) (I# i) = W# (shiftRL# x i)
@@ -65,18 +65,18 @@ shiftRL x i = shiftR x i
 ---------------------------------------------------------------}
 
 -- | Is the value under the mask zero?
-{-# INLINE zero #-}
 zero :: KeyElem -> Mask -> Bool
+{-# INLINE zero #-}
 zero i m = (elemToNat i) .&. (elemToNat m) == 0
 
 -- | Does a value /not/ match some prefix, for all the bits preceding
 -- a masking bit? (Hence a subtree matching the value doesn't exist.)
-{-# INLINE nomatch #-}
 nomatch :: KeyElem -> Prefix -> Mask -> Bool
+{-# INLINE nomatch #-}
 nomatch i p m = mask i m /= p
 
-{-# INLINE mask #-}
 mask :: KeyElem -> Mask -> Prefix
+{-# INLINE mask #-}
 mask i m = maskW (elemToNat i) (elemToNat m)
 
 
@@ -86,19 +86,19 @@ mask i m = maskW (elemToNat i) (elemToNat m)
 
 -- | Get mask by setting all bits higher than the smallest bit in
 -- @m@. Then apply that mask to @i@.
-{-# INLINE maskW #-}
 maskW :: Word -> Word -> Prefix
+{-# INLINE maskW #-}
 maskW i m = natToElem (i .&. (complement (m-1) `xor` m))
 
 -- | Determine whether the first mask denotes a shorter prefix than
 -- the second.
-{-# INLINE shorter #-}
 shorter :: Mask -> Mask -> Bool
+{-# INLINE shorter #-}
 shorter m1 m2 = elemToNat m1 > elemToNat m2
 
 -- | Determine first differing bit of two prefixes.
-{-# INLINE branchMask #-}
 branchMask :: Prefix -> Prefix -> Mask
+{-# INLINE branchMask #-}
 branchMask p1 p2
     = natToElem (highestBitMask (elemToNat p1 `xor` elemToNat p2))
 
@@ -147,8 +147,8 @@ branchMask p1 p2
   into highly efficient machine code. The algorithm is derived from
   Jorg Arndt's FXT library.
 ---------------------------------------------------------------}
-{-# INLINE highestBitMask #-}
 highestBitMask :: Word -> Word
+{-# INLINE highestBitMask #-}
 highestBitMask x
     = case (x .|. shiftRL x 1) of 
        x -> case (x .|. shiftRL x 2) of 

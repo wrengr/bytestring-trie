@@ -371,25 +371,25 @@ errorLogHead s q | S.null q  = error (s ++": found null subquery")
 ---------------------------------------------------------------}
 
 -- | /O(1)/, The empty trie.
-{-# INLINE empty #-}
 empty :: Trie a
+{-# INLINE empty #-}
 empty = Empty
 
 -- | /O(1)/, Is the trie empty?
-{-# INLINE null #-}
 null :: Trie a -> Bool
+{-# INLINE null #-}
 null Empty = True
 null _     = False
 
 -- | /O(1)/, A singleton trie.
-{-# INLINE singleton #-}
 singleton :: ByteString -> a -> Trie a
+{-# INLINE singleton #-}
 singleton k v = Arc k (Just v) Empty
 -- For singletons, don't need to verify invariant on arc length >0
 
 -- | /O(n)/, Get count of elements in trie.
-{-# INLINE size #-}
 size  :: Trie a -> Int
+{-# INLINE size #-}
 size t = size' t id 0
 
 -- | /O(n)/, Internal CPS accumulator function for calculating
@@ -484,8 +484,8 @@ lookupBy_ f z a = lookupBy_'
 --           of (>>=) for epsilon`elem`t)
 --
 -- | Return the subtrie containing all keys beginning with a prefix.
-{-# INLINE submap #-}
 submap :: ByteString -> Trie a -> Trie a
+{-# INLINE submap #-}
 submap q = lookupBy_ (arc q) empty (arc q Nothing) q
 {-  -- Disable superfluous error checking.
     -- @submap'@ would replace the first argument to @lookupBy_@
@@ -654,8 +654,8 @@ mergeBy f = mergeBy'
         go' _ _ | zero p0 m'   = Branch p' m' t0_ t1_
         go' _ _                = Branch p' m' t1_ t0_
 
-{-# INLINE mergeMaybe #-}
 mergeMaybe :: (a -> a -> Maybe a) -> Maybe a -> Maybe a -> Maybe a
+{-# INLINE mergeMaybe #-}
 mergeMaybe _ Nothing      Nothing  = Nothing
 mergeMaybe _ Nothing mv1@(Just _)  = mv1
 mergeMaybe _ mv0@(Just _) Nothing  = mv0

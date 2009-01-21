@@ -68,16 +68,18 @@ import Control.Monad (liftM)
 
 -- | Convert association list into a trie. On key conflict, values
 -- earlier in the list shadow later ones.
-{-# INLINE fromList #-}
 fromList :: [(ByteString,a)] -> Trie a
+{-# INLINE fromList #-}
 fromList = foldr (uncurry insert) empty
 
 -- | Convert trie into association list. Keys will be in sorted order.
 toList :: Trie a -> [(ByteString,a)]
+{-# INLINE toList #-}
 toList  = toListBy (,)
 
 -- | Return all keys in the trie, in sorted order.
 keys :: Trie a -> [ByteString]
+{-# INLINE keys #-}
 keys  = toListBy const
 
 
@@ -87,19 +89,19 @@ keys  = toListBy const
 
 -- | Generic function to find a value (if it exists) and the subtrie
 -- rooted at the prefix.
-{-# INLINE lookupBy #-}
 lookupBy :: (Maybe a -> Trie a -> b) -> ByteString -> Trie a -> b
+{-# INLINE lookupBy #-}
 lookupBy f = lookupBy_ f (f Nothing empty) (f Nothing)
 
 -- | Return the value associated with a query string if it exists.
-{-# INLINE lookup #-}
 lookup :: ByteString -> Trie a -> Maybe a
+{-# INLINE lookup #-}
 lookup = lookupBy_ const Nothing (const Nothing)
 
 -- TODO? move to "Data.Trie.Conventience"?
 -- | Does a string have a value in the trie?
-{-# INLINE member #-}
 member :: ByteString -> Trie a -> Bool
+{-# INLINE member #-}
 member q = isJust . lookup q
 
 
@@ -109,18 +111,18 @@ member q = isJust . lookup q
 
 -- | Insert a new key. If the key is already present, overrides the
 -- old value
-{-# INLINE insert #-}
 insert    :: ByteString -> a -> Trie a -> Trie a
+{-# INLINE insert #-}
 insert     = alterBy (\_ x _ -> Just x)
                                       
 -- | Apply a function to the value at a key.
-{-# INLINE adjust #-}
 adjust    :: (a -> a) -> ByteString -> Trie a -> Trie a
+{-# INLINE adjust #-}
 adjust f q = alterBy (\_ _ -> liftM f) q undefined
 
 -- | Remove the value stored at a key.
-{-# INLINE delete #-}
 delete     :: ByteString -> Trie a -> Trie a
+{-# INLINE delete #-}
 delete    q = alterBy (\_ _ _ -> Nothing) q undefined
 
 
@@ -130,14 +132,14 @@ delete    q = alterBy (\_ _ _ -> Nothing) q undefined
 
 -- | Combine two tries, resolving conflicts by choosing the value
 -- from the left trie.
-{-# INLINE unionL #-}
 unionL :: Trie a -> Trie a -> Trie a
+{-# INLINE unionL #-}
 unionL = mergeBy (\x _ -> Just x)
 
 -- | Combine two tries, resolving conflicts by choosing the value
 -- from the right trie.
-{-# INLINE unionR #-}
 unionR :: Trie a -> Trie a -> Trie a
+{-# INLINE unionR #-}
 unionR = mergeBy (\_ y -> Just y)
 
 ----------------------------------------------------------------

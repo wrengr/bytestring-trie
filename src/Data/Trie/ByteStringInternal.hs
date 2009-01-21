@@ -40,8 +40,8 @@ type ByteStringElem = Word8 -- Associated type of ByteString
 
 {- -- Not used at present
 -- | The size of 'Word' in bytes.
-{-# INLINE sizeOfWord #-}
 sizeOfWord :: Int
+{-# INLINE sizeOfWord #-}
 sizeOfWord  = sizeOf (undefined :: Word)
 
 ----------------------------------------------------------------
@@ -86,8 +86,8 @@ maskInitialBytes byteCount
 
 -- TODO: How to get this to execute statically?...
 -- BUG? is 'alloca' safe in 'inlinePerformIO' (used in 'wordHead')?
-{-# NOINLINE isLittleEndian #-}
 isLittleEndian :: Bool
+{-# NOINLINE isLittleEndian #-}
 isLittleEndian = unsafePerformIO $ alloca $ \p -> do
     poke p    (0x04030201 :: Word32)
     b <- peek (castPtr p  :: Ptr Word8)
@@ -125,17 +125,17 @@ breakMaximalPrefix
             return $! (,,) !$ pre !$ s1' !$ s2'
 
 -- | C-style pointer addition, without the liberal type of 'plusPtr'.
-{-# INLINE ptrElemOff #-}
 ptrElemOff :: Storable a => Ptr a -> Int -> Ptr a
+{-# INLINE ptrElemOff #-}
 ptrElemOff p i = p `plusPtr` (i * sizeOf (unsafePerformIO (peek p)))
 
-{-# INLINE newPS #-}
 newPS :: ForeignPtr ByteStringElem -> Int -> Int -> ByteString
+{-# INLINE newPS #-}
 newPS s o l = if l <= 0 then S.empty else PS s o l
 
 -- | fix associativity bug
-{-# INLINE (!$) #-}
 (!$) :: (a -> b) -> a -> b
+{-# INLINE (!$) #-}
 (!$)  = ($!)
 
 
@@ -150,8 +150,8 @@ newPS s o l = if l <= 0 then S.empty else PS s o l
 -- mask-munging so @goWord@ can reuse the information it already
 -- has to discover the byte of difference. The trick is making that
 -- faster than the current version. And ensuring alignment.
-{-# INLINE indexOfDifference #-}
 indexOfDifference :: Ptr ByteStringElem -> Ptr ByteStringElem -> Int -> IO Int
+{-# INLINE indexOfDifference #-}
 indexOfDifference p1 p2 limit = goByte 0
     where
     {- BUG: using this assumes ByteStrings are Word-aligned

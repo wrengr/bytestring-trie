@@ -50,24 +50,26 @@ import Control.Monad      (liftM)
 -- which is swapped when reversing the list or changing which
 -- function is used).
 
-{-# INLINE fromListL #-}
 fromListL :: [(ByteString,a)] -> Trie a
+{-# INLINE fromListL #-}
 fromListL = foldl' (flip $ uncurry $ insertIfAbsent) empty
 
 -- | This version is just an alias for 'fromList'. It is a good
 -- producer for list fusion. Worst-case behavior is somewhat worse
 -- than worst-case for 'fromListL'.
-{-# INLINE fromListR #-}
 fromListR :: [(ByteString,a)] -> Trie a
+{-# INLINE fromListR #-}
 fromListR = fromList
+
 
 -- | This version sorts the list before folding over it. This adds
 -- /O(n log n)/ overhead and requires the whole list be in memory
 -- at once, but it ensures that the list is in best-case order. The
 -- benefits generally outweigh the costs.
-{-# INLINE fromListS #-}
 fromListS :: [(ByteString,a)] -> Trie a
+{-# INLINE fromListS #-}
 fromListS = fromListR . sortBy (\(k,_) (q,_) -> k `compare` q)
+
 
 
 ----------------------------------------------------------------

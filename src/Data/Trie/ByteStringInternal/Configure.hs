@@ -30,6 +30,10 @@ import System.IO
 errorContactMaintainer  :: String -> Bool
 errorContactMaintainer s = error (s ++ " Contact the Data.Trie maintainer.")
 
+-- cf also the new byteorder package
+-- <http://hackage.haskell.org/cgi-bin/hackage-scripts/package/byteorder>
+-- It's less efficient, but deals with mixed endianness better.
+-- It only does detection though, not the bit-munging we need later.
 isLittleEndian :: IO Bool
 isLittleEndian = alloca $ \p -> do
     poke p    (0x04030201 :: Word32)

@@ -36,23 +36,20 @@ typedef unsigned long long Word64;
 // TODO: Consider replacing loops by Duff's Device, or similar
 // <http://en.wikipedia.org/wiki/Duff%27s_device>
 
-// BUG: $> breakMaximalPrefix (packC2W "hello") (packC2W "heat")
-//      ("hea","lo","t")
-// BUG: $> breakMaximalPrefix (packC2W "hello") (packC2W "hella")
-//      ("hella","","")
-
-
 int indexOfDifference(const void* p1, const void* p2, const int limit) {
+	/* @i@ measures how many bytes are shared,
+	 * Thus it's the 0-based index of difference
+	 */
 	int i = 0;
-	if (limit <= 0) return i;
+	if (limit <= 0) return 0;
 	
 	
-	/* Munge until Nat-aligned */
+	/* Munge until Nat-aligned (They seem to always be) */
 	{
 		int x1 = NAT_MISALIGNMENT(p1);
 		int x2 = NAT_MISALIGNMENT(p2);
 		if (x1 != x2) {
-			/* BUG: what if they're misaligned differently?
+			/* FIX: what if they're misaligned differently?
 			 * For now we'll use Word8 all the way */
 			x1 = limit;
 		}
@@ -71,7 +68,7 @@ int indexOfDifference(const void* p1, const void* p2, const int limit) {
 	}
 	
 	
-	/* Check a Nat at a time until we find a mismatch */
+	/* Check one Nat at a time until we find a mismatch */
 	Nat diff;
 	do {
 		diff = READ_NAT(p1+i) ^ READ_NAT(p2+i);
@@ -85,12 +82,12 @@ int indexOfDifference(const void* p1, const void* p2, const int limit) {
 	} while (i < limit);
 	
 	
-	/* Clean up incomplete Nat at the end of the strings */
+	/* Trim incomplete Nat at the end of the strings */
 	if (i + sizeof(Nat) > limit) {
 		#ifdef __hDataTrie_isLittleEndian__
-			diff &= ((1 << ((limit-i) * sizeof(Word8))) - 1);
+			diff &= ((1 << ((limit-i) * 8*sizeof(Word8))) - 1);
 		#else
-			diff &= MIN_NAT >> ((limit-i) * sizeof(Word8) - 1);
+			diff &= MIN_NAT >> ((limit-i) * 8*sizeof(Word8) - 1);
 		#endif
 		
 		if (0 == diff) return limit;
@@ -98,21 +95,19 @@ int indexOfDifference(const void* p1, const void* p2, const int limit) {
 	
 	
 	/* Found a difference. Do binary search to identify first
-	 * byte in Nat which doesn't match. Maybe it'd be faster
-	 * to specialize the Word16 and Word8 iterations so that
-	 * we never have to leave Nat size...?
+	 * byte in Nat which doesn't match.
 	 */
 	Word32 w32;
 	#ifdef __hDataTrie_Nat64__
 	#	ifdef __hDataTrie_isLittleEndian__
 			const Word32 first32 = (Word32) (diff & 0x00000000FFFFFFFFull);
 	#	else
-			const Word32 first32 = (Word32)((diff & 0xFFFFFFFF00000000ull) >> 4);
+			const Word32 first32 = (Word32)((diff & 0xFFFFFFFF00000000ull) >> 32);
 	#	endif
 		if (0 == first32) {
 			i += 4;
 	#		ifdef __hDataTrie_isLittleEndian__
-				w32 = (Word32)((diff & 0xFFFFFFFF00000000ull) >> 4);
+				w32 = (Word32)((diff & 0xFFFFFFFF00000000ull) >> 32);
 	#		else
 				w32 = (Word32) (diff & 0x00000000FFFFFFFFull);
 	#		endif
@@ -131,14 +126,13 @@ int indexOfDifference(const void* p1, const void* p2, const int limit) {
 	#	ifdef __hDataTrie_isLittleEndian__
 			const Word16 first16 = (Word16) (w32 & 0x0000FFFF);
 	#	else
-			const Word16 first16 = (Word16)((w32 & 0xFFFF0000) >> 2);
+			const Word16 first16 = (Word16)((w32 & 0xFFFF0000) >> 16);
 	#	endif
 		if (0 == first16) {
 			i += 2;
 	#		ifdef __hDataTrie_isLittleEndian__
-				// It looks like the bug's here somewhere
-				// since it works right when the first two chars differ
-				w16 = (Word16)((w32 & 0xFFFF0000) >> 2);
+				w16 = (Word16)((w32 & 0xFFFF0000) >> 16);
+				
 	#		else
 				w16 = (Word16) (w32 & 0x0000FFFF);
 	#		endif
@@ -154,7 +148,7 @@ int indexOfDifference(const void* p1, const void* p2, const int limit) {
 	#ifdef __hDataTrie_isLittleEndian__
 		const Word8 first8 = (Word8) (w16 & 0x00FF);
 	#else
-		const Word8 first8 = (Word8)((w16 & 0xFF00) >> 1);
+		const Word8 first8 = (Word8)((w16 & 0xFF00) >> 8);
 	#endif
 	if (0 == first8) {
 		i += 1;

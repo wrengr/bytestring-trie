@@ -145,15 +145,9 @@ newPS s o l = if l <= 0 then S.empty else PS s o l
 
 -- | Calculates the first index where values differ.
 --
--- BUG: There has to be a smarter algorithm for this. In particular,
--- it'd be nice if there was a function like C's @memcmp@, but which
--- returns the index rather than the 'Ordering'. If it were agnostic
--- ot architecture, that'd be even nicer.
---
--- TODO: rather than revert to @goByte@, we should use xor- and
--- mask-munging so @goWord@ can reuse the information it already
--- has to discover the byte of difference. The trick is making that
--- faster than the current version. And ensuring alignment.
+-- FIX: Use the C implementation now that it works
+-- TODO: Benchmark the C against the same algo with Data.Bits (look at ASM)
+
 indexOfDifference :: Ptr ByteStringElem -> Ptr ByteStringElem -> Int -> IO Int
 {-# INLINE indexOfDifference #-}
 indexOfDifference p1 p2 limit = goByte 0

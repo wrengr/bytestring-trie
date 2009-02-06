@@ -238,6 +238,7 @@ instance Traversable Trie where
     traverse f (Arc k (Just v) t) = Arc k . Just <$> f v <*> traverse f t
     traverse f (Branch p m l r)   = Branch p m <$> traverse f l <*> traverse f r
 
+-- TODO: cf binary:Data.Binary.Get for #ifdef APPLICATIVE_IN_BASE to add an Applicative instance cleanly
 
 -- Does this even make sense? It's not nondeterminism like lists
 -- and sets. If no keys were prefixes of other keys it'd make sense

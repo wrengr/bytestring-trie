@@ -54,12 +54,15 @@ import qualified Data.ByteString as S
 import Data.Trie.ByteStringInternal
 import Data.Trie.BitTwiddle
 
-import Control.Monad       (liftM3, liftM4)
-import Control.Applicative (Applicative(..), (<$>))
+import Data.Binary
+
 import Data.Monoid         (Monoid(..))
+import Control.Monad       (liftM3, liftM4)
+#ifdef APPLICATIVE_IN_BASE
+import Control.Applicative (Applicative(..), (<$>))
 import Data.Foldable       (Foldable(foldMap))
 import Data.Traversable    (Traversable(traverse))
-import Data.Binary
+#endif
 
 #ifdef __GLASGOW_HASKELL__
 import GHC.Exts (build)
@@ -224,6 +227,7 @@ instance Functor Trie where
     fmap f (Branch p m l r)   = Branch p m (fmap f l) (fmap f r)
 
 
+#ifdef APPLICATIVE_IN_BASE
 -- TODO: cf toListBy. We should provide foldr and foldl directly
 instance Foldable Trie where
     foldMap _ Empty              = mempty
@@ -238,7 +242,10 @@ instance Traversable Trie where
     traverse f (Arc k (Just v) t) = Arc k . Just <$> f v <*> traverse f t
     traverse f (Branch p m l r)   = Branch p m <$> traverse f l <*> traverse f r
 
--- TODO: cf binary:Data.Binary.Get for #ifdef APPLICATIVE_IN_BASE to add an Applicative instance cleanly
+instance Applicative Trie where
+    pure  = return
+    (<*>) = ap
+#endif
 
 -- Does this even make sense? It's not nondeterminism like lists
 -- and sets. If no keys were prefixes of other keys it'd make sense
@@ -447,12 +454,15 @@ foldrWithKey fcons nil = \t -> go S.empty t nil
 -- | Convert a trie into a list using a function. Resulting values
 -- are in key-sorted order.
 toListBy :: (ByteString -> a -> b) -> Trie a -> [b]
+
 #if !defined(__GLASGOW_HASKELL__)
 -- TODO: should probably inline foldrWithKey
 -- TODO: compare performance of that vs both this and the GHC version
 {-# INLINE toListBy #-}
 toListBy f t = foldrWithKey (((:) .) . f) [] t
+
 #else
+
 {-# INLINE toListBy #-}
 -- Written with 'build' to enable the build\/foldr fusion rules.
 toListBy f t = build (toListByFB f t)
@@ -464,6 +474,7 @@ toListBy f t = build (toListByFB f t)
 toListByFB :: (ByteString -> a -> b) -> Trie a -> (b -> c -> c) -> c -> c
 {-# INLINE [0] toListByFB #-}
 toListByFB f t cons nil = foldrWithKey ((cons .) . f) nil t
+
 #endif
 
 

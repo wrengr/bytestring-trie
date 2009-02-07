@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren ng thornton <wren@community.haskell.org>    ~ 2009.01.20
+-- wren ng thornton <wren@community.haskell.org>    ~ 2009.02.07
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
@@ -25,6 +25,21 @@ Description:    An efficient finite map from (byte)strings to values.
                 and other merging operations, but they're also quick
                 for lookups and insertions.
 
+
+Flag useCinternal
+    Description: Use optimized C implementation for indexOfDifference.
+                 See notes in Data.Trie.ByteStringInternal.
+    Default:     False
+
+Flag applicativeInBase
+    Description: Applicative functors were added in base-2.0
+
+Flag bytestringInBase
+    Description: The bytestring library was included in base-2.0
+                 and base-2.1.1, but for base-1.0 and base-3.0 it
+                 was a separate package
+
+
 Library
     Hs-Source-Dirs:  src
     Exposed-Modules: Data.Trie
@@ -32,7 +47,25 @@ Library
                    , Data.Trie.Convenience
     Other-Modules:   Data.Trie.BitTwiddle
                    , Data.Trie.ByteStringInternal
-    Build-Depends:   base, bytestring, binary
+    
+    Build-Depends:   binary
+    if flag(bytestringInBase)
+        Build-Depends: base >= 2.0 && < 2.2
+        Cpp-Options: -DBYTESTRING_IN_BASE
+    else
+        Build-Depends: base < 2.0 || >= 3, bytestring
+    
+    if flag(applicativeInBase)
+        Build-Depends: base >= 2.0
+        Cpp-Options: -DAPPLICATIVE_IN_BASE
+    else
+        Build-Depends: base < 2.0
+    
+    if flag(useCinternal)
+        C-Sources:     src/Data/Trie/ByteStringInternal/indexOfDifference.c
+        CC-Options:    -O3
+        Cpp-Options:   -D__USE_C_INTERNAL__
+-- Also need to add stuff to run Configure.hs, FWIW
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

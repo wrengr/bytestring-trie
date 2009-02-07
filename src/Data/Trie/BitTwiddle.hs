@@ -27,8 +27,9 @@ module Data.Trie.BitTwiddle
     , mask, shorter, branchMask
     ) where
 
-import Data.Bits
 import Data.Trie.ByteStringInternal (ByteStringElem)
+
+import Data.Bits
 
 #if __GLASGOW_HASKELL__ >= 503
 import GHC.Exts  ( Word(..), Int(..), shiftRL# )

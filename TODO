@@ -8,11 +8,6 @@ Data.Trie.ByteStringInternal:
 * Debug the C version of indexOfDifference
 ** Write a smart constructor for ByteStrings to ensure good alignment
 ** Write debugging suite for cross-platform checking
-*** Do cross-platform debugging/verification
-** Search harder for a memcmp-like function already in standard C libraries
-** Translate C version back into Haskell ala Data.Bits, for non-FFI-aware compilers (how likely is that when they must support CPP already?) and for simplifying the build process (more important).
-*** Benchmark differences between C and native.
-* Try an iteratee approach to see if it can match the pointer munging for a cleaner style.
 
 
 Data.Trie.Convenience:
@@ -31,10 +26,6 @@ Data.Trie.Internal:
 ** Benchmark against the default from foldMap.
 * Accumulating mapping functions?
 * Efficient difference and intersection
-
-Data.Trie:
-* There's a bug in Hackage's Haddock which looses the descriptions for all functions in the "Query functions" section. Also "Basic functions", and apparently everything reexported from Data.Trie.Internal.
-*! Also this bug seems to apply to the fromList functions in Data.Trie.Convenience, and the "basic functions" and submap in Data.Trie.internal. WTF?
 
 
 Other:

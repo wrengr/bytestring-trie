@@ -1,7 +1,18 @@
+{-
+The C algorithm does not appear to give notable performance
+improvements, at least when building tries based on /usr/dict on
+little-endian 32-bit machines. The implementation also appears
+somewhat buggy (cf test/TrieFile.hs) and using the FFI complicates
+distribution.
+
+{-# LANGUAGE CPP, ForeignFunctionInterface #-}
+{-# CFILES ByteStringInternal/indexOfDifference.c #-}
+-}
+
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2008.12.24
+--                                                  ~ 2009.02.06
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -16,7 +27,6 @@
 
 module Data.Trie.ByteStringInternal
     ( ByteString, ByteStringElem
-    {-, unsafeWordHead-}
     , breakMaximalPrefix
     ) where
 
@@ -24,80 +34,22 @@ import qualified Data.ByteString as S
 import Data.ByteString.Internal (ByteString(..), inlinePerformIO)
 import Data.Word
 
-import Control.Monad
+import Foreign.ForeignPtr (ForeignPtr, withForeignPtr)
+import Foreign.Ptr        (Ptr, plusPtr)
+import Foreign.Storable   (Storable(..))
 
-import Foreign.ForeignPtr    (ForeignPtr, withForeignPtr)
-import Foreign.Ptr           (Ptr, plusPtr{-, castPtr-})
-import Foreign.Storable      (Storable(..))
-import System.IO.Unsafe      (unsafePerformIO)
 {-
-import Foreign.Marshal.Alloc (alloca)
-import Data.Bits
+#ifdef __USE_C_INTERNAL__
+import Foreign.C.Types (CInt)
+import Control.Monad   (liftM)
+#endif
 -}
-----------------------------------------------------------------
-
-type ByteStringElem = Word8 -- Associated type of ByteString
-
-{- -- Not used at present
--- | The size of 'Word' in bytes.
-sizeOfWord :: Int
-{-# INLINE sizeOfWord #-}
-sizeOfWord  = sizeOf (undefined :: Word)
 
 ----------------------------------------------------------------
 
--- | Return the first natural 'Word' worth of string, padding by
--- zeros as necessary. The position of elements within the word
--- varies by architecture, hence this function is quasi-unsafe to
--- use for trieing on the bit-vector representation. A safer version
--- may be forthcoming, though trieing on multiple bytes at once
--- appears impractical at the moment.
-unsafeWordHead :: ByteString -> Word
-unsafeWordHead (PS s o l) = inlinePerformIO $
-                                withForeignPtr s $ \p ->
-                                    liftM (maskInitialBytes l .&.)
-                                        (peek (p `plusPtr` o :: Ptr Word))
+-- | Associated type of 'ByteString'
+type ByteStringElem = Word8 
 
-maskInitialBytes :: Int -> Word
-maskInitialBytes byteCount
-    | isLittleEndian = case effectiveByteCount of
-                       0 -> 0x0000000000000000
-                       1 -> 0x00000000000000FF
-                       2 -> 0x000000000000FFFF
-                       3 -> 0x0000000000FFFFFF
-                       4 -> 0x00000000FFFFFFFF
-                       5 -> 0x000000FFFFFFFFFF
-                       6 -> 0x0000FFFFFFFFFFFF
-                       7 -> 0x00FFFFFFFFFFFFFF
-                       _ -> 0xFFFFFFFFFFFFFFFF
-    | otherwise      = case effectiveByteCount of
-                       0 -> 0x0000000000000000
-                       1 -> 0xFF00000000000000
-                       2 -> 0xFFFF000000000000
-                       3 -> 0xFFFFFF0000000000
-                       4 -> 0xFFFFFFFF00000000
-                       5 -> 0xFFFFFFFFFF000000
-                       6 -> 0xFFFFFFFFFFFF0000
-                       7 -> 0xFFFFFFFFFFFFFF00
-                       _ -> 0xFFFFFFFFFFFFFFFF
-    where
-    effectiveByteCount = 0 `max` (byteCount `min` sizeOfWord)
-
-
--- TODO: How to get this to execute statically?...
--- BUG? is 'alloca' safe in 'inlinePerformIO' (used in 'wordHead')?
-isLittleEndian :: Bool
-{-# NOINLINE isLittleEndian #-}
-isLittleEndian = unsafePerformIO $ alloca $ \p -> do
-    poke p    (0x04030201 :: Word32)
-    b <- peek (castPtr p  :: Ptr Word8)
-    case b of
-        0x01 -> return True
-        0x04 -> return False
-        _    -> error ("non-standard endianness detected! "
-                       ++ "Contact the Data.Trie maintainer.")
-
--- End unused code -}
 
 ----------------------------------------------------------------
 -- | Returns the longest shared prefix and the two remaining suffixes
@@ -131,11 +83,13 @@ breakMaximalPrefix
 -- | C-style pointer addition, without the liberal type of 'plusPtr'.
 ptrElemOff :: Storable a => Ptr a -> Int -> Ptr a
 {-# INLINE ptrElemOff #-}
-ptrElemOff p i = p `plusPtr` (i * sizeOf (unsafePerformIO (peek p)))
+ptrElemOff p i =
+    p `plusPtr` (i * sizeOf (undefined `asTypeOf` inlinePerformIO (peek p)))
 
 newPS :: ForeignPtr ByteStringElem -> Int -> Int -> ByteString
 {-# INLINE newPS #-}
-newPS s o l = if l <= 0 then S.empty else PS s o l
+newPS s o l =
+    if l <= 0 then S.empty else PS s o l
 
 -- | fix associativity bug
 (!$) :: (a -> b) -> a -> b
@@ -143,25 +97,26 @@ newPS s o l = if l <= 0 then S.empty else PS s o l
 (!$)  = ($!)
 
 
+----------------------------------------------------------------
 -- | Calculates the first index where values differ.
---
--- FIX: Use the C implementation now that it works
--- TODO: Benchmark the C against the same algo with Data.Bits (look at ASM)
 
 indexOfDifference :: Ptr ByteStringElem -> Ptr ByteStringElem -> Int -> IO Int
-{-# INLINE indexOfDifference #-}
+{-
+#ifdef __USE_C_INTERNAL__
+
+indexOfDifference p q i =
+    liftM fromIntegral $! c_indexOfDifference p q (fromIntegral i)
+
+-- This could probably be not IO, but the wrapper requires that anyways...
+foreign import ccall unsafe "ByteStringInternal/indexOfDifference.h indexOfDifference"
+    c_indexOfDifference :: Ptr ByteStringElem -> Ptr ByteStringElem -> CInt -> IO CInt
+
+#else
+-}
+
+-- Use the naive algorithm which doesn't depend on architecture details
 indexOfDifference p1 p2 limit = goByte 0
     where
-    {- BUG: using this assumes ByteStrings are Word-aligned
-    goWord n = if   n + sizeOfWord >= limit
-               then goByte n
-               else do w1 <- peek (p1 `plusPtr` n :: Ptr Word)
-                       w2 <- peek (p2 `plusPtr` n :: Ptr Word)
-                       if w1 == w2
-                           then goWord $! n + sizeOfWord
-                           else goByte n
-    -}
-    
     goByte n = if   n >= limit
                then return limit
                else do c1 <- peekElemOff p1 n
@@ -169,6 +124,9 @@ indexOfDifference p1 p2 limit = goByte 0
                        if c1 == c2
                            then goByte $! n+1
                            else return n
+{-
+#endif
+-}
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

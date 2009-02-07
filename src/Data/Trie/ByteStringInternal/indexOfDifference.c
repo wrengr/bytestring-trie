@@ -1,5 +1,23 @@
+/* -------------------------------------------------------------
+--                                                  ~ 2009.01.07
+-- |
+-- Module      :  Data.Trie.ByteStringInternal.indexOfDifference
+-- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
+-- License     :  BSD3
+-- Maintainer  :  wren@community.haskell.org
+-- Stability   :  beta
+-- Portability :  portable
+--
+-- More efficient implementation (in theory) than testing characters
+-- byte by byte. However, the gains seem to be minimal and ---more
+-- importantly--- there seem to be obscure bugs that only show up
+-- in extensive testing (e.g. running TrieFile on /usr/dict). Maybe
+-- worth pursuing further, especially if SSE's 126-bit registers
+-- or GCC's vectors can be leveraged in a portable way.
+------------------------------------------------------------- */
 
-/* Created by Configure.hs */
+/* Defines certain architecture characteristics.
+ * Created by Configure.hs */
 #include "indexOfDifference.h"
 
 typedef unsigned char      Word8;
@@ -17,8 +35,7 @@ typedef unsigned long long Word64;
 #else
 	/* No definition. Unknown architecture.
 	 * Maybe it'd be worth supporting 16-bit as well...?
-	 * or maybe fail back to 8-bit?
-	 */
+	 * or maybe fail back to 8-bit? */
 #endif
 
 /* cf also <http://www.monkeyspeak.com/alignment/> */
@@ -33,18 +50,18 @@ typedef unsigned long long Word64;
 /* Compare up to the first @limit@ bytes of @p1@ against @p2@
  * and return the first index where they differ. */
 
-// TODO: Consider replacing loops by Duff's Device, or similar
-// <http://en.wikipedia.org/wiki/Duff%27s_device>
+/* TODO: Consider replacing loops by Duff's Device, or similar
+   <http://en.wikipedia.org/wiki/Duff%27s_device> */
 
 int indexOfDifference(const void* p1, const void* p2, const int limit) {
 	/* @i@ measures how many bytes are shared,
-	 * Thus it's the 0-based index of difference
-	 */
+	 * Thus it's the 0-based index of difference. */
 	int i = 0;
 	if (limit <= 0) return 0;
 	
 	
-	/* Munge until Nat-aligned (They seem to always be) */
+	/* Munge until Nat-aligned (They seem to always be).
+	 * Should fail back to this naive version on unknown arch */
 	{
 		int x1 = NAT_MISALIGNMENT(p1);
 		int x2 = NAT_MISALIGNMENT(p2);
@@ -95,8 +112,7 @@ int indexOfDifference(const void* p1, const void* p2, const int limit) {
 	
 	
 	/* Found a difference. Do binary search to identify first
-	 * byte in Nat which doesn't match.
-	 */
+	 * byte in Nat which doesn't match. */
 	Word32 w32;
 	#ifdef __hDataTrie_Nat64__
 	#	ifdef __hDataTrie_isLittleEndian__
@@ -132,7 +148,6 @@ int indexOfDifference(const void* p1, const void* p2, const int limit) {
 			i += 2;
 	#		ifdef __hDataTrie_isLittleEndian__
 				w16 = (Word16)((w32 & 0xFFFF0000) >> 16);
-				
 	#		else
 				w16 = (Word16) (w32 & 0x0000FFFF);
 	#		endif

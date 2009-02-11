@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-name-shadowing #-}
--- The GHC Exts are for unboxed primitives
-{-# OPTIONS_GHC -fglasgow-exts #-}
-{-# LANGUAGE CPP #-}
+
+-- The MagicHash is for unboxed primitives (-fglasgow-exts also works)
+{-# LANGUAGE CPP, MagicHash #-}
 
 ----------------------------------------------------------------
 --                                                  ~ 2009.01.05

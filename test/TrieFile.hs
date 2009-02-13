@@ -19,12 +19,13 @@
 module Main (main, readTrieFromFile) where
 
 import qualified Data.Trie             as T
+import qualified Data.Trie.Internal    as T
 import qualified Data.ByteString       as S
 import qualified Data.ByteString.Char8 as S (unlines)
 
-{-
 import qualified Data.Foldable         as F
 
+{-
 import Microbench
 import Control.Exception (evaluate)
 -- -}
@@ -51,14 +52,13 @@ main  = do
     t <- readTrieFromFile file -- >>= evaluate
     
     -- `sort`
-    S.putStrLn . S.unlines . T.keys $ t
+    -- S.putStrLn . S.unlines . T.keys $ t
     
     -- `wc -l`
     -- putStrLn . show . T.size $ t
     
     
-    -- Tests for comparing inferred foldl/foldr vs hand-written version
-    {-
+    {- -- Tests for comparing inferred foldl/foldr vs hand-written version
     microbench "List.foldr elems" $ do
         vs <- return $! T.elems t
         n  <- return $! foldr (\v r -> v `seq` (1+) $! r) (0::Int) vs
@@ -73,6 +73,13 @@ main  = do
         t' <- return $! t
         n  <- return $! F.foldl (\r v -> v `seq` (1+) $! r) (0::Int) t'
         n `seq` (return () :: IO ())
+    -- -}
+    
+    -- {- -- verify associativity of folds
+    putStrLn . show . take 20 . F.foldr (:) [] $ t
+    putStrLn . show . take 20 . T.foldrWithKey (const (:)) [] $ t
+    
+    putStrLn . show . take 20 . F.foldl (flip (:)) [] $ t
     -- -}
 
 

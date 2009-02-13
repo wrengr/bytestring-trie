@@ -230,16 +230,16 @@ instance Functor Trie where
 
 #ifdef APPLICATIVE_IN_BASE
 instance Foldable Trie where
+    -- If our definition of foldr is so much faster than the Endo
+    -- default, then maybe we should remove this and use the default
+    -- foldMap based on foldr
     foldMap _ Empty              = mempty
     foldMap f (Arc _ Nothing  t) = foldMap f t
     foldMap f (Arc _ (Just v) t) = f v `mappend` foldMap f t
     foldMap f (Branch _ _ l r)   = foldMap f l `mappend` foldMap f r
     
-    -- BUG: are these right, or reversed? (Are we traversing
-    -- rightward, or associating to the right?) These're the same
-    -- as the default implementation from 'foldMap', so if they're
-    -- wrong, so is foldMap.
-    
+    {- This definition is much faster, but it's also wrong
+    -- (or at least different than foldrWithKey)
     foldr f = \z t -> go t id z
         where
         go Empty              k x = k x
@@ -253,8 +253,10 @@ instance Foldable Trie where
         go (Branch _ _ l r)   k x = go l (go r k) x
         go (Arc _ Nothing t)  k x = go t k x
         go (Arc _ (Just v) t) k x = go t k (f x v)
+    -}
 
--- TODO: newtype Keys = K Trie ; instance Foldable Keys
+-- TODO: newtype Keys = K Trie  ; instance Foldable Keys
+-- TODO: newtype Assoc = K Trie ; instance Foldable Assoc
 
 instance Traversable Trie where
     traverse _ Empty              = pure Empty
@@ -446,6 +448,10 @@ size' (Arc _ (Just _) t) f n = size' t f $! n + 1
 -- TODO: rewrite list-catenation to be lazier (real CPS instead of
 -- function building? is the function building really better than
 -- (++) anyways?)
+-- N.B. If our manual definition of foldr/foldl (using function
+-- application) is so much faster than the default Endo definition
+-- (using function composition), then we should make this use
+-- application instead too.
 --
 -- TODO: the @q@ accumulator should be lazy ByteString and only
 -- forced by @fcons@. It's already non-strict, but we should ensure

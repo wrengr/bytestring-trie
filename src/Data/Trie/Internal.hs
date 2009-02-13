@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
--- For list fusion on toListBy
+-- For list fusion on toListBy, and for applicative hiding
 {-# LANGUAGE CPP #-}
 
 ----------------------------------------------------------------
@@ -59,8 +59,9 @@ import Data.Binary
 import Data.Monoid         (Monoid(..))
 import Control.Monad       (liftM3, liftM4)
 #ifdef APPLICATIVE_IN_BASE
+import Control.Monad       (ap)
 import Control.Applicative (Applicative(..), (<$>))
-import Data.Foldable       (Foldable(foldMap))
+import Data.Foldable       (Foldable(..))
 import Data.Traversable    (Traversable(traverse))
 #endif
 
@@ -228,13 +229,27 @@ instance Functor Trie where
 
 
 #ifdef APPLICATIVE_IN_BASE
--- TODO: cf toListBy. We should provide foldr and foldl directly
 instance Foldable Trie where
     foldMap _ Empty              = mempty
     foldMap f (Arc _ Nothing  t) = foldMap f t
     foldMap f (Arc _ (Just v) t) = f v `mappend` foldMap f t
     foldMap f (Branch _ _ l r)   = foldMap f l `mappend` foldMap f r
+    
+    foldr f = \z t -> go t id z
+        where
+        go Empty              k x = k x
+        go (Branch _ _ l r)   k x = go r (go l k) x
+        go (Arc _ Nothing t)  k x = go t k x
+        go (Arc _ (Just v) t) k x = go t k (f v x)
+    
+    foldl f = \z t -> go t id z
+        where
+        go Empty              k x = k x
+        go (Branch _ _ l r)   k x = go l (go r k) x
+        go (Arc _ Nothing t)  k x = go t k x
+        go (Arc _ (Just v) t) k x = go t k (f x v)
 
+-- TODO: newtype Keys = K Trie ; instance Foldable Keys
 
 instance Traversable Trie where
     traverse _ Empty              = pure Empty

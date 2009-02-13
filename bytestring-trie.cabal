@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren ng thornton <wren@community.haskell.org>    ~ 2009.02.07
+-- wren ng thornton <wren@community.haskell.org>    ~ 2009.02.13
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
@@ -33,11 +33,13 @@ Flag useCinternal
 
 Flag applicativeInBase
     Description: Applicative functors were added in base-2.0
+    Default:     True
 
 Flag bytestringInBase
     Description: The bytestring library was included in base-2.0
                  and base-2.1.1, but for base-1.0 and base-3.0 it
                  was a separate package
+    Default:     False
 
 
 Library
@@ -48,18 +50,23 @@ Library
     Other-Modules:   Data.Trie.BitTwiddle
                    , Data.Trie.ByteStringInternal
     
-    Build-Depends:   binary
+-- The cpp flags work for compiling, but not for Haddock 2.0.0.0
+-- The ghc flags allow Haddock to work correctly.
     if flag(bytestringInBase)
         Build-Depends: base >= 2.0 && < 2.2
         Cpp-Options: -DBYTESTRING_IN_BASE
+        Ghc-Options: -DBYTESTRING_IN_BASE
     else
         Build-Depends: base < 2.0 || >= 3, bytestring
     
     if flag(applicativeInBase)
         Build-Depends: base >= 2.0
         Cpp-Options: -DAPPLICATIVE_IN_BASE
+        Ghc-Options: -DAPPLICATIVE_IN_BASE
     else
         Build-Depends: base < 2.0
+    
+    Build-Depends: binary
     
     if flag(useCinternal)
         C-Sources:     src/Data/Trie/ByteStringInternal/indexOfDifference.c

@@ -1,6 +1,6 @@
 Data.Trie.BitTwiddle:
-* Do benchmarking to see whether the Word8 instances are not worse than Int instances. If the same or Int is better, switch them up and use Int for the bit twiddling. This will require access to other architectures for debugging
-** If Int is better/as-good, see about maybe getting Data.IntMap to switch to using a module like ours and exporting it from base. This would introduce a dependency on a particular base version, but reuse is good.
+* Do benchmarking to see whether the Word8 instances are not worse than Int instances. If Int is better/as-good, see about maybe getting Data.IntMap to switch to using a module like ours and exporting it from base. This would introduce a dependency on a particular base version, but reuse is good.
+--- On x86 the time performance is basically the same (trivially worse, within margin of error), memory performance is slightly worse (maybe due to conversions et al). Should be similar on most other architectures, except maybe ARM where Word8 is different than Word16/Word32
 
 
 Data.Trie.ByteStringInternal:
@@ -14,7 +14,7 @@ Data.Trie.Convenience:
 * Try to find a single best implementation of fromList instead of all these variants. Some kind of amortized approximation to sorting which lets us be lazier?
 * fromListWith, fromListWithKey?
 * insertLookupWithKey, updateLookupWithKey (by some sort of Applicative or State transform? is there a more efficient way without re-engineering the core code?)
-* elems function like keys? Move keys here from Data.Trie?
+* Move elems,keys here from Data.Trie?
 * filter (using filterMap), filterWithKey (using mapBy)
 * partition, partitionWithKey, mapEither[WithKey] ?
 * split, splitLookup ??
@@ -22,8 +22,6 @@ Data.Trie.Convenience:
 
 
 Data.Trie.Internal:
-* Provide direct implementations of foldl and foldr.
-** Benchmark against the default from foldMap.
 * Accumulating mapping functions?
 * Efficient difference and intersection
 

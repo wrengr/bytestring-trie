@@ -235,6 +235,11 @@ instance Foldable Trie where
     foldMap f (Arc _ (Just v) t) = f v `mappend` foldMap f t
     foldMap f (Branch _ _ l r)   = foldMap f l `mappend` foldMap f r
     
+    -- BUG: are these right, or reversed? (Are we traversing
+    -- rightward, or associating to the right?) These're the same
+    -- as the default implementation from 'foldMap', so if they're
+    -- wrong, so is foldMap.
+    
     foldr f = \z t -> go t id z
         where
         go Empty              k x = k x

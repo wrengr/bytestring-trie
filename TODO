@@ -30,3 +30,5 @@ Other:
 * Reconsider a version of Trie that uses natural word size everywhere. Simplest way to maintain invariants is probably to have multiple values stored in each arc (one for each byte). But there might be some other way to do it...
 
 * Get real complexity numbers for the main three functions.
+
+* Reformulate the Binary instance based on discussion on Haskell Cafe re Map

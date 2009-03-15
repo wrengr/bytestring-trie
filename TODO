@@ -32,3 +32,4 @@ Other:
 * Get real complexity numbers for the main three functions.
 
 * Reformulate the Binary instance based on discussion on Haskell Cafe re Map
+* Implement the min/max views for use as a priority queue

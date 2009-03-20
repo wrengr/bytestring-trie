@@ -129,6 +129,7 @@ insert     = alterBy (\_ x _ -> Just x)
 adjust    :: (a -> a) -> ByteString -> Trie a -> Trie a
 {-# INLINE adjust #-}
 adjust f q = alterBy (\_ _ -> liftM f) q undefined
+-- TODO: use adjustBy, and benchmark differences
 
 -- | Remove the value stored at a key.
 delete     :: ByteString -> Trie a -> Trie a

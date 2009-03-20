@@ -38,13 +38,17 @@ module Data.Trie.Internal
     , lookupBy_, submap
     
     -- * Single-value modification
-    , alterBy
+    , alterBy, adjustBy
     
     -- * Combining tries
     , mergeBy
     
     -- * Mapping functions
     , mapBy, filterMap
+    
+    -- * Priority-queue functions
+    , minAssoc, maxAssoc
+    , updateMinViewBy, updateMaxViewBy
     ) where
 
 import Prelude hiding (null, lookup)
@@ -57,7 +61,7 @@ import Data.Trie.BitTwiddle
 import Data.Binary
 
 import Data.Monoid         (Monoid(..))
-import Control.Monad       (liftM3, liftM4)
+import Control.Monad       (liftM, liftM3, liftM4)
 #ifdef APPLICATIVE_IN_BASE
 import Control.Monad       (ap)
 import Control.Applicative (Applicative(..), (<$>))
@@ -198,6 +202,7 @@ showTrie t = shows' id t ""
 
 -- TODO?? a Read instance? hrm... should I?
 
+-- TODO: consider an instance more like the new one for Data.Map. Better?
 instance (Binary a) => Binary (Trie a) where
     put Empty            = put (0 :: Word8)
     put (Arc k m t)      = do put (1 :: Word8)
@@ -641,6 +646,36 @@ alterBy f_ q_ x_
                 (False, False) -> arc k mv (go q' t)
 
 
+-- | ...
+adjustBy :: (ByteString -> a -> a -> a)
+         -> ByteString -> a -> Trie a -> Trie a
+adjustBy f_ q_ x_
+    | S.null q_ = \t_ -> case t_ of
+                         (Arc k (Just v) t)
+                             | S.null k -> Arc k (Just (f v)) t
+                         _              -> t_
+    | otherwise = go q_
+    where
+    f = f_ q_ x_
+    
+    go _ Empty            = Empty
+    
+    go q t@(Branch p m l r)
+        | nomatch qh p m  = t
+        | zero qh m       = Branch p m (go q l) r
+        | otherwise       = Branch p m l (go q r)
+        where
+        qh = errorLogHead "adjustBy" q
+    
+    go q t_@(Arc k mv t) =
+        let (_,k',q') = breakMaximalPrefix k q
+        in case (not $ S.null k', S.null q') of
+                (True,  True)  -> t_ -- don't break arc inline
+                (True,  False) -> t_ -- don't break arc branching
+                (False, True)  -> Arc k (liftM f mv) t
+                (False, False) -> Arc k mv (go q' t)
+
+
 {---------------------------------------------------------------
 -- Trie-combining functions
 ---------------------------------------------------------------}
@@ -737,6 +772,56 @@ mergeMaybe _ Nothing      Nothing  = Nothing
 mergeMaybe _ Nothing mv1@(Just _)  = mv1
 mergeMaybe _ mv0@(Just _) Nothing  = mv0
 mergeMaybe f (Just v0)   (Just v1) = f v0 v1
+
+
+{---------------------------------------------------------------
+-- Priority-queue functions
+---------------------------------------------------------------}
+
+minAssoc :: Trie a -> Maybe (ByteString, a)
+minAssoc = go S.empty
+    where
+    go _ Empty              = Nothing
+    go q (Arc k (Just v) _) = Just (S.append q k,v)
+    go q (Arc k Nothing  t) = go   (S.append q k) t
+    go q (Branch _ _ l _)   = go q l
+
+
+maxAssoc :: Trie a -> Maybe (ByteString, a)
+maxAssoc = go S.empty
+    where
+    go _ Empty                  = Nothing
+    go q (Arc k (Just v) Empty) = Just (S.append q k,v)
+    go q (Arc k _        t)     = go   (S.append q k) t
+    go q (Branch _ _ _ r)       = go q r
+
+
+mapView :: (Trie a -> Trie a)
+        -> Maybe (ByteString, a, Trie a) -> Maybe (ByteString, a, Trie a)
+mapView _ Nothing        = Nothing
+mapView f (Just (k,v,t)) = Just (k,v, f t)
+
+
+updateMinViewBy :: (ByteString -> a -> Maybe a)
+                -> Trie a -> Maybe (ByteString, a, Trie a)
+updateMinViewBy f = go S.empty
+    where
+    go _ Empty              = Nothing
+    go q (Arc k (Just v) t) = let q' = (S.append q k)
+                              in Just (q',v, arc k (f q' v) t)
+    go q (Arc k Nothing  t) = mapView (arc k Nothing) (go (S.append q k) t)
+    go q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
+
+
+updateMaxViewBy :: (ByteString -> a -> Maybe a)
+                -> Trie a -> Maybe (ByteString, a, Trie a)
+updateMaxViewBy f = go S.empty
+    where
+    go _ Empty                  = Nothing
+    go q (Arc k (Just v) Empty) = let q' = (S.append q k)
+                                  in Just (q',v, arc k (f q' v) t)
+    go q (Arc k mv       t)     = mapView (arc k mv) (go (S.append q k) t)
+    go q (Branch p m l r)       = mapView (branch p m l) (go q r)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

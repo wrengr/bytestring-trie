@@ -21,7 +21,7 @@ module Data.Trie.Convenience
     (
     -- * Conversion functions
     -- $fromList
-      fromListL, fromListR, fromListS
+      fromListL, fromListR, fromListS, fromListWith
     
     -- * 'lookupBy' variants
     , lookupWithDefault
@@ -39,6 +39,7 @@ import Data.Trie
 import Data.Trie.Internal (lookupBy_)
 import Data.ByteString    (ByteString)
 import Data.List          (foldl', sortBy)
+import Data.Ord           (comparing)
 import Control.Monad      (liftM)
 
 ----------------------------------------------------------------
@@ -72,7 +73,15 @@ fromListR = fromList
 -- benefits generally outweigh the costs.
 fromListS :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListS #-}
-fromListS = fromListR . sortBy (\(k,_) (q,_) -> k `compare` q)
+fromListS = fromListR . sortBy (comparing fst)
+
+-- | A variant of 'fromListR' that takes a function for combining values on conflict.
+fromListWith :: (a -> a -> a) -> [(ByteString,a)] -> Trie a
+{-# INLINE fromListWith #-}
+fromListWith f = foldr (uncurry $ alterBy g) empty
+    where
+    g _ v Nothing  = Just v
+    g _ v (Just w) = Just (f v w)
 
 ----------------------------------------------------------------
 -- | Lookup a key, returning a default value if it's not found.

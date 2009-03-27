@@ -819,7 +819,7 @@ updateMaxViewBy f = go S.empty
     where
     go _ Empty                  = Nothing
     go q (Arc k (Just v) Empty) = let q' = (S.append q k)
-                                  in Just (q',v, arc k (f q' v) t)
+                                  in Just (q',v, arc k (f q' v) Empty)
     go q (Arc k mv       t)     = mapView (arc k mv) (go (S.append q k) t)
     go q (Branch p m l r)       = mapView (branch p m l) (go q r)
 

@@ -1,9 +1,9 @@
 ----------------------------------------------------------------
--- wren ng thornton <wren@community.haskell.org>    ~ 2009.02.13
+-- wren ng thornton <wren@community.haskell.org>    ~ 2009.12.20
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
-Version:        0.2.1
+Version:        0.2.1.1
 Cabal-Version:  >= 1.2
 Build-Type:     Simple
 Stability:      provisional

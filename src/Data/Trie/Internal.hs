@@ -11,7 +11,7 @@
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  provisional
--- Portability :  portable
+-- Portability :  portable (with CPP)
 --
 -- Internal definition of the 'Trie' data type and generic functions
 -- for manipulating them. Almost everything here is re-exported
@@ -261,7 +261,7 @@ instance Foldable Trie where
     -}
 
 -- TODO: newtype Keys = K Trie  ; instance Foldable Keys
--- TODO: newtype Assoc = K Trie ; instance Foldable Assoc
+-- TODO: newtype Assoc = A Trie ; instance Foldable Assoc
 
 instance Traversable Trie where
     traverse _ Empty              = pure Empty
@@ -435,8 +435,7 @@ size  :: Trie a -> Int
 {-# INLINE size #-}
 size t = size' t id 0
 
--- | /O(n)/, Internal CPS accumulator function for calculating
--- 'size'.
+-- | /O(n)/, CPS accumulator helper for calculating 'size'.
 size' :: Trie a -> (Int -> Int) -> Int -> Int
 size' Empty              f n = f n
 size' (Branch _ _ l r)   f n = size' l (size' r f) n

@@ -1,9 +1,9 @@
 ----------------------------------------------------------------
--- wren ng thornton <wren@community.haskell.org>    ~ 2009.12.20
+-- wren ng thornton <wren@community.haskell.org>    ~ 2010.06.10
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
-Version:        0.2.1.1
+Version:        0.2.2
 Cabal-Version:  >= 1.2
 Build-Type:     Simple
 Stability:      provisional
@@ -25,6 +25,9 @@ Description:    An efficient finite map from (byte)strings to values.
                 and other merging operations, but they're also quick
                 for lookups and insertions.
 
+Flag base4
+    Description: base-4.0 deprecated Prelude which is imported qualified
+    Default:     True
 
 Flag useCinternal
     Description: Use optimized C implementation for indexOfDifference.
@@ -49,7 +52,12 @@ Library
                    , Data.Trie.Convenience
     Other-Modules:   Data.Trie.BitTwiddle
                    , Data.Trie.ByteStringInternal
-    
+    -- I think this is all that needs doing to get rid of the warnings?
+    if flag(base4)
+        Build-Depends: base >= 4 && < 5
+    else
+        Build-Depends: base < 4
+        
     if flag(bytestringInBase)
         Build-Depends: base >= 2.0 && < 2.2
         Cpp-Options: -DBYTESTRING_IN_BASE

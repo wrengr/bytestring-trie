@@ -1,11 +1,13 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
-{-# LANGUAGE MultiParamTypeClasses
+{-# LANGUAGE CPP
+           , MultiParamTypeClasses
            , FlexibleInstances
            , FlexibleContexts
+           , TypeSynonymInstances
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.11
+--                                                  ~ 2010.06.10
 -- |
 -- Module      :  Data.Trie.Test
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
@@ -49,7 +51,7 @@ main  = do
     
     
     putStrLn "hunit:"
-    HU.runTestTT $ HU.TestList
+    _ <- HU.runTestTT $ HU.TestList
                  [ test_Union
                  , test_Submap
                  , test_Insert
@@ -85,10 +87,20 @@ main  = do
     checkSmall 5 (prop_fromList_toList :: [(Str, ())] -> Bool)
     putStrLn ""
     where
-    checkQuick n   = QC.check (QC.defaultConfig
-                              { QC.configMaxTest = n 
-                              , QC.configMaxFail = 1000 `max` 10*n
-                              })
+#ifdef __USE_QUICKCHECK_1__
+    checkQuick n =
+        QC.check (QC.defaultConfig
+            { QC.configMaxTest = n 
+            , QC.configMaxFail = 1000 `max` 10*n
+            })
+#else
+    checkQuick n =
+        QC.quickCheckWith (QC.stdArgs
+            { QC.maxSize    = n
+            , QC.maxSuccess = n
+            , QC.maxDiscard = 1000 `max` 10*n
+            })
+#endif
     checkSmall d f = SC.smallCheck d f >> putStrLn ""
 
 testEqual ::  (Show a, Eq a) => String -> a -> a -> HU.Test
@@ -102,10 +114,22 @@ test_Union = HU.TestLabel "epsilon union"
     $ HU.TestList
     [ testEqual "left"  (e1 `T.unionL` e2) e1
     , testEqual "right" (e1 `T.unionR` e2) e2 -- meh, why not
+    , testEqual "unionR regression" (tLeft `T.unionR` tRight) tRightResult
+    , testEqual "unionL regression" (tLeft `T.unionL` tRight) tLeftResult
     ]
     where
     e1 = T.singleton S.empty (4::Int)
     e2 = T.singleton S.empty (2::Int)
+    
+    -- Regression test against bug filed by Gregory Crosswhite on 2010.06.10 against version 0.2.1.1.
+    a, b :: S.ByteString
+    a = read "\"\231^\179\160Y\134Gr\158<)&\222\217#\156\""
+    b = read "\"\172\193\GSp\222\174GE\186\151\DC1#P\213\147\SI\""
+    tLeft   = T.fromList [(a,1::Int),(b,0::Int)]
+    tRight  = T.fromList [(a,2::Int)]
+    tRightResult = T.fromList [(a,2::Int),(b,0::Int)]
+    tLeftResult  = T.fromList [(a,1::Int),(b,0::Int)]
+
 
 ----------------------------------------------------------------
 test_Submap :: HU.Test

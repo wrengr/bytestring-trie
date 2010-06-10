@@ -1,3 +1,6 @@
+0.2.2 (2010.06.10):
+    - Corrected a major bug in mergeBy, reported by Gregory Crosswhite
+
 0.2.1.1 (2009.12.20):
     - Added a VERSION file
 0.2.1 (2009.02.13):

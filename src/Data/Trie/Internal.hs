@@ -747,7 +747,7 @@ mergeBy f = mergeBy'
                      in case (S.null k0', S.null k1') of
                          (True, True)  -> arcMerge (mergeMaybe f mv0 mv1) t0 t1
                          (True, False) -> arcMerge mv0 t0 (Arc k1' mv1 t1)
-                         (False,True)  -> arcMerge mv1 t1 (Arc k0' mv0 t0)
+                         (False,True)  -> arcMerge mv1 (Arc k0' mv0 t0) t1
                          (False,False) -> arcMerge Nothing (Arc k0' mv0 t0)
                                                            (Arc k1' mv1 t1)
         go' (Arc _ _ _)
@@ -758,8 +758,8 @@ mergeBy f = mergeBy'
         go' (Branch _p0 m0 l r)
             (Arc _ _ _)
             | nomatch p1 p0 m0 = branchMerge p0 t0_  p1 t1_
-            | zero p1 m0       = branch p0 m0 (go t1_ l) r
-            | otherwise        = branch p0 m0 l (go t1_ r)
+            | zero p1 m0       = branch p0 m0 (go l t1_) r
+            | otherwise        = branch p0 m0 l (go r t1_)
         
         -- Inlined branchMerge. Both tries are disjoint @Arc@s now.
         go' _ _ | zero p0 m'   = Branch p' m' t0_ t1_

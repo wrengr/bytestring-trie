@@ -12,3 +12,5 @@ when the unsafe is safe in the internals of ByteStrings.
 
 Mark Wotton --- for benchmarking work comparing Trie to Map ByteString,
 and for debugging.
+
+Gregory Crosswhite --- finding the critical bug in mergeBy

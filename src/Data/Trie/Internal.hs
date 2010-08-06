@@ -38,7 +38,7 @@ module Data.Trie.Internal
     , lookupBy_, submap
     
     -- * Single-value modification
-    , alterBy, adjustBy
+    , alterBy, alterBy_, adjustBy
     
     -- * Combining tries
     , mergeBy
@@ -602,17 +602,24 @@ errorEmptyAfterNothing s = errorInvariantBroken s "Empty after Nothing"
 -- to resolve conflicts (or non-conflicts).
 alterBy :: (ByteString -> a -> Maybe a -> Maybe a)
          -> ByteString -> a -> Trie a -> Trie a
-alterBy f_ q_ x_
+alterBy f = alterBy_ (\k v mv t -> (f k v mv, t))
+-- TODO: use GHC's 'inline' function so that this gets specialized away.
+
+
+-- | A variant of 'alterBy' which also allows modifying the sub-trie. 
+alterBy_ :: (ByteString -> a -> Maybe a -> Trie a -> (Maybe a, Trie a))
+         -> ByteString -> a -> Trie a -> Trie a
+alterBy_ f_ q_ x_
     | S.null q_ = alterEpsilon
     | otherwise = go q_
     where
     f         = f_ q_ x_
-    nothing q = arc q (f Nothing) Empty
+    nothing q = uncurry (arc q) (f Nothing Empty)
     
-    alterEpsilon t_@Empty                    = arc q_ (f Nothing) t_
-    alterEpsilon t_@(Branch _ _ _ _)         = arc q_ (f Nothing) t_
-    alterEpsilon t_@(Arc k mv t) | S.null k  = arc q_ (f mv)      t
-                                 | otherwise = arc q_ (f Nothing) t_
+    alterEpsilon t_@Empty                    = uncurry (arc q_) (f Nothing t_)
+    alterEpsilon t_@(Branch _ _ _ _)         = uncurry (arc q_) (f Nothing t_)
+    alterEpsilon t_@(Arc k mv t) | S.null k  = uncurry (arc q_) (f mv      t)
+                                 | otherwise = uncurry (arc q_) (f Nothing t_)
     
     
     go q Empty            = nothing q
@@ -625,34 +632,35 @@ alterBy f_ q_ x_
         qh = errorLogHead "alterBy" q
     
     go q t_@(Arc k mv t) =
-        let (p,k',q') = breakMaximalPrefix k q
-        in case (not $ S.null k', S.null q') of
-                (True,  True)  -> -- add node to middle of arc
-                                  arc p (f Nothing) (Arc k' mv t)
-                (True,  False) ->
-                           case nothing q' of
-                           Empty -> t_ -- Nothing to add, reuse old arc
-                           l     -> arc' (branchMerge (getPrefix l) l
-                                                      (getPrefix r) r)
-                                    where
-                                    r = Arc k' mv t
-                                    
-                                    -- inlined version of 'arc'
-                                    arc' | S.null p  = id
-                                         | otherwise = Arc p Nothing
-                                    
-                (False, True)  -> arc k (f mv) t
-                (False, False) -> arc k mv (go q' t)
+        let (p,k',q') = breakMaximalPrefix k q in
+        case (not $ S.null k', S.null q') of
+        (True,  True)  -> -- add node to middle of arc
+                          uncurry (arc p) (f Nothing (Arc k' mv t))
+        (True,  False) ->
+            case nothing q' of
+            Empty -> t_ -- Nothing to add, reuse old arc
+            l     -> arc' (branchMerge (getPrefix l) l (getPrefix r) r)
+                    where
+                    r = Arc k' mv t
+                    
+                    -- inlined version of 'arc'
+                    arc' | S.null p  = id
+                         | otherwise = Arc p Nothing
+                    
+        (False, True)  -> uncurry (arc k) (f mv t)
+        (False, False) -> arc k mv (go q' t)
 
 
--- | ...
+-- | Alter the value associated with a given key. If the key is not
+-- present, then the trie is returned unaltered. See 'alterBy' if
+-- you are interested in inserting new keys or deleting old keys.
 adjustBy :: (ByteString -> a -> a -> a)
          -> ByteString -> a -> Trie a -> Trie a
 adjustBy f_ q_ x_
-    | S.null q_ = \t_ -> case t_ of
-                         (Arc k (Just v) t)
-                             | S.null k -> Arc k (Just (f v)) t
-                         _              -> t_
+    | S.null q_ = \t_ ->
+        case t_ of
+        (Arc k (Just v) t) | S.null k -> Arc k (Just (f v)) t
+        _                             -> t_
     | otherwise = go q_
     where
     f = f_ q_ x_
@@ -667,12 +675,12 @@ adjustBy f_ q_ x_
         qh = errorLogHead "adjustBy" q
     
     go q t_@(Arc k mv t) =
-        let (_,k',q') = breakMaximalPrefix k q
-        in case (not $ S.null k', S.null q') of
-                (True,  True)  -> t_ -- don't break arc inline
-                (True,  False) -> t_ -- don't break arc branching
-                (False, True)  -> Arc k (liftM f mv) t
-                (False, False) -> Arc k mv (go q' t)
+        let (_,k',q') = breakMaximalPrefix k q in
+        case (not $ S.null k', S.null q') of
+        (True,  True)  -> t_ -- don't break arc inline
+        (True,  False) -> t_ -- don't break arc branching
+        (False, True)  -> Arc k (liftM f mv) t
+        (False, False) -> Arc k mv (go q' t)
 
 
 {---------------------------------------------------------------
@@ -739,8 +747,8 @@ mergeBy f = mergeBy'
         go' (Arc k0 mv0 t0)
             (Arc k1 mv1 t1)
             | m' == 0 =
-                let (pre,k0',k1') = breakMaximalPrefix k0 k1
-                in if S.null pre
+                let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
+                if S.null pre
                 then error "mergeBy: no mask, but no prefix string"
                 else let {-# INLINE arcMerge #-}
                          arcMerge mv' t1' t2' = arc pre mv' (go t1' t2')

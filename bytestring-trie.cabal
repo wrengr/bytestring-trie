@@ -3,7 +3,7 @@
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
-Version:        0.2.2
+Version:        0.2.3
 Cabal-Version:  >= 1.2
 Build-Type:     Simple
 Stability:      provisional
@@ -60,10 +60,6 @@ Library
         
     if flag(bytestringInBase)
         Build-Depends: base >= 2.0 && < 2.2
-        Cpp-Options: -DBYTESTRING_IN_BASE
-        -- BUG (Cabal 1.2 + Haddock): enable for Haddock, disable
-        -- for Hackage. Fixed in Cabal 1.6
-        --Ghc-Options: -DBYTESTRING_IN_BASE
     else
         Build-Depends: base < 2.0 || >= 3, bytestring
     

@@ -227,10 +227,12 @@ instance (Binary a) => Binary (Trie a) where
 ---------------------------------------------------------------}
 
 instance Functor Trie where
-    fmap _ Empty              = Empty
-    fmap f (Arc k Nothing  t) = Arc k Nothing      (fmap f t)
-    fmap f (Arc k (Just v) t) = Arc k (Just (f v)) (fmap f t)
-    fmap f (Branch p m l r)   = Branch p m (fmap f l) (fmap f r)
+    fmap f = go
+        where
+        go Empty              = Empty
+        go (Arc k Nothing  t) = Arc k Nothing      (go t)
+        go (Arc k (Just v) t) = Arc k (Just (f v)) (go t)
+        go (Branch p m l r)   = Branch p m (go l) (go r)
 
 
 #ifdef APPLICATIVE_IN_BASE
@@ -238,10 +240,12 @@ instance Foldable Trie where
     -- If our definition of foldr is so much faster than the Endo
     -- default, then maybe we should remove this and use the default
     -- foldMap based on foldr
-    foldMap _ Empty              = mempty
-    foldMap f (Arc _ Nothing  t) = foldMap f t
-    foldMap f (Arc _ (Just v) t) = f v `mappend` foldMap f t
-    foldMap f (Branch _ _ l r)   = foldMap f l `mappend` foldMap f r
+    foldMap f = go
+        where
+        go Empty              = mempty
+        go (Arc _ Nothing  t) = go t
+        go (Arc _ (Just v) t) = f v `mappend` go t
+        go (Branch _ _ l r)   = go l `mappend` go r
     
     {- This definition is much faster, but it's also wrong
     -- (or at least different than foldrWithKey)
@@ -264,10 +268,12 @@ instance Foldable Trie where
 -- TODO: newtype Assoc = A Trie ; instance Foldable Assoc
 
 instance Traversable Trie where
-    traverse _ Empty              = pure Empty
-    traverse f (Arc k Nothing  t) = Arc k Nothing        <$> traverse f t
-    traverse f (Arc k (Just v) t) = Arc k . Just <$> f v <*> traverse f t
-    traverse f (Branch p m l r)   = Branch p m <$> traverse f l <*> traverse f r
+    traverse f = go
+        where
+        go Empty              = pure Empty
+        go (Arc k Nothing  t) = Arc k Nothing        <$> go t
+        go (Arc k (Just v) t) = Arc k . Just <$> f v <*> go t
+        go (Branch p m l r)   = Branch p m <$> go l <*> go r
 
 instance Applicative Trie where
     pure  = return
@@ -331,10 +337,13 @@ instance MonadPlus Trie where
 
 -- | Apply a function to all values, potentially removing them.
 filterMap :: (a -> Maybe b) -> Trie a -> Trie b
-filterMap _ Empty              = empty
-filterMap f (Arc k Nothing  t) = arc k Nothing (filterMap f t)
-filterMap f (Arc k (Just v) t) = arc k (f v)   (filterMap f t)
-filterMap f (Branch p m l r)   = branch p m (filterMap f l) (filterMap f r)
+filterMap f = go
+    where
+    go Empty              = empty
+    go (Arc k Nothing  t) = arc k Nothing (go t)
+    go (Arc k (Just v) t) = arc k (f v)   (go t)
+    go (Branch p m l r)   = branch p m (go l) (go r)
+
 
 -- | Generic version of 'fmap'. This function is notably more
 -- expensive than 'fmap' or 'filterMap' because we have to reconstruct

@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren ng thornton <wren@community.haskell.org>    ~ 2010.06.10
+-- wren ng thornton <wren@community.haskell.org>    ~ 2010.08.15
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
@@ -26,23 +26,25 @@ Description:    An efficient finite map from (byte)strings to values.
                 for lookups and insertions.
 
 Flag base4
-    Description: base-4.0 deprecated Prelude which is imported qualified
     Default:     True
+    Description: base-4.0 emits "Prelude deprecated" messages in
+                 order to get people to be explicit about which
+                 version of base they use.
 
 Flag useCinternal
+    Default:     False
     Description: Use optimized C implementation for indexOfDifference.
                  See notes in Data.Trie.ByteStringInternal.
-    Default:     False
 
 Flag applicativeInBase
-    Description: Applicative functors were added in base-2.0
     Default:     True
+    Description: Applicative functors were added in base-2.0
 
 Flag bytestringInBase
+    Default:     False
     Description: The bytestring library was included in base-2.0
                  and base-2.1.1, but for base-1.0 and base-3.0 it
                  was a separate package
-    Default:     False
 
 
 Library
@@ -52,7 +54,10 @@ Library
                    , Data.Trie.Convenience
     Other-Modules:   Data.Trie.BitTwiddle
                    , Data.Trie.ByteStringInternal
+    Build-Depends: binary
+    
     -- I think this is all that needs doing to get rid of the warnings?
+    -- BUG: looks like it's not enough
     if flag(base4)
         Build-Depends: base >= 4 && < 5
     else
@@ -71,8 +76,6 @@ Library
         --Ghc-Options: -DAPPLICATIVE_IN_BASE
     else
         Build-Depends: base < 2.0
-    
-    Build-Depends: binary
     
     if flag(useCinternal)
         C-Sources:     src/Data/Trie/ByteStringInternal/indexOfDifference.c

@@ -4,7 +4,7 @@
 {-# LANGUAGE CPP #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.20
+--                                                  ~ 2010.08.15
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2009 wren ng thornton

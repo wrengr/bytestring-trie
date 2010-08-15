@@ -45,6 +45,7 @@ module Data.Trie.Internal
     
     -- * Mapping functions
     , mapBy, filterMap
+    , contextualMap, contextualFilterMap, contextualMapBy
     
     -- * Priority-queue functions
     , minAssoc, maxAssoc
@@ -356,6 +357,37 @@ mapBy f = go S.empty
     go q (Arc k (Just v) t) = arc k (f q' v) (go q' t) where q' = S.append q k
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
+
+-- | A variant of 'fmap' which provides access to the subtrie rooted
+-- at each value.
+contextualMap :: (a -> Trie a -> b) -> Trie a -> Trie b
+contextualMap f = go
+    where
+    go Empty              = Empty
+    go (Arc k Nothing  t) = Arc k Nothing        (go t)
+    go (Arc k (Just v) t) = Arc k (Just (f v t)) (go t)
+    go (Branch p m l r)   = Branch p m (go l) (go r)
+
+
+-- | A contextual variant of 'filterMap'.
+contextualFilterMap :: (a -> Trie a -> Maybe b) -> Trie a -> Trie b
+contextualFilterMap f = go
+    where
+    go Empty              = empty
+    go (Arc k Nothing  t) = arc k Nothing (go t)
+    go (Arc k (Just v) t) = arc k (f v t) (go t)
+    go (Branch p m l r)   = branch p m (go l) (go r)
+
+
+-- | A contextual variant of 'mapBy'.
+contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
+contextualMapBy f = go S.empty
+    where
+    go _ Empty              = empty
+    go q (Arc k Nothing  t) = arc k Nothing (go (S.append q k) t)
+    go q (Arc k (Just v) t) = let q' = S.append q k
+                              in arc k (f q' v t) (go q' t)
+    go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
 {---------------------------------------------------------------
 -- Smart constructors and helper functions for building tries

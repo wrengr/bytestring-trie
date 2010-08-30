@@ -67,6 +67,8 @@ shiftRL x i = shiftR x i
 -- Endian independent bit twiddling (Trie endianness, not architecture)
 ---------------------------------------------------------------}
 
+-- TODO: should we use the (Bits Word8) instance instead of 'elemToNat' and (Bits Nat)? We need to compare Core, C--, or ASM in order to decide this. The choice will apply to 'zero', 'mask', 'maskW',... If we shouldn't, then we should probably send a patch upstream to fix the (Bits Word8) instance.
+
 -- | Is the value under the mask zero?
 zero :: KeyElem -> Mask -> Bool
 {-# INLINE zero #-}
@@ -92,6 +94,10 @@ mask i m = maskW (elemToNat i) (elemToNat m)
 maskW :: Word -> Word -> Prefix
 {-# INLINE maskW #-}
 maskW i m = natToElem (i .&. (complement (m-1) `xor` m))
+-- TODO: try the alternatives mentioned in the Containers paper:
+-- \i m -> natToElem (i .&. (negate m - m))
+-- \i m -> natToElem (i .&. (m * complement 1))
+-- N.B. these return /all/ the low bits, and therefore they are not equal functions for all m. They are, however, equal when only one bit of m is set.
 
 -- | Determine whether the first mask denotes a shorter prefix than
 -- the second.

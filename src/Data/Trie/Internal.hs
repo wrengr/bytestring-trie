@@ -205,16 +205,9 @@ showTrie t = shows' id t ""
 
 -- TODO: consider an instance more like the new one for Data.Map. Better?
 instance (Binary a) => Binary (Trie a) where
-    put Empty            = put (0 :: Word8)
-    put (Arc k m t)      = do put (1 :: Word8)
-                              put k
-                              put m
-                              put t
-    put (Branch p m l r) = do put (2 :: Word8)
-                              put p
-                              put m
-                              put l
-                              put r
+    put Empty            = do put (0 :: Word8)
+    put (Arc k m t)      = do put (1 :: Word8); put k; put m; put t
+    put (Branch p m l r) = do put (2 :: Word8); put p; put m; put l; put r
     
     get = do tag <- get :: Get Word8
              case tag of
@@ -389,9 +382,12 @@ contextualMapBy f = go S.empty
                               in arc k (f q' v t) (go q' t)
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
+
 {---------------------------------------------------------------
 -- Smart constructors and helper functions for building tries
 ---------------------------------------------------------------}
+
+-- TODO: shouldn't these smart constructors be INLINE-ed?
 
 -- | Smart constructor to prune @Empty@ from @Branch@es.
 branch :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
@@ -441,6 +437,7 @@ getPrefix Empty                   = error "getPrefix: no Prefix of Empty"
 -- Error messages
 ---------------------------------------------------------------}
 
+-- TODO: shouldn't we inline the logic and just NOINLINE the string constant? There are only three use sites, which themselves aren't inlined...
 errorLogHead :: String -> ByteString -> ByteStringElem
 {-# NOINLINE errorLogHead #-}
 errorLogHead s q | S.null q  = error (s ++": found null subquery")
@@ -459,17 +456,20 @@ empty :: Trie a
 {-# INLINE empty #-}
 empty = Empty
 
+
 -- | /O(1)/, Is the trie empty?
 null :: Trie a -> Bool
 {-# INLINE null #-}
 null Empty = True
 null _     = False
 
+
 -- | /O(1)/, Construct a singleton trie.
 singleton :: ByteString -> a -> Trie a
 {-# INLINE singleton #-}
 singleton k v = Arc k (Just v) Empty
 -- For singletons, don't need to verify invariant on arc length >0
+
 
 -- | /O(n)/, Get count of elements in trie.
 size  :: Trie a -> Int
@@ -514,10 +514,15 @@ foldrWithKey fcons nil = \t -> go S.empty t nil
     go q (Branch _ _ l r) = go q l . go q r
     go q (Arc k mv t)     = case mv of
                             Nothing -> rest
-                            Just v  -> (fcons k' v) . rest
+                            Just v  -> fcons k' v . rest
                           where
                           rest = go k' t
                           k'   = S.append q k
+    {- -- TODO: does this version hurt performance?
+    go q (Arc k mv t)     = maybe id (fcons k' v) mv . go k' t
+                            where k' = S.append q k
+    -}
+
 
 -- cf Data.ByteString.unpack
 -- <http://hackage.haskell.org/packages/archive/bytestring/0.9.1.4/doc/html/src/Data-ByteString.html>
@@ -525,16 +530,12 @@ foldrWithKey fcons nil = \t -> go S.empty t nil
 -- | Convert a trie into a list using a function. Resulting values
 -- are in key-sorted order.
 toListBy :: (ByteString -> a -> b) -> Trie a -> [b]
-
+{-# INLINE toListBy #-}
 #if !defined(__GLASGOW_HASKELL__)
 -- TODO: should probably inline foldrWithKey
 -- TODO: compare performance of that vs both this and the GHC version
-{-# INLINE toListBy #-}
 toListBy f t = foldrWithKey (((:) .) . f) [] t
-
 #else
-
-{-# INLINE toListBy #-}
 -- Written with 'build' to enable the build\/foldr fusion rules.
 toListBy f t = build (toListByFB f t)
 
@@ -545,7 +546,6 @@ toListBy f t = build (toListByFB f t)
 toListByFB :: (ByteString -> a -> b) -> Trie a -> (b -> c -> c) -> c -> c
 {-# INLINE [0] toListByFB #-}
 toListByFB f t cons nil = foldrWithKey ((cons .) . f) nil t
-
 #endif
 
 
@@ -645,6 +645,7 @@ alterBy :: (ByteString -> a -> Maybe a -> Maybe a)
          -> ByteString -> a -> Trie a -> Trie a
 alterBy f = alterBy_ (\k v mv t -> (f k v mv, t))
 -- TODO: use GHC's 'inline' function so that this gets specialized away.
+-- TODO: benchmark to be sure that this doesn't introduce unforseen performance costs because of the uncurrying etc.
 
 
 -- | A variant of 'alterBy' which also allows modifying the sub-trie. 
@@ -698,13 +699,13 @@ alterBy_ f_ q_ x_
 adjustBy :: (ByteString -> a -> a -> a)
          -> ByteString -> a -> Trie a -> Trie a
 adjustBy f_ q_ x_
-    | S.null q_ = \t_ ->
-        case t_ of
-        (Arc k (Just v) t) | S.null k -> Arc k (Just (f v)) t
-        _                             -> t_
+    | S.null q_ = adjustEpsilon
     | otherwise = go q_
     where
     f = f_ q_ x_
+    
+    adjustEpsilon (Arc k (Just v) t) | S.null k = Arc k (Just (f v)) t
+    adjustEpsilon t_                            = t_
     
     go _ Empty            = Empty
     
@@ -778,6 +779,8 @@ mergeBy f = mergeBy'
                 | zero p0 m1        = branch p1 m1 (go t0 l1) r1
                 | otherwise         = branch p1 m1 l1 (go t0 r1)
     
+    -- We combine these branches of 'go' in order to clarify where the definitions of 'p0', 'p1', 'm'', 'p'' are relevant. However, this may introduce inefficiency in the pattern matching automaton...
+    -- TODO: check. And get rid of 'go'' if it does.
     go t0_ t1_ = go' t0_ t1_
         where
         p0 = getPrefix t0_
@@ -813,6 +816,7 @@ mergeBy f = mergeBy'
         -- Inlined branchMerge. Both tries are disjoint @Arc@s now.
         go' _ _ | zero p0 m'   = Branch p' m' t0_ t1_
         go' _ _                = Branch p' m' t1_ t0_
+
 
 mergeMaybe :: (a -> a -> Maybe a) -> Maybe a -> Maybe a -> Maybe a
 {-# INLINE mergeMaybe #-}
@@ -855,7 +859,7 @@ updateMinViewBy :: (ByteString -> a -> Maybe a)
 updateMinViewBy f = go S.empty
     where
     go _ Empty              = Nothing
-    go q (Arc k (Just v) t) = let q' = (S.append q k)
+    go q (Arc k (Just v) t) = let q' = S.append q k
                               in Just (q',v, arc k (f q' v) t)
     go q (Arc k Nothing  t) = mapView (arc k Nothing) (go (S.append q k) t)
     go q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
@@ -866,7 +870,7 @@ updateMaxViewBy :: (ByteString -> a -> Maybe a)
 updateMaxViewBy f = go S.empty
     where
     go _ Empty                  = Nothing
-    go q (Arc k (Just v) Empty) = let q' = (S.append q k)
+    go q (Arc k (Just v) Empty) = let q' = S.append q k
                                   in Just (q',v, arc k (f q' v) Empty)
     go q (Arc k mv       t)     = mapView (arc k mv) (go (S.append q k) t)
     go q (Branch p m l r)       = mapView (branch p m l) (go q r)

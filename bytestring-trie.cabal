@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren ng thornton <wren@community.haskell.org>    ~ 2010.08.15
+-- wren ng thornton <wren@community.haskell.org>    ~ 2010.10.10
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
@@ -24,6 +24,10 @@ Description:    An efficient finite map from (byte)strings to values.
                 Patricia trees have efficient algorithms for union
                 and other merging operations, but they're also quick
                 for lookups and insertions.
+
+Source-Repository head
+    Type:     darcs
+    Location: http://community.haskell.org/~wren/bytestring-trie
 
 Flag base4
     Default:     True

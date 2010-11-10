@@ -1,10 +1,11 @@
 ----------------------------------------------------------------
--- wren ng thornton <wren@community.haskell.org>    ~ 2010.10.10
+-- wren ng thornton <wren@community.haskell.org>    ~ 2010.11.10
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
-Version:        0.2.3
-Cabal-Version:  >= 1.2
+Version:        0.2.3.1
+-- Source-Repository requires version 1.6
+Cabal-Version:  >= 1.6
 Build-Type:     Simple
 Stability:      provisional
 Copyright:      Copyright (c) 2008--2010 wren ng thornton
@@ -29,6 +30,7 @@ Source-Repository head
     Type:     darcs
     Location: http://community.haskell.org/~wren/bytestring-trie
 
+----------------------------------------------------------------
 Flag base4
     Default:     True
     Description: base-4.0 emits "Prelude deprecated" messages in
@@ -50,7 +52,7 @@ Flag bytestringInBase
                  and base-2.1.1, but for base-1.0 and base-3.0 it
                  was a separate package
 
-
+----------------------------------------------------------------
 Library
     Hs-Source-Dirs:  src
     Exposed-Modules: Data.Trie

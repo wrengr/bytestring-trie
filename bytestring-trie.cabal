@@ -60,6 +60,7 @@ Library
                    , Data.Trie.Convenience
     Other-Modules:   Data.Trie.BitTwiddle
                    , Data.Trie.ByteStringInternal
+                   , Data.Trie.Errors
     Build-Depends: binary
     
     -- I think this is all that needs doing to get rid of the warnings?

@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 ----------------------------------------------------------------
---                                                  ~ 2009.01.20
+--                                                  ~ 2011.02.12
 -- |
 -- Module      :  Data.Trie
 -- Copyright   :  Copyright (c) 2008--2011 wren ng thornton
@@ -18,16 +18,19 @@
 -- elements. For further details on the latter, see
 --
 --    * Chris Okasaki and Andy Gill,  \"/Fast Mergeable Integer Maps/\",
---	Workshop on ML, September 1998, pages 77-86,
---	<http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.37.5452>
+--    Workshop on ML, September 1998, pages 77-86,
+--    <http://citeseerx.ist.psu.edu/viewdoc/summary?doi=10.1.1.37.5452>
 --
 --    * D.R. Morrison, \"/PATRICIA -- Practical Algorithm To Retrieve/
---	/Information Coded In Alphanumeric/\", Journal of the ACM, 15(4),
---	October 1968, pages 514-534.
+--    /Information Coded In Alphanumeric/\", Journal of the ACM, 15(4),
+--    October 1968, pages 514-534.
 --
 -- This module aims to provide an austere interface, while being
 -- detailed enough for most users. For an extended interface with
--- many additional functions, see "Data.Trie.Convenience".
+-- many additional functions, see "Data.Trie.Convenience". For
+-- functions that give more detailed (potentially abstraction-breaking)
+-- access to the data strucuture, or for experimental functions
+-- which aren't quite ready for the public API, see "Data.Trie.Internal".
 ----------------------------------------------------------------
 
 module Data.Trie
@@ -54,14 +57,14 @@ module Data.Trie
     , mapBy, filterMap
     ) where
 
-import Prelude hiding (null, lookup)
-import qualified Prelude (null, lookup)
+import Prelude hiding     (null, lookup)
+import qualified Prelude  (null, lookup)
 
 import Data.Trie.Internal
-import Data.ByteString (ByteString)
-
-import Data.Maybe    (isJust)
-import Control.Monad (liftM)
+import Data.Trie.Errors   (impossible)
+import Data.ByteString    (ByteString)
+import Data.Maybe         (isJust)
+import Control.Monad      (liftM)
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
@@ -122,20 +125,20 @@ member q = isJust . lookup q
 
 -- | Insert a new key. If the key is already present, overrides the
 -- old value
-insert    :: ByteString -> a -> Trie a -> Trie a
+insert :: ByteString -> a -> Trie a -> Trie a
 {-# INLINE insert #-}
-insert     = alterBy (\_ x _ -> Just x)
-                                      
+insert = alterBy (\_ x _ -> Just x)
+
 -- | Apply a function to the value at a key.
-adjust    :: (a -> a) -> ByteString -> Trie a -> Trie a
+adjust :: (a -> a) -> ByteString -> Trie a -> Trie a
 {-# INLINE adjust #-}
-adjust f q = alterBy (\_ _ -> liftM f) q undefined
--- TODO: use adjustBy, and benchmark differences
+adjust f q = adjustBy (\_ _ -> f) q (impossible "adjust")
+-- TODO: benchmark vs the definition with alterBy/liftM
 
 -- | Remove the value stored at a key.
-delete     :: ByteString -> Trie a -> Trie a
+delete :: ByteString -> Trie a -> Trie a
 {-# INLINE delete #-}
-delete    q = alterBy (\_ _ _ -> Nothing) q undefined
+delete q = alterBy (\_ _ _ -> Nothing) q (impossible "delete")
 
 
 {---------------------------------------------------------------

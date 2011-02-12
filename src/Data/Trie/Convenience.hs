@@ -29,7 +29,7 @@ module Data.Trie.Convenience
     -- * 'lookupBy' variants
     , lookupWithDefault
     
-    -- * 'alterBy' variants
+    -- * 'alterBy' and 'adjustBy' variants
     -- ** Inserting values
     , insertIfAbsent
     , insertWith,    insertWith'
@@ -44,11 +44,11 @@ module Data.Trie.Convenience
     ) where
 
 import Data.Trie
-import Data.Trie.Internal (lookupBy_)
+import Data.Trie.Internal (lookupBy_, adjustBy)
+import Data.Trie.Errors   (impossible)
 import Data.ByteString    (ByteString)
 import Data.List          (foldl', sortBy)
 import Data.Ord           (comparing)
-import Control.Monad      (liftM)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
@@ -198,24 +198,20 @@ insertWithKey' f =
 insertLookupWithKey :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> (Maybe a, Trie a)
 -}
 
-impossible :: String -> a
-{-# NOINLINE impossible #-}
-impossible fn =
-    error $ "Data.Trie.Convenience." ++ fn ++ ": the impossible happened. This is a bug, please report it to the maintainer."
-
 -- | Apply a function to change the value at a key.
 adjustWithKey :: (ByteString -> a -> a) -> ByteString -> Trie a -> Trie a
 adjustWithKey f q =
-    alterBy (\k _ -> liftM (f k)) q (impossible "adjustWithKey")
+    adjustBy (\k _ -> f k) q (impossible "Convenience.adjustWithKey")
+-- TODO: benchmark vs the definition with alterBy/liftM
 
 -- | Apply a function to the value at a key, possibly removing it.
 update :: (a -> Maybe a) -> ByteString -> Trie a -> Trie a
 update f q =
-    alterBy (\_ _ mx -> mx >>= f) q (impossible "update")
+    alterBy (\_ _ mx -> mx >>= f) q (impossible "Convenience.update")
 
 updateWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> Trie a
 updateWithKey f q =
-    alterBy (\k _ mx -> mx >>= f k) q (impossible "updateWithKey")
+    alterBy (\k _ mx -> mx >>= f k) q (impossible "Convenience.updateWithKey")
 
 {-
 updateLookupWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> (Maybe a, Trie a)

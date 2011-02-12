@@ -46,15 +46,19 @@ module Data.Trie.Internal
     , mergeBy
     
     -- * Mapping functions
-    , mapBy, filterMap
-    , contextualMap, contextualFilterMap, contextualMapBy
+    , mapBy
+    , filterMap
+    , contextualMap
+    , contextualMap'
+    , contextualFilterMap
+    , contextualMapBy
     
     -- * Priority-queue functions
     , minAssoc, maxAssoc
     , updateMinViewBy, updateMaxViewBy
     ) where
 
-import Prelude hiding (null, lookup)
+import Prelude hiding    (null, lookup)
 import qualified Prelude (null, lookup)
 
 import qualified Data.ByteString as S
@@ -364,6 +368,16 @@ contextualMap f = go
     go (Branch p m l r)   = Branch p m (go l) (go r)
 
 
+-- | A variant of 'contextualMap' which applies the function strictly.
+contextualMap' :: (a -> Trie a -> b) -> Trie a -> Trie b
+contextualMap' f = go
+    where
+    go Empty              = Empty
+    go (Arc k Nothing  t) = Arc k Nothing         (go t)
+    go (Arc k (Just v) t) = Arc k (Just $! f v t) (go t)
+    go (Branch p m l r)   = Branch p m (go l) (go r)
+
+
 -- | A contextual variant of 'filterMap'.
 contextualFilterMap :: (a -> Trie a -> Maybe b) -> Trie a -> Trie b
 contextualFilterMap f = go
@@ -374,7 +388,8 @@ contextualFilterMap f = go
     go (Branch p m l r)   = branch p m (go l) (go r)
 
 
--- | A contextual variant of 'mapBy'.
+-- | A contextual variant of 'mapBy'. Again note that this is
+-- expensive since we must reconstruct the keys.
 contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
 contextualMapBy f = go S.empty
     where

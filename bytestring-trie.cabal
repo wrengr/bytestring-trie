@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren ng thornton <wren@community.haskell.org>    ~ 2010.11.10
+-- wren ng thornton <wren@community.haskell.org>    ~ 2010.11.12
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
@@ -25,6 +25,17 @@ Description:    An efficient finite map from (byte)strings to values.
                 Patricia trees have efficient algorithms for union
                 and other merging operations, but they're also quick
                 for lookups and insertions.
+                .
+                If you are only interested in being able to associate
+                strings to values, then you may prefer the @hashmap@
+                package which is faster for those only needing a
+                map-like structure. This package is intended for
+                those who need the extra capabilities that a trie-like
+                structure can offer (e.g., structure sharing to
+                reduce memory costs for highly redundant keys,
+                taking the submap of all keys with a given prefix,
+                contextual mapping, extracting the minimum and
+                maximum keys, etc.)
 
 Source-Repository head
     Type:     darcs

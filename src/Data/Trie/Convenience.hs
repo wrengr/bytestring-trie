@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.20
+--                                                  ~ 2011.02.12
 -- |
 -- Module      :  Data.Trie.Convenience
 -- Copyright   :  Copyright (c) 2008--2011 wren ng thornton
@@ -21,7 +21,9 @@ module Data.Trie.Convenience
     (
     -- * Conversion functions
     -- $fromList
-      fromListL, fromListR, fromListS, fromListWith
+      fromListL, fromListR, fromListS
+    , fromListWith, fromListWith'
+    , fromListWithL, fromListWithL'
     
     -- * 'lookupBy' variants
     , lookupWithDefault
@@ -54,6 +56,7 @@ import Control.Monad      (liftM)
 -- which is swapped when reversing the list or changing which
 -- function is used).
 
+
 -- | A left-fold version of 'fromList'. If you run into issues with
 -- stack overflows when using 'fromList' or 'fromListR', then you
 -- should use this function instead.
@@ -61,16 +64,19 @@ fromListL :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListL #-}
 fromListL = foldl' (flip . uncurry $ insertIfAbsent) empty
 
--- | This version is just an alias for 'fromList'. It is a good
+
+-- | An explicitly right-fold variant of 'fromList'. It is a good
 -- consumer for list fusion. Worst-case behavior is somewhat worse
--- than worst-case for 'fromListL'.
+-- than worst-case for 'fromListL'. The 'fromList' function is
+-- currently just an alias for 'fromListR'.
 fromListR :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListR #-}
-fromListR = fromList
+fromListR = fromList -- == foldr (uncurry insert) empty
 
--- TODO: compare performance against a fromListL definition, adjusting the sort
+
+-- TODO: compare performance against a fromListL variant, adjusting the sort appropriately
 --
--- | This version sorts the list before folding over it. This adds
+-- | This variant sorts the list before folding over it. This adds
 -- /O(n log n)/ overhead and requires the whole list be in memory
 -- at once, but it ensures that the list is in best-case order. The
 -- benefits generally outweigh the costs.
@@ -78,14 +84,50 @@ fromListS :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListS #-}
 fromListS = fromListR . sortBy (comparing fst)
 
+
 -- | A variant of 'fromListR' that takes a function for combining
--- values on conflict.
+-- values on conflict. The first argument to the combining function
+-- is the current value being accumulated in the trie; the second
+-- argument is the new value from the latter portion of the association
+-- list. Thus, @fromList = fromListWith const@.
 fromListWith :: (a -> a -> a) -> [(ByteString,a)] -> Trie a
 {-# INLINE fromListWith #-}
 fromListWith f = foldr (uncurry $ alterBy g) empty
     where
     g _ v Nothing  = Just v
     g _ v (Just w) = Just (f v w)
+
+
+-- | A variant of 'fromListWith' which applies the combining
+-- function strictly. This function is a good consumer for list
+-- fusion. If you need list fusion and are running into stack
+-- overflow problems with 'fromListWith', then this function may
+-- solve the problem.
+fromListWith' :: (a -> a -> a) -> [(ByteString,a)] -> Trie a
+{-# INLINE fromListWith' #-}
+fromListWith' f = foldr (uncurry $ alterBy g') empty
+    where
+    g' _ v Nothing  = Just v
+    g' _ v (Just w) = Just $! f v w
+
+
+-- | A left-fold variant of 'fromListWith'.
+fromListWithL :: (a -> a -> a) -> [(ByteString,a)] -> Trie a
+{-# INLINE fromListWithL #-}
+fromListWithL f = foldl' (flip . uncurry $ alterBy flipG) empty
+    where
+    flipG _ v Nothing  = Just v
+    flipG _ v (Just w) = Just (f w v)
+
+
+-- | A variant of 'fromListWithL' which applies the combining
+-- function strictly.
+fromListWithL' :: (a -> a -> a) -> [(ByteString,a)] -> Trie a
+{-# INLINE fromListWithL' #-}
+fromListWithL' f = foldl' (flip . uncurry $ alterBy flipG') empty
+    where
+    flipG' _ v Nothing  = Just v
+    flipG' _ v (Just w) = Just $! f w v
 
 ----------------------------------------------------------------
 -- | Lookup a key, returning a default value if it's not found.

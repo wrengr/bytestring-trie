@@ -1,6 +1,7 @@
 0.2.3 (2010.XX.XX):
     - added Data.Trie.Internal.alterBy_
     - added Data.Trie.Internal.{contextualMap, contextualFilterMap, contextualMapBy}
+    - added Data.Trie.Convenience.{fromListWith', fromListWithL, fromListWithL'} as suggested by Ian Taylor
     - converted fmap, foldMap, traverse, and filterMap to worker/wrapper
 0.2.2 (2010.06.10):
     - Corrected a major bug in mergeBy, reported by Gregory Crosswhite

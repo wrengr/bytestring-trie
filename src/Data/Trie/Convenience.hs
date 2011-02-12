@@ -7,7 +7,7 @@
 -- Copyright   :  Copyright (c) 2008--2011 wren ng thornton
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
--- Stability   :  provisional
+-- Stability   :  experimental
 -- Portability :  portable
 --
 -- Additional convenience functions. In order to keep "Data.Trie"
@@ -20,6 +20,7 @@
 module Data.Trie.Convenience
     (
     -- * Conversion functions
+    -- ** 'fromList' variants
     -- $fromList
       fromListL, fromListR, fromListS
     , fromListWith,  fromListWith'
@@ -29,9 +30,11 @@ module Data.Trie.Convenience
     , lookupWithDefault
     
     -- * 'alterBy' variants
+    -- ** Inserting values
     , insertIfAbsent
     , insertWith,    insertWith'
     , insertWithKey, insertWithKey'
+    -- ** Updating and adjusting values
     , adjustWithKey
     , update, updateWithKey
     

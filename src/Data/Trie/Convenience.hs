@@ -19,26 +19,25 @@
 
 module Data.Trie.Convenience
     (
-    -- * Conversion functions
-    -- ** 'fromList' variants
+    -- * Conversion functions ('fromList' variants)
     -- $fromList
       fromListL, fromListR, fromListS
     , fromListWith,  fromListWith'
     , fromListWithL, fromListWithL'
     
-    -- * 'lookupBy' variants
+    -- * Query functions ('lookupBy' variants)
     , lookupWithDefault
     
-    -- * 'alterBy' and 'adjustBy' variants
-    -- ** Inserting values
+    -- * Inserting values ('alterBy' variants)
     , insertIfAbsent
     , insertWith,    insertWith'
     , insertWithKey, insertWithKey'
-    -- ** Updating and adjusting values
+    
+    -- * Updating and adjusting values ('alterBy' and 'adjustBy' variants)
     , adjustWithKey
     , update, updateWithKey
     
-    -- * 'mergeBy' variants
+    -- * Combining tries ('mergeBy' variants)
     , disunion
     , unionWith, unionWith'
     ) where
@@ -198,6 +197,7 @@ insertWithKey' f =
 insertLookupWithKey :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> (Maybe a, Trie a)
 -}
 
+----------------------------------------------------------------
 -- | Apply a function to change the value at a key.
 adjustWithKey :: (ByteString -> a -> a) -> ByteString -> Trie a -> Trie a
 adjustWithKey f q =
@@ -209,6 +209,7 @@ update :: (a -> Maybe a) -> ByteString -> Trie a -> Trie a
 update f q =
     alterBy (\_ _ mx -> mx >>= f) q (impossible "Convenience.update")
 
+-- | A variant of 'update' which also provides the key to the function.
 updateWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> Trie a
 updateWithKey f q =
     alterBy (\k _ mx -> mx >>= f k) q (impossible "Convenience.updateWithKey")

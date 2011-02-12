@@ -713,6 +713,8 @@ alterBy_ f_ q_ x_
 -- | Alter the value associated with a given key. If the key is not
 -- present, then the trie is returned unaltered. See 'alterBy' if
 -- you are interested in inserting new keys or deleting old keys.
+-- Because this function does not need to worry about changing the
+-- trie structure, it is somewhat faster than 'alterBy'.
 adjustBy :: (ByteString -> a -> a -> a)
          -> ByteString -> a -> Trie a -> Trie a
 adjustBy f_ q_ x_

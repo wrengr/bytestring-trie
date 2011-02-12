@@ -459,8 +459,8 @@ getPrefix Empty                   = error "getPrefix: no Prefix of Empty"
 -- TODO: shouldn't we inline the logic and just NOINLINE the string constant? There are only three use sites, which themselves aren't inlined...
 errorLogHead :: String -> ByteString -> ByteStringElem
 {-# NOINLINE errorLogHead #-}
-errorLogHead s q
-    | S.null q  = error (s ++": found null subquery")
+errorLogHead fn q
+    | S.null q  = error $ "Data.Trie.Internal." ++ fn ++": found null subquery"
     | otherwise = S.head q
 
 

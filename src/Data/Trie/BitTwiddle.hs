@@ -7,7 +7,7 @@
 --                                                  ~ 2009.01.05
 -- |
 -- Module      :  Data.Trie.BitTwiddle
--- Copyright   :  Copyright (c) Daan Leijen 2002
+-- Copyright   :  Copyright (c) 2002 Daan Leijen
 -- License     :  BSD3
 -- Maintainer  :  libraries@haskell.org, wren@community.haskell.org
 -- Stability   :  stable

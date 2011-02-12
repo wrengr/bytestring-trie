@@ -8,7 +8,7 @@ Version:        0.2.3.1
 Cabal-Version:  >= 1.6
 Build-Type:     Simple
 Stability:      provisional
-Copyright:      Copyright (c) 2008--2010 wren ng thornton
+Copyright:      Copyright (c) 2008--2011 wren ng thornton
 License:        BSD3
 License-File:   LICENSE
 Author:         wren ng thornton

@@ -198,16 +198,24 @@ insertWithKey' f =
 insertLookupWithKey :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> (Maybe a, Trie a)
 -}
 
+impossible :: String -> a
+{-# NOINLINE impossible #-}
+impossible fn =
+    error $ "Data.Trie.Convenience." ++ fn ++ ": the impossible happened. This is a bug, please report it to the maintainer."
+
 -- | Apply a function to change the value at a key.
-adjustWithKey  :: (ByteString -> a -> a) -> ByteString -> Trie a -> Trie a
-adjustWithKey f q = alterBy (\k _ -> liftM (f k)) q undefined
+adjustWithKey :: (ByteString -> a -> a) -> ByteString -> Trie a -> Trie a
+adjustWithKey f q =
+    alterBy (\k _ -> liftM (f k)) q (impossible "adjustWithKey")
 
 -- | Apply a function to the value at a key, possibly removing it.
 update :: (a -> Maybe a) -> ByteString -> Trie a -> Trie a
-update        f q = alterBy (\_ _ mx -> mx >>= f) q undefined
+update f q =
+    alterBy (\_ _ mx -> mx >>= f) q (impossible "update")
 
 updateWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> Trie a
-updateWithKey f q = alterBy (\k _ mx -> mx >>= f k) q undefined
+updateWithKey f q =
+    alterBy (\k _ mx -> mx >>= f k) q (impossible "updateWithKey")
 
 {-
 updateLookupWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> (Maybe a, Trie a)

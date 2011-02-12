@@ -117,13 +117,14 @@ foreign import ccall unsafe "ByteStringInternal/indexOfDifference.h indexOfDiffe
 -- Use the naive algorithm which doesn't depend on architecture details
 indexOfDifference p1 p2 limit = goByte 0
     where
-    goByte n = if   n >= limit
-               then return limit
-               else do c1 <- peekElemOff p1 n
-                       c2 <- peekElemOff p2 n
-                       if c1 == c2
-                           then goByte $! n+1
-                           else return n
+    goByte n =
+        if   n >= limit
+        then return limit
+        else do c1 <- peekElemOff p1 n
+                c2 <- peekElemOff p2 n
+                if c1 == c2
+                    then goByte $! n+1
+                    else return n
 {-
 #endif
 -}

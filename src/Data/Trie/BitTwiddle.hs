@@ -47,11 +47,11 @@ type Mask    = KeyElem
 
 elemToNat :: KeyElem -> Word
 {-# INLINE elemToNat #-}
-elemToNat i = fromIntegral i
+elemToNat = fromIntegral
 
 natToElem :: Word -> KeyElem
 {-# INLINE natToElem #-}
-natToElem w = fromIntegral w
+natToElem = fromIntegral
 
 shiftRL :: Word -> Int -> Word
 {-# INLINE shiftRL #-}

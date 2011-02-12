@@ -54,12 +54,15 @@ import Control.Monad      (liftM)
 -- which is swapped when reversing the list or changing which
 -- function is used).
 
+-- | A left-fold version of 'fromList'. If you run into issues with
+-- stack overflows when using 'fromList' or 'fromListR', then you
+-- should use this function instead.
 fromListL :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListL #-}
-fromListL = foldl' (flip $ uncurry $ insertIfAbsent) empty
+fromListL = foldl' (flip . uncurry $ insertIfAbsent) empty
 
 -- | This version is just an alias for 'fromList'. It is a good
--- producer for list fusion. Worst-case behavior is somewhat worse
+-- consumer for list fusion. Worst-case behavior is somewhat worse
 -- than worst-case for 'fromListL'.
 fromListR :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListR #-}
@@ -75,7 +78,8 @@ fromListS :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListS #-}
 fromListS = fromListR . sortBy (comparing fst)
 
--- | A variant of 'fromListR' that takes a function for combining values on conflict.
+-- | A variant of 'fromListR' that takes a function for combining
+-- values on conflict.
 fromListWith :: (a -> a -> a) -> [(ByteString,a)] -> Trie a
 {-# INLINE fromListWith #-}
 fromListWith f = foldr (uncurry $ alterBy g) empty

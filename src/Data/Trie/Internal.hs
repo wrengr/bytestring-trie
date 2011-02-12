@@ -387,10 +387,9 @@ contextualMapBy f = go S.empty
 -- Smart constructors and helper functions for building tries
 ---------------------------------------------------------------}
 
--- TODO: shouldn't these smart constructors be INLINE-ed?
-
 -- | Smart constructor to prune @Empty@ from @Branch@es.
 branch :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
+{-# INLINE branch #-}
 branch _ _ Empty r     = r
 branch _ _ l     Empty = l
 branch p m l     r     = Branch p m l r
@@ -399,6 +398,7 @@ branch p m l     r     = Branch p m l r
 -- | Smart constructor to prune @Arc@s that lead nowhere.
 -- N.B if mv=Just then doesn't check whether t=epsilon. It's up to callers to ensure that invariant isn't broken.
 arc :: ByteString -> Maybe a -> Trie a -> Trie a
+{-# INLINE arc #-}
 arc k mv@(Just _)   t                            = Arc k mv t
 arc _    Nothing    Empty                        = Empty
 arc k    Nothing  t@(Branch _ _ _ _) | S.null k  = t
@@ -412,6 +412,7 @@ arc k    Nothing    (Arc k' mv' t')              = Arc (S.append k k') mv' t'
 --
 -- N.B. /do not/ use if prefixes could match entirely!
 branchMerge :: Prefix -> Trie a -> Prefix -> Trie a -> Trie a
+{-# INLINE branchMerge #-}
 branchMerge _ Empty _ t2    = t2
 branchMerge _  t1   _ Empty = t1
 branchMerge p1 t1  p2 t2
@@ -427,6 +428,7 @@ branchMerge p1 t1  p2 t2
 -- we can see 4/8/?*Word8 at a time instead of just one.
 -- But that makes maintaining invariants ...difficult :(
 getPrefix :: Trie a -> Prefix
+{-# INLINE getPrefix #-}
 getPrefix (Branch p _ _ _)        = p
 getPrefix (Arc k _ _) | S.null k  = 0 -- for lack of a better value
                       | otherwise = S.head k
@@ -440,8 +442,9 @@ getPrefix Empty                   = error "getPrefix: no Prefix of Empty"
 -- TODO: shouldn't we inline the logic and just NOINLINE the string constant? There are only three use sites, which themselves aren't inlined...
 errorLogHead :: String -> ByteString -> ByteStringElem
 {-# NOINLINE errorLogHead #-}
-errorLogHead s q | S.null q  = error (s ++": found null subquery")
-                 | otherwise = S.head q
+errorLogHead s q
+    | S.null q  = error (s ++": found null subquery")
+    | otherwise = S.head q
 
 
 ----------------------------------------------------------------
@@ -512,16 +515,13 @@ foldrWithKey fcons nil = \t -> go S.empty t nil
     where
     go _ Empty            = id
     go q (Branch _ _ l r) = go q l . go q r
-    go q (Arc k mv t)     = case mv of
-                            Nothing -> rest
-                            Just v  -> fcons k' v . rest
-                          where
-                          rest = go k' t
-                          k'   = S.append q k
-    {- -- TODO: does this version hurt performance?
-    go q (Arc k mv t)     = maybe id (fcons k' v) mv . go k' t
-                            where k' = S.append q k
-    -}
+    go q (Arc k mv t)     =
+        case mv of
+        Nothing -> rest
+        Just v  -> fcons k' v . rest
+        where
+        rest = go k' t
+        k'   = S.append q k
 
 
 -- cf Data.ByteString.unpack

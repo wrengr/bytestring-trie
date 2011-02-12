@@ -22,19 +22,22 @@ module Data.Trie.Convenience
     -- * Conversion functions
     -- $fromList
       fromListL, fromListR, fromListS
-    , fromListWith, fromListWith'
+    , fromListWith,  fromListWith'
     , fromListWithL, fromListWithL'
     
     -- * 'lookupBy' variants
     , lookupWithDefault
     
     -- * 'alterBy' variants
-    , insertIfAbsent, insertWith, insertWithKey
+    , insertIfAbsent
+    , insertWith,    insertWith'
+    , insertWithKey, insertWithKey'
     , adjustWithKey
     , update, updateWithKey
     
     -- * 'mergeBy' variants
-    , disunion, unionWith
+    , disunion
+    , unionWith, unionWith'
     ) where
 
 import Data.Trie
@@ -87,9 +90,10 @@ fromListS = fromListR . sortBy (comparing fst)
 
 -- | A variant of 'fromListR' that takes a function for combining
 -- values on conflict. The first argument to the combining function
--- is the current value being accumulated in the trie; the second
--- argument is the new value from the latter portion of the association
--- list. Thus, @fromList = fromListWith const@.
+-- is the ``new'' value from the initial portion of the list; the
+-- second argument is the value that has been accumulated into the
+-- trie from the tail of the list (just like the first argument to
+-- 'foldr'). Thus, @fromList = fromListWith const@.
 fromListWith :: (a -> a -> a) -> [(ByteString,a)] -> Trie a
 {-# INLINE fromListWith #-}
 fromListWith f = foldr (uncurry $ alterBy g) empty
@@ -111,7 +115,12 @@ fromListWith' f = foldr (uncurry $ alterBy g') empty
     g' _ v (Just w) = Just $! f v w
 
 
--- | A left-fold variant of 'fromListWith'.
+-- | A left-fold variant of 'fromListWith'. Note that the arguments
+-- to the combining function are swapped: the first is the value
+-- in the trie which has been accumulated from the initial part of
+-- the list; the second argument is the ``new'' value from the
+-- remaining tail of the list (just like the first argument to
+-- 'foldl'). Thus, @fromListL = fromListWithL const@.
 fromListWithL :: (a -> a -> a) -> [(ByteString,a)] -> Trie a
 {-# INLINE fromListWithL #-}
 fromListWithL f = foldl' (flip . uncurry $ alterBy flipG) empty
@@ -132,28 +141,55 @@ fromListWithL' f = foldl' (flip . uncurry $ alterBy flipG') empty
 ----------------------------------------------------------------
 -- | Lookup a key, returning a default value if it's not found.
 lookupWithDefault :: a -> ByteString -> Trie a -> a
-lookupWithDefault x = lookupBy_ (\mv _ -> case mv of
-                                          Nothing -> x
-                                          Just v  -> v) x (const x)
+lookupWithDefault def = lookupBy_ f def (const def)
+    where
+    f Nothing  _ = def
+    f (Just v) _ = v
 
 ----------------------------------------------------------------
 
 -- | Insert a new key, retaining old value on conflict.
 insertIfAbsent :: ByteString -> a -> Trie a -> Trie a
-insertIfAbsent = alterBy $ \_ x mv -> case mv of
-                                      Nothing -> Just x
-                                      Just _  -> mv
+insertIfAbsent =
+    alterBy $ \_ x mv ->
+        case mv of
+        Nothing -> Just x
+        Just _  -> mv
 
 -- | Insert a new key, with a function to resolve conflicts.
 insertWith :: (a -> a -> a) -> ByteString -> a -> Trie a -> Trie a
-insertWith f = alterBy $ \_ x mv -> case mv of
-                                    Nothing -> Just x
-                                    Just v  -> Just (f x v)
+insertWith f =
+    alterBy $ \_ x mv ->
+        case mv of
+        Nothing -> Just x
+        Just v  -> Just (f x v)
 
+-- | A variant of 'insertWith' which applies the combining function
+-- strictly.
+insertWith' :: (a -> a -> a) -> ByteString -> a -> Trie a -> Trie a
+insertWith' f =
+    alterBy $ \_ x mv ->
+        case mv of
+        Nothing -> Just x
+        Just v  -> Just $! f x v
+
+-- | A variant of 'insertWith' which also provides the key to the
+-- combining function.
 insertWithKey :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> Trie a
-insertWithKey f = alterBy $ \k x mv -> case mv of
-                                    Nothing -> Just x
-                                    Just v  -> Just (f k x v)
+insertWithKey f =
+    alterBy $ \k x mv ->
+        case mv of
+        Nothing -> Just x
+        Just v  -> Just (f k x v)
+
+-- | A variant of 'insertWithKey' which applies the combining
+-- function strictly.
+insertWithKey' :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> Trie a
+insertWithKey' f =
+    alterBy $ \k x mv ->
+        case mv of
+        Nothing -> Just x
+        Just v  -> Just $! f k x v
 
 {- This is a tricky one...
 insertLookupWithKey :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> (Maybe a, Trie a)
@@ -177,13 +213,20 @@ updateLookupWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> (
 
 ----------------------------------------------------------------
 
--- | Combine two tries. If they define the same key, it is removed.
+-- | Combine two tries, a la symmetric difference. If they define
+-- the same key, it is removed; otherwise it is retained with the
+-- value it has in whichever trie.
 disunion :: Trie a -> Trie a -> Trie a
 disunion = mergeBy (\_ _ -> Nothing)
 
 -- | Combine two tries, using a function to resolve conflicts.
 unionWith :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
 unionWith f = mergeBy (\x y -> Just (f x y))
+
+-- | A variant of 'unionWith' which applies the combining function
+-- strictly.
+unionWith' :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
+unionWith' f = mergeBy (\x y -> Just $! f x y)
 
 {- TODO: (efficiently)
 difference, intersection

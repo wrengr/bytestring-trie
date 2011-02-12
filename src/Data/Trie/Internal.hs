@@ -1,4 +1,6 @@
-{-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+-- To make GHC stop warning about the Prelude
+{-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 
 -- For list fusion on toListBy, and for applicative hiding
 {-# LANGUAGE CPP #-}
@@ -53,7 +55,7 @@ module Data.Trie.Internal
     ) where
 
 import Prelude hiding (null, lookup)
-import qualified Prelude
+import qualified Prelude (null, lookup)
 
 import qualified Data.ByteString as S
 import Data.Trie.ByteStringInternal

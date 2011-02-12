@@ -7,10 +7,10 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2010.06.10
+--                                                  ~ 2011.02.12
 -- |
 -- Module      :  Data.Trie.Test
--- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
+-- Copyright   :  Copyright (c) 2008--2011 wren ng thornton
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  provisional
@@ -21,6 +21,7 @@
 module Data.Trie.Test (packC2W, main) where
 
 import qualified Data.Trie                as T
+import qualified Data.Trie.Convenience    as TC
 import qualified Data.ByteString          as S
 import qualified Data.ByteString.Internal as S (c2w, w2c)
 
@@ -70,7 +71,12 @@ main  = do
     checkQuick 500  (prop_submap2       :: Str -> T.Trie Int -> Bool)
     checkQuick 500  (prop_submap3       :: Str -> T.Trie Int -> Bool)
     checkQuick 500  (prop_toList        :: T.Trie Int -> Bool)
-    checkQuick 500  (prop_fromList_toList :: [(Str, Int)] -> Bool)
+    checkQuick 500  (prop_fromList_takes_first :: [(Str, Int)] -> Bool)
+    checkQuick 500  (prop_fromListR_takes_first :: [(Str, Int)] -> Bool)
+    checkQuick 500  (prop_fromListL_takes_first :: [(Str, Int)] -> Bool)
+    checkQuick 500  (prop_fromListS_takes_first :: [(Str, Int)] -> Bool)
+    checkQuick 500  (prop_fromListWithConst_takes_first :: [(Str, Int)] -> Bool)
+    checkQuick 500  (prop_fromListWithLConst_takes_first :: [(Str, Int)] -> Bool)
     putStrLn ""
     
     putStrLn "smallcheck @ ():" -- Beware the exponential!
@@ -83,8 +89,16 @@ main  = do
     checkSmall 3 (prop_submap1       :: Str -> T.Trie () -> Bool)
     checkSmall 3 (prop_submap2       :: Str -> T.Trie () -> Bool)
     -- checkSmall 3 (prop_submap3 :: Str -> T.Trie () -> Bool)
-    checkSmall 4 (prop_toList        :: T.Trie () -> Bool)
-    checkSmall 5 (prop_fromList_toList :: [(Str, ())] -> Bool)
+    {- -- BUG: Needs both instances of Monoid and SC.Serial...
+    putStrLn "smallcheck @ Letter:"
+    checkSmall 4 (prop_toList        :: T.Trie Letter -> Bool)
+    checkSmall 5 (prop_fromList_takes_first :: [(Str, Letter)] -> Bool)
+    checkSmall 5 (prop_fromListR_takes_first :: [(Str, Letter)] -> Bool)
+    checkSmall 5 (prop_fromListL_takes_first :: [(Str, Letter)] -> Bool)
+    checkSmall 5 (prop_fromListS_takes_first :: [(Str, Letter)] -> Bool)
+    checkSmall 5 (prop_fromListWithConst_takes_first :: [(Str, Letter)] -> Bool)
+    checkSmall 5 (prop_fromListWithLConst_takes_first :: [(Str, Letter)] -> Bool)
+    -}
     putStrLn ""
     where
 #ifdef __USE_QUICKCHECK_1__
@@ -311,11 +325,34 @@ prop_toList :: T.Trie a -> Bool
 prop_toList t = ordered (T.keys t)
     where ordered xs = and (zipWith (<=) xs (drop 1 xs))
 
--- | 'fromList' takes the first value for a given key
-prop_fromList_toList :: (Eq a) => [(Str, a)] -> Bool
-prop_fromList_toList assocs =
-    (T.toList . T.fromList) === (nubBy (apFst (==)) . sortBy (comparing fst))
+_takes_first :: (Eq c) => ([(S.ByteString, c)] -> T.Trie c) -> [(Str, c)] -> Bool
+_takes_first f assocs =
+    (T.toList . f) === (nubBy (apFst (==)) . sortBy (comparing fst))
     $ map (first unStr) assocs
+
+-- | 'fromList' takes the first value for a given key
+prop_fromList_takes_first :: (Eq a) => [(Str, a)] -> Bool
+prop_fromList_takes_first = _takes_first T.fromList
+
+-- | 'fromListR' takes the first value for a given key
+prop_fromListR_takes_first :: (Eq a) => [(Str, a)] -> Bool
+prop_fromListR_takes_first = _takes_first TC.fromListR
+
+-- | 'fromListL' takes the first value for a given key
+prop_fromListL_takes_first :: (Eq a) => [(Str, a)] -> Bool
+prop_fromListL_takes_first = _takes_first TC.fromListL
+
+-- | 'fromListS' takes the first value for a given key
+prop_fromListS_takes_first :: (Eq a) => [(Str, a)] -> Bool
+prop_fromListS_takes_first = _takes_first TC.fromListS
+
+-- | @('fromListWith' const)@ takes the first value for a given key
+prop_fromListWithConst_takes_first :: (Eq a) => [(Str, a)] -> Bool
+prop_fromListWithConst_takes_first = _takes_first (TC.fromListWith const)
+
+-- | @('fromListWithL' const)@ takes the first value for a given key
+prop_fromListWithLConst_takes_first :: (Eq a) => [(Str, a)] -> Bool
+prop_fromListWithLConst_takes_first = _takes_first (TC.fromListWithL const)
 
 ----------------------------------------------------------------
 -- | Lift a function to apply to the first of pairs, retaining the second.

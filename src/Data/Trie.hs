@@ -1,4 +1,6 @@
-{-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+-- To make GHC stop warning about the Prelude
+{-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
+{-# LANGUAGE NoImplicitPrelude #-}
 ----------------------------------------------------------------
 --                                                  ~ 2009.01.20
 -- |
@@ -53,7 +55,7 @@ module Data.Trie
     ) where
 
 import Prelude hiding (null, lookup)
-import qualified Prelude
+import qualified Prelude (null, lookup)
 
 import Data.Trie.Internal
 import Data.ByteString (ByteString)

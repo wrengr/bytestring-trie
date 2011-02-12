@@ -3,7 +3,7 @@
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
-Version:        0.2.3.1
+Version:        0.2.3
 -- Source-Repository requires version 1.6
 Cabal-Version:  >= 1.6
 Build-Type:     Simple

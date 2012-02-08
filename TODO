@@ -1,3 +1,9 @@
+* Combine the test suite into a single executable and then do:
+    $> darcs setpref test "runhaskell Tests.hs"
+* Also, tell Setup.hs so that `cabal test` and `runhaskell Setup.hs
+  test` call the test suite.
+
+
 Data.Trie.Internal:
 * shouldn't the smart constructors be INLINE-ed?
 ** If not, then we should at least have a special smart constructor for (arc _ Nothing _) since it's so common.

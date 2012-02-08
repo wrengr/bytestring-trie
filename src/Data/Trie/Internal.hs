@@ -291,7 +291,7 @@ instance Applicative Trie where
 --  2. m >>= return    == m
 --  3. (m >>= f) >>= g == m >>= (\x -> f x >>= g)
 instance Monad Trie where
-    return x = singleton S.empty x
+    return = singleton S.empty
     
     (>>=) Empty              _ = empty
     (>>=) (Branch p m l r)   f = branch p m (l >>= f) (r >>= f)

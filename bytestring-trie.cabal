@@ -1,19 +1,22 @@
 ----------------------------------------------------------------
--- wren ng thornton <wren@community.haskell.org>    ~ 2010.11.12
+-- wren ng thornton <wren@community.haskell.org>    ~ 2012.02.08
 ----------------------------------------------------------------
 
-Name:           bytestring-trie
-Version:        0.2.3
--- Source-Repository requires version 1.6
+-- By and large Cabal >=1.2 is fine; but >= 1.6 gives tested-with:
+-- and source-repository:.
 Cabal-Version:  >= 1.6
 Build-Type:     Simple
+
+Name:           bytestring-trie
+Version:        0.2.3.1
 Stability:      provisional
-Copyright:      Copyright (c) 2008--2011 wren ng thornton
-License:        BSD3
-License-File:   LICENSE
+Homepage:       http://code.haskell.org/~wren/
 Author:         wren ng thornton
 Maintainer:     wren@community.haskell.org
-Homepage:       http://code.haskell.org/~wren/
+Copyright:      Copyright (c) 2008--2012 wren ng thornton
+License:        BSD3
+License-File:   LICENSE
+
 Category:       Data, Data Structures
 Synopsis:       An efficient finite map from (byte)strings to values.
 Description:    An efficient finite map from (byte)strings to values.
@@ -37,6 +40,11 @@ Description:    An efficient finite map from (byte)strings to values.
                 contextual mapping, extracting the minimum and
                 maximum keys, etc.)
 
+
+Tested-With:
+    GHC ==6.12.1
+Extra-source-files:
+    AUTHORS, VERSION
 Source-Repository head
     Type:     darcs
     Location: http://community.haskell.org/~wren/bytestring-trie

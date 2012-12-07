@@ -1,3 +1,6 @@
+* Reimplement things a-la HAMT <https://github.com/tibbe/unordered-containers/blob/hamt/Data/HashMap/Base.hs> for the wide fanout, ignoring the hashing stuff naturally.
+
+
 * Combine the test suite into a single executable and then do:
     $> darcs setpref test "runhaskell Tests.hs"
 * Also, tell Setup.hs so that `cabal test` and `runhaskell Setup.hs

@@ -4,7 +4,7 @@
 --                                                  ~ 2011.02.12
 -- |
 -- Module      :  Data.Trie.Convenience
--- Copyright   :  Copyright (c) 2008--2011 wren ng thornton
+-- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  experimental

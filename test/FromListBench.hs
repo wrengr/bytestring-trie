@@ -4,7 +4,7 @@
 --                                                  ~ 2009.01.04
 -- |
 -- Module      :  Bench.FromList
--- Copyright   :  Copyright (c) 2008--2009 wren ng thornton
+-- Copyright   :  Copyright (c) 2008--2009 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  provisional

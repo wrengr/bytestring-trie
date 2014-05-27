@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren ng thornton <wren@community.haskell.org>    ~ 2013.01.10
+-- wren gayle romano <wren@community.haskell.org>   ~ 2013.01.10
 ----------------------------------------------------------------
 
 -- By and large Cabal >=1.2 is fine; but >= 1.6 gives tested-with:
@@ -11,9 +11,9 @@ Name:           bytestring-trie
 Version:        0.2.3.2
 Stability:      provisional
 Homepage:       http://code.haskell.org/~wren/
-Author:         wren ng thornton
+Author:         wren gayle romano
 Maintainer:     wren@community.haskell.org
-Copyright:      Copyright (c) 2008--2013 wren ng thornton
+Copyright:      Copyright (c) 2008--2013 wren gayle romano
 License:        BSD3
 License-File:   LICENSE
 

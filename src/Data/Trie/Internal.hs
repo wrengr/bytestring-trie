@@ -9,7 +9,7 @@
 --                                                  ~ 2010.08.15
 -- |
 -- Module      :  Data.Trie.Internal
--- Copyright   :  Copyright (c) 2008--2011 wren ng thornton
+-- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  provisional

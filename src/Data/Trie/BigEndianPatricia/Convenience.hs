@@ -3,7 +3,7 @@
 ----------------------------------------------------------------
 --                                                  ~ 2011.02.12
 -- |
--- Module      :  Data.Trie.Convenience
+-- Module      :  Data.Trie.BigEndianPatricia.Convenience
 -- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
@@ -17,7 +17,7 @@
 -- and "Data.IntMap".
 ----------------------------------------------------------------
 
-module Data.Trie.Convenience
+module Data.Trie.BigEndianPatricia.Convenience
     (
     -- * Conversion functions ('fromList' variants)
     -- $fromList
@@ -42,12 +42,12 @@ module Data.Trie.Convenience
     , unionWith, unionWith'
     ) where
 
-import Data.Trie
-import Data.Trie.Internal (lookupBy_, adjustBy)
-import Data.Trie.Errors   (impossible)
-import Data.ByteString    (ByteString)
-import Data.List          (foldl', sortBy)
-import Data.Ord           (comparing)
+import Data.Trie.BigEndianPatricia.Base
+import Data.Trie.BigEndianPatricia.Internal (lookupBy_, adjustBy)
+import Data.Trie.BigEndianPatricia.Errors   (impossible)
+import Data.ByteString                      (ByteString)
+import Data.List                            (foldl', sortBy)
+import Data.Ord                             (comparing)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------

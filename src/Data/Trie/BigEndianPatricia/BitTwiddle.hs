@@ -6,7 +6,7 @@
 ----------------------------------------------------------------
 --                                                  ~ 2009.01.05
 -- |
--- Module      :  Data.Trie.BitTwiddle
+-- Module      :  Data.Trie.BigEndianPatricia.BitTwiddle
 -- Copyright   :  Copyright (c) 2002 Daan Leijen
 -- License     :  BSD3
 -- Maintainer  :  libraries@haskell.org, wren@community.haskell.org
@@ -20,14 +20,14 @@
 -- to 'Int'.
 ----------------------------------------------------------------
 
-module Data.Trie.BitTwiddle
+module Data.Trie.BigEndianPatricia.BitTwiddle
     ( Prefix, Mask
     , elemToNat
     , zero, nomatch
     , mask, shorter, branchMask
     ) where
 
-import Data.Trie.ByteStringInternal (ByteStringElem)
+import Data.Trie.BigEndianPatricia.ByteStringInternal (ByteStringElem)
 
 import Data.Bits
 

@@ -8,7 +8,7 @@
 ----------------------------------------------------------------
 --                                                  ~ 2014.10.09
 -- |
--- Module      :  Data.Trie.Internal
+-- Module      :  Data.Trie.BigEndianPatricia.Internal
 -- Copyright   :  Copyright (c) 2008--2014 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
@@ -22,7 +22,7 @@
 -- access to the abstract type.
 ----------------------------------------------------------------
 
-module Data.Trie.Internal
+module Data.Trie.BigEndianPatricia.Internal
     (
     -- * Data types
       Trie(), showTrie
@@ -63,8 +63,8 @@ import Prelude hiding    (null, lookup)
 import qualified Prelude (null, lookup)
 
 import qualified Data.ByteString as S
-import Data.Trie.ByteStringInternal
-import Data.Trie.BitTwiddle
+import Data.Trie.BigEndianPatricia.ByteStringInternal
+import Data.Trie.BigEndianPatricia.BitTwiddle
 
 import Data.Binary
 

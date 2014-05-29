@@ -4,7 +4,7 @@
 ----------------------------------------------------------------
 --                                                  ~ 2014.10.09
 -- |
--- Module      :  Data.Trie
+-- Module      :  Data.Trie.BigEndianPatricia.Base
 -- Copyright   :  Copyright (c) 2008--2014 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
@@ -33,7 +33,7 @@
 -- which aren't quite ready for the public API, see "Data.Trie.Internal".
 ----------------------------------------------------------------
 
-module Data.Trie
+module Data.Trie.BigEndianPatricia.Base
     (
     -- * Data type
       Trie()
@@ -57,13 +57,12 @@ module Data.Trie
     , mapBy, filterMap
     ) where
 
-import Prelude hiding     (null, lookup)
-import qualified Prelude  (null, lookup)
+import Prelude hiding    (null, lookup)
+import qualified Prelude (null, lookup)
 
 import Data.Trie.Internal
 import Data.Trie.Errors   (impossible)
 import Data.ByteString    (ByteString)
-import qualified Data.ByteString as S
 import Data.Maybe         (isJust)
 import Control.Monad      (liftM)
 ----------------------------------------------------------------

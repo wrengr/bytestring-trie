@@ -3,7 +3,7 @@
 ----------------------------------------------------------------
 --                                                  ~ 2009.01.04
 -- |
--- Module      :  Data.Trie.ByteStringInternal.Configure
+-- Module      :  Data.Trie.BigEndianPatricia.ByteStringInternal.Configure
 -- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org

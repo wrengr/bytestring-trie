@@ -3,7 +3,7 @@
 ----------------------------------------------------------------
 --                                                  ~ 2011.02.12
 -- |
--- Module      :  Data.Trie.Errors
+-- Module      :  Data.Trie.BigEndianPatricia.Errors
 -- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
@@ -13,7 +13,7 @@
 -- Internal convenience functions for giving error messages.
 ----------------------------------------------------------------
 
-module Data.Trie.Errors
+module Data.Trie.BigEndianPatricia.Errors
     ( impossible
     ) where
 

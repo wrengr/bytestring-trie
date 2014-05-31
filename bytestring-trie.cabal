@@ -74,11 +74,11 @@ Flag bytestringInBase
 ----------------------------------------------------------------
 Library
     Hs-Source-Dirs:  src
-    Exposed-Modules: Data.Trie.BigEndianPatricia.Base
+    Exposed-Modules: Data.Trie.ByteStringInternal
+                   , Data.Trie.BigEndianPatricia.Base
                    , Data.Trie.BigEndianPatricia.Internal
                    , Data.Trie.BigEndianPatricia.Convenience
     Other-Modules:   Data.Trie.BigEndianPatricia.BitTwiddle
-                   , Data.Trie.BigEndianPatricia.ByteStringInternal
                    , Data.Trie.BigEndianPatricia.Errors
     Build-Depends: binary
     

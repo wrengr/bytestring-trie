@@ -27,9 +27,6 @@ module Data.Trie.BigEndianPatricia.Internal
     -- * Data types
       Trie(), showTrie
     
-    -- * Functions for 'ByteString's
-    , breakMaximalPrefix
-    
     -- * Basic functions
     , empty, null, singleton, size
     
@@ -63,7 +60,7 @@ import Prelude hiding    (null, lookup)
 import qualified Prelude (null, lookup)
 
 import qualified Data.ByteString as S
-import Data.Trie.BigEndianPatricia.ByteStringInternal
+import Data.Trie.ByteStringInternal
 import Data.Trie.BigEndianPatricia.BitTwiddle
 
 import Data.Binary

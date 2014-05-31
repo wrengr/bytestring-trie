@@ -14,7 +14,7 @@ distribution.
 ----------------------------------------------------------------
 --                                                  ~ 2009.02.06
 -- |
--- Module      :  Data.Trie.BigEndianPatricia.ByteStringInternal
+-- Module      :  Data.Trie.ByteStringInternal
 -- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
@@ -25,7 +25,7 @@ distribution.
 ----------------------------------------------------------------
 
 
-module Data.Trie.BigEndianPatricia.ByteStringInternal
+module Data.Trie.ByteStringInternal
     ( ByteString, ByteStringElem
     , breakMaximalPrefix
     ) where

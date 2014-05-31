@@ -27,7 +27,7 @@ module Data.Trie.BigEndianPatricia.BitTwiddle
     , mask, shorter, branchMask
     ) where
 
-import Data.Trie.BigEndianPatricia.ByteStringInternal (ByteStringElem)
+import Data.Trie.ByteStringInternal (ByteStringElem)
 
 import Data.Bits
 

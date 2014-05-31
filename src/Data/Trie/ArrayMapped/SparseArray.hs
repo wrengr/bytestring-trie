@@ -30,7 +30,7 @@ module Data.Trie.ArrayMapped.SparseArray
     , rzip, rzipWith, rzipWith_
     , rzipFilter, rzipFilter_
     --
-    -- MSparseArray(), trim, unsafeFreeze, run 
+    -- MSparseArray(), new, new_, trim, unsafeFreeze, run 
     ) where
 
 import Prelude hiding (filter, foldr, length, map, read, elem)
@@ -113,12 +113,78 @@ data SparseArray    a = SA  {-# UNPACK #-} !Bitmap !(Array# a)
 
 data MSparseArray s a = MSA {-# UNPACK #-} !Bitmap !(MutableArray# s a)
 
+data MArray s a = MA !(MutableArray# s a)
+
 ----------------------------------------------------------------
 
+-- We must box up the MutableArray# into something of kind * before we can return it... The other option is to CPS it, which has the same boxing-up effect
+new :: Int -> a -> ST s (MArray s a)
+new _n@(I# n) x =
+    CHECK_GT("new", _n, (0 :: Int))
+    ST $ \s ->
+        case newArray# n x s of
+        (# s', xs #) -> (# s', MA xs #)
+{-# INLINE new #-}
+
+new_ :: Int -> ST s (MArray s a)
+new_ n = new n undefinedElem
+
+undefinedElem :: a
+undefinedElem = error "Data.Trie.ArrayMapped.SparseArray: Undefined element"
+{-# NOINLINE undefinedElem #-}
+
+
+#if __GLASGOW_HASKELL__ >= 702
+lengthMA :: MutableArray# s a -> Int
+lengthMA xs = I# (sizeofMutableArray# xs)
+{-# INLINE lengthMA #-}
+#endif
+
+
+read :: MutableArray# s a -> Int -> ST s a
+read xs _i@(I# i) =
+    ST $ \s ->
+    CHECK_BOUNDS("read", lengthMA xs, _i)
+        readArray# xs i s
+{-# INLINE read #-}
+
+
+write :: MutableArray# s a -> Int -> a -> ST s ()
+write xs _i@(I# i) x =
+    ST $ \s ->
+    CHECK_BOUNDS("write", lengthMA xs, _i)
+        case writeArray# xs i x s of
+        s' -> (# s' , () #)
+{-# INLINE write #-}
+
+
+-- | Unsafely copy the elements of an array. Array bounds are not checked.
+copy :: MutableArray# s e -> Int -> MutableArray# s e -> Int -> Int -> ST s ()
+#if __GLASGOW_HASKELL__ >= 702
+copy !src !_sidx@(I# sidx) !dst !_didx@(I# didx) _n@(I# n) =
+    CHECK_BOUNDS("copy: src", lengthMA src, _sidx + _n - 1)
+    CHECK_BOUNDS("copy: dst", lengthMA dst, _didx + _n - 1)
+    ST $ \s ->
+        case copyMutableArray# src sidx dst didx n s of
+        s' -> (# s', () #)
+#else
+copy !src !sidx !dst !didx n =
+    CHECK_BOUNDS("copy: src", lengthMA src, sidx + n - 1)
+    CHECK_BOUNDS("copy: dst", lengthMA dst, didx + n - 1)
+    copy_loop sidx didx 0
+    where
+    copy_loop !i !j !c
+        | c >= n    = return ()
+        | otherwise = do
+            write dst j =<< read src i
+            copy_loop (i+1) (j+1) (c+1)
+#endif
+
+----------------------------------------------------------------
 -- | Trim and freeze the array.
 trim :: MSparseArray s a -> ST s (SparseArray a)
 trim (MSA p xs) = ST $ \s ->
-    case freezeArray# xs 0 (popCount# p) s of
+    case freezeArray# xs 0# (popCount# p) s of
     (# s', xs' #) -> (# s', SA p xs' #)
 {-# INLINE trim #-}
 
@@ -176,7 +242,9 @@ lookup k (SA p xs) =
 
 
 singleton :: Key -> a -> SparseArray a
-singleton k x = run (MSA (bit k) <$> ST (newArray# 1 x))
+singleton k x = run $ do
+    MA xs <- new 1 x
+    return (MSA (bit k) xs)
 {-# INLINE singleton #-}
 
 
@@ -185,8 +253,8 @@ doubleton k x l y = run $ do
     let !bk = bit k
     let !bl = bit l
     let (lo, hi) = if bk < bl then (x,y) else (y,x)
-    xs <- ST (newArray# 2 lo)
-    ST (writeArray# xs 1 hi)
+    MA xs <- new 2 lo
+    write xs 1 hi
     return (MSA (bk .|. bl) xs)
 {-# INLINE doubleton #-}
 
@@ -202,10 +270,33 @@ array n xs0 =
     go [] !mary !_   = return mary
     go (x:xs) mary i = do write mary i x
                           go xs mary (i+1)
+-}
 
 fromList :: [(Key,a)] -> SparseArray a
--- TODO: Use DynamicArray tricks to grow things as necessary.
--}
+fromList []          = empty
+fromList ((k,x):kxs) = run $ do
+    MA xs <- new 1 x
+    go (bit k) xs 1 1 kxs
+    where
+    go !p !xs !i !n !kxs =
+        case kxs of
+        []  | i == n     -> unsafeFreeze (MSA p xs)
+            | otherwise  -> trim         (MSA p xs)
+        ((k,x):kxs)
+            | b `elem` p -> do
+                write xs (bit2index p b) x
+                go p xs i n kxs
+            | i < n      -> do
+                write xs i x
+                go (p .|. b) xs (i+1) n kxs
+            | otherwise  -> do
+                MA xs' <- new_ (2*n)
+                copy xs 0 xs' 0 n
+                write xs' i x
+                go (p .|. b) xs' (i+1) (2*n) kxs
+            where
+            b = bit k
+    
 
 toList :: SparseArray a -> [(Key,a)]
 toList = toListBy (,)
@@ -274,7 +365,7 @@ instance Functor SparseArray where
 map :: (a -> b) -> SparseArray a -> SparseArray b
 map f = \(SA p xs) -> runST $ do
         let !n = popCount p
-        ys <- new_ n
+        MA ys <- new_ n
         go p xs n ys 0
     where
     go !p !xs !n !ys !i
@@ -288,7 +379,7 @@ map f = \(SA p xs) -> runST $ do
 map' :: (a -> b) -> SparseArray a -> SparseArray b
 map' f = \(SA p xs) -> runST $ do
         let !n = popCount p
-        ys <- new_ n
+        MA ys <- new_ n
         go p xs n ys 0
     where
     go !p !xs !n !ys !i
@@ -363,7 +454,7 @@ filterMap :: (a -> Maybe b) -> SparseArray a -> SparseArray b
 filterMap f (SA p xs) =
     runST $ do
         let !n = popCount p
-        ys <- new_ n
+        MA ys <- new_ n
         let go !i !bi !j !q
                 | i >= n    =
                     if i == j -- aka: p == q
@@ -385,7 +476,7 @@ filter :: (a -> Bool) -> SparseArray a -> SparseArray a
 filter f (SA p xs) =
     runST $ do
         let !n = popCount p
-        ys <- new_ n
+        MA ys <- new_ n
         let go !i !bi !j !q
                 | i >= n    =
                     if i == j -- aka: p == q
@@ -411,7 +502,7 @@ rzipWith_
 rzipWith_ f g (SA p xs) (SA q ys) =
     runST $ do
         let !n = popCount q
-        zs <- new_ n
+        MA zs <- new_ n
         let go !i !b !j
                 | j >= n     = unsafeFreeze (MSA q zs)
                 | b `elem` p = do
@@ -440,7 +531,7 @@ rzipFilter_
 rzipFilter_ f g (SA p xs) (SA q ys) =
     runST $ do
         let !n = popCount q
-        zs <- new_ n
+        MA zs <- new_ n
         let go !i !b !j !k !r
                 | j >= n     =
                     if j == k -- aka: q == r

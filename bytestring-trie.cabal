@@ -9,7 +9,7 @@ Build-Type:     Simple
 
 Name:           bytestring-trie
 Version:        0.2.3.2
-Stability:      provisional
+Stability:      experimental
 Homepage:       http://code.haskell.org/~wren/
 Author:         wren gayle romano
 Maintainer:     wren@community.haskell.org

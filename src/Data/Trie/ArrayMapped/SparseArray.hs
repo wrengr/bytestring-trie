@@ -7,7 +7,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2014.05.32
+--                                                  ~ 2014.05.31
 -- |
 -- Module      :  Data.Trie.ArrayMapped.SparseArray
 -- Copyright   :  Copyright (c) 2014 wren gayle romano; 2010--2012 Johan Tibell
@@ -22,13 +22,15 @@
 module Data.Trie.ArrayMapped.SparseArray
     ( Key, SparseArray()
     , null, length, lookup, isSubarrayOf
-    , singleton, doubleton
+    , singleton, doubleton, fromList
     , toList, toListBy, keys, elems
     , map, map'
     , filter, filterMap
     -- * Right-biased zipping functions.
     , rzip, rzipWith, rzipWith_
     , rzipFilter, rzipFilter_
+    -- * Set-theoretic operations
+    , unionWith
     --
     -- MSparseArray(), new, new_, trim, unsafeFreeze, run 
     ) where
@@ -59,6 +61,45 @@ import GHC.Exts (sizeofArray#, copyArray#, thawArray#, sizeofMutableArray#,
                  copyMutableArray#)
 #endif
 
+----------------------------------------------------------------
+----------------------------------------------------------------
+
+__thisModule :: String
+__thisModule = "Data.Trie.ArrayMapped.SparseArray"
+{-# NOINLINE __thisModule #-}
+
+__moduleError :: String -> a
+__moduleError s = error (__thisModule ++ ": " ++ s)
+{-# INLINE __moduleError #-}
+
+__functionError :: String -> String -> a
+__functionError fun s = error (__thisModule ++ "." ++ fun ++ ": " ++ s)
+{-# INLINE __functionError #-}
+
+__undefinedElem :: a
+__undefinedElem = __moduleError "Undefined element"
+{-# NOINLINE __undefinedElem #-}
+
+
+#if defined(ASSERTS)
+-- This fugly hack is brought by GHC's apparent reluctance to deal
+-- with MagicHash and UnboxedTuples when inferring types. Eek!
+#    define CHECK_BOUNDS(_func_,_len_,_k_) \
+if (_k_) < 0 || (_k_) >= (_len_) then __functionError (_func_) ("bounds error, offset " ++ show (_k_) ++ ", length " ++ show (_len_)) else
+
+#    define CHECK_OP(_func_,_op_,_lhs_,_rhs_) \
+if not ((_lhs_) _op_ (_rhs_)) then __functionError (_func_) ("Check failed: _lhs_ _op_ _rhs_ (" ++ show (_lhs_) ++ " vs. " ++ show (_rhs_) ++ ")") else
+
+#    define CHECK_GT(_func_,_lhs_,_rhs_) CHECK_OP(_func_,>,_lhs_,_rhs_)
+#    define CHECK_LE(_func_,_lhs_,_rhs_) CHECK_OP(_func_,<=,_lhs_,_rhs_)
+#    define CHECK_EQ(_func_,_lhs_,_rhs_) CHECK_OP(_func_,==,_lhs_,_rhs_)
+#else
+#    define CHECK_BOUNDS(_func_,_len_,_k_)
+#    define CHECK_OP(_func_,_op_,_lhs_,_rhs_)
+#    define CHECK_GT(_func_,_lhs_,_rhs_)
+#    define CHECK_LE(_func_,_lhs_,_rhs_)
+#    define CHECK_EQ(_func_,_lhs_,_rhs_)
+#endif
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
@@ -93,18 +134,27 @@ popCount# :: Bitmap -> Int#
 popCount# p = case popCount p of I# i# -> i#
 {-# INLINE popCount# #-}
 
+key2bit :: Key -> OneBit
+key2bit = bit -- TODO: replace with (1 `unsafeShiftL` k) ??
+{-# INLINE key2bit #-}
+
 bit2index :: Bitmap -> OneBit -> Index
 bit2index p b = popCount# (p .&. maskLT b)
 {-# INLINE bit2index #-}
 
 key2index :: Bitmap -> Key -> Index
-key2index p k = bit2index p (bit k)
+key2index p k = bit2index p (key2bit k)
 {-# INLINE key2index #-}
 
 -- | Check if a bit is set in the bitmap.
 elem :: OneBit -> Bitmap -> Bool
 elem b p = (p .&. b /= 0)
 {-# INLINE elem #-}
+
+-- | Check if a bit is unset in the bitmap.
+notElem :: OneBit -> Bitmap -> Bool
+notElem b p = (p .&. b == 0)
+{-# INLINE notElem #-}
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
@@ -127,11 +177,7 @@ new _n@(I# n) x =
 {-# INLINE new #-}
 
 new_ :: Int -> ST s (MArray s a)
-new_ n = new n undefinedElem
-
-undefinedElem :: a
-undefinedElem = error "Data.Trie.ArrayMapped.SparseArray: Undefined element"
-{-# NOINLINE undefinedElem #-}
+new_ n = new n __undefinedElem
 
 
 #if __GLASGOW_HASKELL__ >= 702
@@ -234,7 +280,7 @@ index xs i = case indexArray# xs i of (# x #) -> x
 
 lookup :: Key -> SparseArray a -> Maybe a
 lookup k (SA p xs) =
-    let !b = bit k in
+    let !b = key2bit k in
     if b `elem` p
     then Just (index xs (bit2index p b))
     else Nothing
@@ -244,39 +290,109 @@ lookup k (SA p xs) =
 singleton :: Key -> a -> SparseArray a
 singleton k x = run $ do
     MA xs <- new 1 x
-    return (MSA (bit k) xs)
+    return (MSA (key2bit k) xs)
 {-# INLINE singleton #-}
 
 
 doubleton :: Key -> a -> Key -> a -> SparseArray a
 doubleton k x l y = run $ do
-    let !bk = bit k
-    let !bl = bit l
+    let !bk = key2bit k
+    let !bl = key2bit l
     let (lo, hi) = if bk < bl then (x,y) else (y,x)
     MA xs <- new 2 lo
     write xs 1 hi
     return (MSA (bk .|. bl) xs)
 {-# INLINE doubleton #-}
 
-{-
--- TODO:
-array :: Int -> [(Key,a)] -> SparseArray a
-array n xs0 =
-    CHECK_EQ("array", n, Prelude.length xs0)
-        run $ do
-            mary <- new_ n
-            go xs0 mary 0
-  where
-    go [] !mary !_   = return mary
-    go (x:xs) mary i = do write mary i x
-                          go xs mary (i+1)
--}
 
+data DynamicMSA s a = DMSA
+    { bitmapDMSA     :: {-# UNPACK #-} !Bitmap
+    , maxKeyDMSA     :: {-# UNPACK #-} !Key
+    , nextIndexDMSA  :: {-# UNPACK #-} !Index
+    , limitIndexDMSA :: {-# UNPACK #-} !Index
+    , arrayDMSA      :: !(MutableArray# s a)
+    }
+
+unsafeFreezeDMSA :: DynamicMSA s a -> ST a (SparseArray a)
+unsafeFreezeDMSA (DMSA p maxK n maxN xs)
+    | n == maxN = unsafeFreeze (MSA p xs)
+    | otherwise = trim         (MSA p xs)
+{-# INLINE unsafeFreezeDMSA #-}
+
+dynamicInsert :: Key -> a -> DynamicMSA s a -> ST s (DynamicMSA s a)
+dynamicInsert !k x dmsa@(DMSA p maxK n maxN xs)
+    | b `elem` p -> do
+        write xs i x
+        return dmsa
+    | otherwise ->
+        case (n < maxN, k > maxK) of
+        (True, True) -> do
+            write xs n x
+            return $! DMSA p' k n' maxN xs
+        (True, False) -> do
+            -- TODO: if shiftUp cannot be implemented efficiently, then maybe we should just reallocate and copy everything?
+            shiftUp xs i
+            write xs i x
+            return $! DMSA p' maxK n' maxN xs
+        (False, True) -> do
+            xs' <- new_ maxN'
+            copy xs 0 xs' 0 maxN
+            write xs' n x
+            return $! DMSA p' k n' maxN' xs'
+        (False, False) -> do
+            xs' <- new_ maxN'
+            copy xs 0 xs' 0 i
+            write xs' i x
+            copy xs i xs' (i+1) (maxN-i)
+            return $! DMSA p' maxK n' maxN' xs'
+    where
+    -- TODO: verify these all get inlined/performed where they ought to
+    b     = key2bit k
+    i     = bit2index p b
+    p'    = p .|. b
+    n'    = n + 1
+    maxN' = 2*maxN
+
+
+-- Since we know the effective size limit for our use cases is 16(=2^Key), we just start there so that we only ever need to allocate once and then trim; thus avoiding the need to resize along the way.
+-- TODO: that being the case, we should get rid of DMSA and just use MSA and insertMSA... Doing so will save us the (n < maxN) check every iteration, albeit at the cost of unsafety if we overflow...
 fromList :: [(Key,a)] -> SparseArray a
-fromList []          = empty
-fromList ((k,x):kxs) = run $ do
-    MA xs <- new 1 x
-    go (bit k) xs 1 1 kxs
+fromList = fromList_ 16
+{-# INLINE [0] fromList #-}
+{-# RULES
+"fromList/empty"
+        fromList [] = empty
+"fromList/singleton"
+    forall k x.
+        fromList [(k,x)] = singleton k x
+"fromList/doubleton"
+    forall k1 x1 k2 x2.
+        fromList [(k1,x1),(k2,x2)] = doubleton k1 x1 k2 x2
+    #-}
+
+fromList_ :: Int -> [(Key,a)] -> SparseArray a
+fromList_ !n []          = empty
+fromList_  n ((k,x):kxs) = runST $ do
+    MA xs <- new n x
+    go kxs $! DMSA (key2bit k) k 1 n xs
+    where
+    go []          = unsafeFreezeDMSA
+    go ((k,x):kxs) = go kxs <=< dynamicInsert k x
+    -- TODO: verify that the DMSA gets unpacked everywhere
+    -- TODO: do we need to eta-expand in order to tell GHC to be strict?
+
+
+{-
+fromAscList :: [(Key,a)] -> SparseArray a
+fromAscList = fromAscList_ 1
+{-# INLINE fromAscList #-}
+
+-- TODO: clean this up based on dynamicInsert
+fromAscList_ :: Int -> [(Key,a)] -> SparseArray a
+fromAscList_ !n []          = empty
+fromAscList_  n ((k,x):kxs) = runST $ do
+    MA xs <- new n x
+    go (key2bit k) xs 1 n kxs
     where
     go !p !xs !i !n !kxs =
         case kxs of
@@ -295,7 +411,8 @@ fromList ((k,x):kxs) = run $ do
                 write xs' i x
                 go (p .|. b) xs' (i+1) (2*n) kxs
             where
-            b = bit k
+            b = key2bit k
+-}
     
 
 toList :: SparseArray a -> [(Key,a)]
@@ -444,7 +561,7 @@ instance Traversable SparseArray where
 ----------------------------------------------------------------
 
 -- | Get the first bit set in @p@, starting at @b@.
-first p b = if b `elem` p then b else next p b
+first p b = if b `notElem` p then next p b else b
 
 -- | Get the next bit set in @p@; i.e., the first set bit after @b@.
 next p b = first p (bsucc b)

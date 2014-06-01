@@ -7,7 +7,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2014.05.31
+--                                                  ~ 2014.06.01
 -- |
 -- Module      :  Data.Trie.ArrayMapped.SparseArray
 -- Copyright   :  Copyright (c) 2014 wren gayle romano; 2010--2012 Johan Tibell
@@ -30,35 +30,42 @@ module Data.Trie.ArrayMapped.SparseArray
     , rzip, rzipWith, rzipWith_
     , rzipFilter, rzipFilter_
     -- * Set-theoretic operations
-    , unionWith
+    -- unionWith
     --
-    -- MSparseArray(), new, new_, trim, unsafeFreeze, run 
+    -- MSparseArray(), new, new_, trimMSA, unsafeFreezeMSA, runMSA 
     ) where
 
-import Prelude hiding (filter, foldr, length, map, read, elem)
+import Prelude hiding (null, lookup, filter, foldr, length, map, read, elem, notElem)
 #if defined(ASSERTS)
 import qualified Prelude
 #endif
 
+import Data.Foldable hiding (elem, notElem, toList)
 import qualified Data.Traversable as Traversable
 import Control.Applicative (Applicative)
 import Control.DeepSeq
+import Data.Word
 import Data.Bits ((.&.), (.|.), xor, unsafeShiftL, popCount, bit)
 -- TODO: if the version of base is too low, use ad-hoc 'popCount' implementation
 
-import Control.Monad.ST hiding (runST)
-import Data.Trie.ArrayMapped.Unsafe (runST)
+import Data.Monoid (Monoid(..))
+import Control.Applicative (Applicative(..), (<$>))
+import Control.Monad ((<=<))
+import Control.Monad.ST -- hiding (runST)
+-- import Data.Trie.ArrayMapped.Unsafe (runST)
 import GHC.ST (ST(..))
 
 -- GHC 7.7 exports toList/fromList from GHC.Exts
 -- In order to avoid warnings on previous GHC versions, we provide
 -- an explicit import list instead of only hiding the offending symbols
-import GHC.Exts (Array#, Int(..), newArray#, readArray#, writeArray#,
-                 indexArray#, unsafeFreezeArray#, unsafeThawArray#,
-                 MutableArray#)
+import GHC.Exts
+    (build, Array#, Int(..), Int#, newArray#, readArray#, writeArray#,
+    indexArray#, freezeArray#, unsafeFreezeArray#, unsafeThawArray#,
+    MutableArray#)
 #if __GLASGOW_HASKELL__ >= 702
-import GHC.Exts (sizeofArray#, copyArray#, thawArray#, sizeofMutableArray#,
-                 copyMutableArray#)
+import GHC.Exts
+    (sizeofArray#, copyArray#, thawArray#, sizeofMutableArray#,
+    copyMutableArray#)
 #endif
 
 ----------------------------------------------------------------
@@ -109,7 +116,8 @@ type Bitmap = Word  -- Actually, should be a Word16 == 2^Key
 type OneBit = Bitmap 
 type Mask   = Bitmap 
 -- | Indicies into the underlying 'Array#' or 'MutableArray#'.
-type Index  = Int# 
+type Index  = Int 
+    -- HACK: actually, this should be Int#, but that causes kinding issues...
 
 
 -- | Given a bit, return the next bit.
@@ -135,11 +143,11 @@ popCount# p = case popCount p of I# i# -> i#
 {-# INLINE popCount# #-}
 
 key2bit :: Key -> OneBit
-key2bit = bit -- TODO: replace with (1 `unsafeShiftL` k) ??
+key2bit = bit . fromIntegral -- TODO: replace with (1 `unsafeShiftL` k) ??
 {-# INLINE key2bit #-}
 
 bit2index :: Bitmap -> OneBit -> Index
-bit2index p b = popCount# (p .&. maskLT b)
+bit2index p b = popCount (p .&. maskLT b)
 {-# INLINE bit2index #-}
 
 key2index :: Bitmap -> Key -> Index
@@ -187,7 +195,7 @@ lengthMA xs = I# (sizeofMutableArray# xs)
 #endif
 
 
-read :: MutableArray# s a -> Int -> ST s a
+read :: MutableArray# s a -> Index -> ST s a
 read xs _i@(I# i) =
     ST $ \s ->
     CHECK_BOUNDS("read", lengthMA xs, _i)
@@ -195,7 +203,7 @@ read xs _i@(I# i) =
 {-# INLINE read #-}
 
 
-write :: MutableArray# s a -> Int -> a -> ST s ()
+write :: MutableArray# s a -> Index -> a -> ST s ()
 write xs _i@(I# i) x =
     ST $ \s ->
     CHECK_BOUNDS("write", lengthMA xs, _i)
@@ -205,7 +213,7 @@ write xs _i@(I# i) x =
 
 
 -- | Unsafely copy the elements of an array. Array bounds are not checked.
-copy :: MutableArray# s e -> Int -> MutableArray# s e -> Int -> Int -> ST s ()
+copy :: MutableArray# s e -> Index -> MutableArray# s e -> Index -> Index -> ST s ()
 #if __GLASGOW_HASKELL__ >= 702
 copy !src !_sidx@(I# sidx) !dst !_didx@(I# didx) _n@(I# n) =
     CHECK_BOUNDS("copy: src", lengthMA src, _sidx + _n - 1)
@@ -220,37 +228,58 @@ copy !src !sidx !dst !didx n =
     copy_loop sidx didx 0
     where
     copy_loop !i !j !c
-        | c >= n    = return ()
-        | otherwise = do
+        | c < n     = do
             write dst j =<< read src i
             copy_loop (i+1) (j+1) (c+1)
+        | otherwise = return ()
 #endif
+
+
+shiftUpOne :: MutableArray# s e -> Int -> Int -> ST s ()
+shiftUpOne !xs !i !n = 
+    CHECK_BOUNDS("shiftUpOne: ", lengthMA src, i + n - 1)
+    go xs i (i + n)
+    where
+    go !xs !i !n
+        | i < n     = do
+            write xs n =<< read xs (n-1)
+            go xs i (n-1)
+        | otherwise = return ()
 
 ----------------------------------------------------------------
 -- | Trim and freeze the array.
-trim :: MSparseArray s a -> ST s (SparseArray a)
-trim (MSA p xs) = ST $ \s ->
+trimMSA :: MSparseArray s a -> ST s (SparseArray a)
+trimMSA (MSA p xs) = ST $ \s ->
     case freezeArray# xs 0# (popCount# p) s of
     (# s', xs' #) -> (# s', SA p xs' #)
-{-# INLINE trim #-}
+{-# INLINE trimMSA #-}
 
 
 -- | Freeze the array in place.
-unsafeFreeze :: MSparseArray s a -> ST s (SparseArray a)
-unsafeFreeze (MSA p xs) = ST $ \s ->
+unsafeFreezeMSA :: MSparseArray s a -> ST s (SparseArray a)
+unsafeFreezeMSA (MSA p xs) = ST $ \s ->
     case unsafeFreezeArray# xs s of
     (# s', xs' #) -> (# s', SA p xs' #)
-{-# INLINE unsafeFreeze #-}
+{-# INLINE unsafeFreezeMSA #-}
 
 
-run :: (forall s. ST s (MSparseArray s a)) -> SparseArray a
-run act = runST (unsafeFreeze =<< act)
-{-# INLINE run #-}
+unsafeFreezeOrTrimMSA :: Bool -> MSparseArray s a -> ST s (SparseArray a)
+unsafeFreezeOrTrimMSA True  = unsafeFreezeMSA
+unsafeFreezeOrTrimMSA False = trimMSA
+{-# INLINE unsafeFreezeOrTrimMSA #-}
+
+
+runMSA :: (forall s. ST s (MSparseArray s a)) -> SparseArray a
+runMSA act = runST (unsafeFreezeMSA =<< act)
+{-# INLINE runMSA #-}
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
--- TODO: would it be better to have an invariant that SAs are non-empty, and use Maybe when we 'trim', 'filter', etc?
+empty :: SparseArray a
+empty = runMSA (new_ 0 >>= \ (MA xs) -> return (MSA 0 xs))
+
+-- TODO: would it be better to have an invariant that SAs are non-empty, and use Maybe when we 'trimMSA', 'filter', etc?
 -- | /O(1)/. Is the array empty?
 null :: SparseArray a -> Bool
 null (SA 0 _) = True
@@ -270,32 +299,29 @@ isSubarrayOf (SA p _) (SA q _) = (p .&. q == p)
 {-# INLINE isSubarrayOf #-}
 
 
-(!) :: Array# a -> Int -> a
-xs ! (I# i) = index xs i
+-- HACK: must use the prefix notation in the definition, otherwise it isn't recognized for some reason...
+(!) :: Array# a -> Index -> a
+(!) xs (I# i) = case indexArray# xs i of (# x #) -> x
 {-# INLINE (!) #-}
-
-index :: Array# a -> Index -> a
-index xs i = case indexArray# xs i of (# x #) -> x
-{-# INLINE index #-}
 
 lookup :: Key -> SparseArray a -> Maybe a
 lookup k (SA p xs) =
     let !b = key2bit k in
     if b `elem` p
-    then Just (index xs (bit2index p b))
+    then Just (xs ! bit2index p b)
     else Nothing
 {-# INLINE lookup #-}
 
 
 singleton :: Key -> a -> SparseArray a
-singleton k x = run $ do
+singleton k x = runMSA $ do
     MA xs <- new 1 x
     return (MSA (key2bit k) xs)
 {-# INLINE singleton #-}
 
 
 doubleton :: Key -> a -> Key -> a -> SparseArray a
-doubleton k x l y = run $ do
+doubleton k x l y = runMSA $ do
     let !bk = key2bit k
     let !bl = key2bit l
     let (lo, hi) = if bk < bl then (x,y) else (y,x)
@@ -313,34 +339,33 @@ data DynamicMSA s a = DMSA
     , arrayDMSA      :: !(MutableArray# s a)
     }
 
-unsafeFreezeDMSA :: DynamicMSA s a -> ST a (SparseArray a)
-unsafeFreezeDMSA (DMSA p maxK n maxN xs)
-    | n == maxN = unsafeFreeze (MSA p xs)
-    | otherwise = trim         (MSA p xs)
+unsafeFreezeDMSA :: DynamicMSA s a -> ST s (SparseArray a)
+unsafeFreezeDMSA (DMSA p maxK n maxN xs) =
+    unsafeFreezeOrTrimMSA (n == maxN) (MSA p xs)
 {-# INLINE unsafeFreezeDMSA #-}
 
 dynamicInsert :: Key -> a -> DynamicMSA s a -> ST s (DynamicMSA s a)
 dynamicInsert !k x dmsa@(DMSA p maxK n maxN xs)
-    | b `elem` p -> do
+    | b `elem` p = do
         write xs i x
         return dmsa
-    | otherwise ->
+    | otherwise =
         case (n < maxN, k > maxK) of
         (True, True) -> do
             write xs n x
             return $! DMSA p' k n' maxN xs
         (True, False) -> do
-            -- TODO: if shiftUp cannot be implemented efficiently, then maybe we should just reallocate and copy everything?
-            shiftUp xs i
+            -- TODO: if shiftUpOne cannot be implemented efficiently, then maybe we should just reallocate and copy everything?
+            shiftUpOne xs i (n-i)
             write xs i x
             return $! DMSA p' maxK n' maxN xs
         (False, True) -> do
-            xs' <- new_ maxN'
+            MA xs' <- new_ maxN'
             copy xs 0 xs' 0 maxN
             write xs' n x
             return $! DMSA p' k n' maxN' xs'
         (False, False) -> do
-            xs' <- new_ maxN'
+            MA xs' <- new_ maxN'
             copy xs 0 xs' 0 i
             write xs' i x
             copy xs i xs' (i+1) (maxN-i)
@@ -396,8 +421,7 @@ fromAscList_  n ((k,x):kxs) = runST $ do
     where
     go !p !xs !i !n !kxs =
         case kxs of
-        []  | i == n     -> unsafeFreeze (MSA p xs)
-            | otherwise  -> trim         (MSA p xs)
+        [] -> unsafeFreezeOrTrimMSA (i == n) (MSA p xs)
         ((k,x):kxs)
             | b `elem` p -> do
                 write xs (bit2index p b) x
@@ -459,10 +483,13 @@ instance Show a => Show (SparseArray a) where
     show = show . toList
 
 
+{-
+-- TODO: how do we get/put an Array# ?
 instance (Binary a) => Binary (SparseArray a) where
     put (SA p xs) = do put p; put xs
     
     get = SA <$> get <*> get
+-}
 
 
 instance (NFData a) => NFData (SparseArray a) where
@@ -480,28 +507,28 @@ instance Functor SparseArray where
 
 
 map :: (a -> b) -> SparseArray a -> SparseArray b
-map f = \(SA p xs) -> runST $ do
+map f = \(SA p xs) -> runMSA $ do
         let !n = popCount p
         MA ys <- new_ n
         go p xs n ys 0
     where
     go !p !xs !n !ys !i
         | i < n     = do write ys i (f (xs ! i)); go p xs n ys (i+1)
-        | otherwise = unsafeFreeze (MSA p ys)
+        | otherwise = return $! MSA p ys
 {-# INLINE [0] map #-}
 {-# RULES "map id"  map id = id #-}
 
 
 -- TODO: is there a class for this yet?
 map' :: (a -> b) -> SparseArray a -> SparseArray b
-map' f = \(SA p xs) -> runST $ do
+map' f = \(SA p xs) -> runMSA $ do
         let !n = popCount p
         MA ys <- new_ n
         go p xs n ys 0
     where
     go !p !xs !n !ys !i
         | i < n     = do write ys i $! f (xs ! i); go p xs n ys (i+1)
-        | otherwise = unsafeFreeze (MSA p ys)
+        | otherwise = return $! MSA p ys
 {-# INLINE [0] map' #-}
 {-# RULES "map' id"  map' id = id #-}
 
@@ -574,9 +601,7 @@ filterMap f (SA p xs) =
         MA ys <- new_ n
         let go !i !bi !j !q
                 | i >= n    =
-                    if i == j -- aka: p == q
-                    then unsafeFreeze (MSA q ys)
-                    else trim         (MSA q ys)
+                    unsafeFreezeOrTrimMSA (i == j {- aka: p == q -}) (MSA q ys)
                 | otherwise =  
                     case f (xs ! i) of
                     Just y  -> do
@@ -596,9 +621,7 @@ filter f (SA p xs) =
         MA ys <- new_ n
         let go !i !bi !j !q
                 | i >= n    =
-                    if i == j -- aka: p == q
-                    then unsafeFreeze (MSA q ys)
-                    else trim         (MSA q ys)
+                    unsafeFreezeOrTrimMSA (i == j {- aka: p == q -}) (MSA q ys)
                 | f x       = do
                     write ys j x
                     go (i+1) (next p bi) (j+1) (q .|. bi)
@@ -617,11 +640,11 @@ rzipWith_
     :: (a -> b -> c) -> (b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
 rzipWith_ f g (SA p xs) (SA q ys) =
-    runST $ do
+    runMSA $ do
         let !n = popCount q
         MA zs <- new_ n
         let go !i !b !j
-                | j >= n     = unsafeFreeze (MSA q zs)
+                | j >= n     = return $! MSA q zs
                 | b `elem` p = do
                     write zs j (f (xs ! i) (ys ! j))
                     go (i+1) (next q b) (j+1)
@@ -651,9 +674,7 @@ rzipFilter_ f g (SA p xs) (SA q ys) =
         MA zs <- new_ n
         let go !i !b !j !k !r
                 | j >= n     =
-                    if j == k -- aka: q == r
-                    then unsafeFreeze (MSA r zs)
-                    else trim         (MSA r zs)
+                    unsafeFreezeOrTrimMSA (j == k {- aka: q == r -}) (MSA r zs)
                 | b `elem` p = 
                     case f (xs ! i) (ys ! j) of
                     Just z -> do

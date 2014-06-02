@@ -1,12 +1,14 @@
 -- To make GHC stop warning about the Prelude
-{-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
+{-# OPTIONS_GHC
+    -Wall -fwarn-tabs -fno-warn-unused-imports
+    -funbox-strict-fields #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 
 -- For list fusion on toListBy
 {-# LANGUAGE CPP #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2014.05.29
+--                                                  ~ 2014.06.01
 -- |
 -- Module      :  Data.Trie.ArrayMapped.Internal
 -- Copyright   :  Copyright (c) 2014 wren gayle romano
@@ -58,9 +60,9 @@ module Data.Trie.ArrayMapped.Internal
 import Prelude hiding    (null, lookup)
 import qualified Prelude (null, lookup)
 
-import qualified Data.ByteString as S
+import qualified Data.ByteString as BS
 import Data.Trie.ByteStringInternal
-import Data.Trie.ArrayMapped.BitTwiddle
+import qualified Data.Trie.ArrayMapped.SparseArray as SA
 
 import Data.Binary
 
@@ -79,56 +81,13 @@ import GHC.Exts (build)
 
 
 {---------------------------------------------------------------
--- Type aliases and bit twiddling
+-- ByteString Array Mapped Trie datatype
 ---------------------------------------------------------------}
+
 
 -- INVARIANT: this particular ByteString is not empty...
 type NonEmptyByteString = ByteString 
 
--- Idea: bitWidth Bitmap == 2^bitsPerSubkey
-type Bitmap = Word 
-
--- Idea: maxValue Shift == bitWidth Word
-type Shift = Int 
-
-
-bitsPerSubkey :: Int
-bitsPerSubkey = 4
-
-
-maxChildren :: Int
-maxChildren = fromIntegral (1 `unsafeShiftL` bitsPerSubkey)
-
-
-subkeyMask :: Bitmap
-subkeyMask = 1 `unsafeShiftL` bitsPerSubkey - 1
-
-
-sparseIndex :: Bitmap -> Bitmap -> Int
-sparseIndex b m = popCount (b .&. (m - 1))
-
-
-mask :: Word -> Shift -> Bitmap
-mask w s = 1 `unsafeShiftL` index w s
-{-# INLINE mask #-}
-
-
--- | Mask out the 'bitsPerSubkey' bits used for indexing at this level
--- of the tree.
-index :: Hash -> Shift -> Int
-index w s = fromIntegral (unsafeShiftR w s .&. subkeyMask)
-{-# INLINE index #-}
-
-
--- | A bitmask with the 'bitsPerSubkey' least significant bits set.
-fullNodeMask :: Bitmap
-fullNodeMask = complement (complement 0 `unsafeShiftL` maxChildren)
-{-# INLINE fullNodeMask #-}
-
-
-{---------------------------------------------------------------
--- ByteString Array Mapped Trie datatype
----------------------------------------------------------------}
 
 -- | A map from 'ByteString's to @a@. For all the generic functions,
 -- note that tries are strict in the @Maybe@ but not in @a@.
@@ -152,13 +111,13 @@ data Trie a
 data Trunk a
     = Empty
     | Arc
-        {-# UNPACK #-} !NonEmptyByteString          -- Prefix
-        a                                           -- Value
-        !(Trunk a)                                  -- Sub-trie
+        !NonEmptyByteString          -- Prefix
+        a                            -- Value
+        !(Trunk a)                   -- Sub-trie
     | Branch
-        {-# UNPACK #-} !ByteString                  -- Prefix
-        {-# UNPACK #-} !(SA.SparseArray a)          -- Values
-        {-# UNPACK #-} !(SA.SparseArray (Trunk a))  -- Sub-tries
+        !ByteString                  -- Prefix
+        !(SA.SparseArray a)          -- Values
+        !(SA.SparseArray (Trunk a))  -- Sub-tries
     deriving (Typeable, Eq)
     -- INVARIANT: if (Branch _ vz tz) then (vz `isSubarrayOf` ts)
 
@@ -200,23 +159,32 @@ accept Nothing  t = Reject   t
 -- N.B., this does not clone the string to prune it; callers must do that.
 arc :: NonEmptyByteString -> Maybe a -> Trunk a -> Trunk a
 {-# INLINE arc #-}
-arc s0 (Just v0) = Arc s0 v0
-arc s0 Nothing   = prepend_ s0
+arc s (Just v) = Arc s v
+arc s Nothing  = prepend_ s
 
 
--- Saves a bit on allocation/sharing; though, technically, the call to 'S.append' will re-check for empty strings.
+branch :: ByteString -> SA.SparseArray a -> SA.SparseArray (Trunk a) -> Trunk a
+{-# INLINE branch #-}
+branch s vz tz =
+    case SA.toList tz of
+    []      -> Empty
+    [(k,t)] -> arc (s `BS.snoc` k) (lookup k vz) t
+    _       -> Branch s vz tz
+
+
+-- Saves a bit on allocation/sharing; though, technically, the call to 'BS.append' will re-check for empty strings.
 prepend :: ByteString -> Trunk a -> Trunk a
 {-# INLINE prepend #-}
-prepend s0
-    | S.null s0 = id
-    | otherwise = prepend_ s0
+prepend s
+    | BS.null s = id
+    | otherwise = prepend_ s
 
 prepend_ :: NonEmptyByteString -> Trunk a -> Trunk a
 {-# INLINE prepend_ #-}
 prepend_ s0 Empty            = Empty
-prepend_ s0 (Arc    s v  t)  = Arc    (s0 `S.append` s) v t
-prepend_ s0 (Branch s vz tz) = Branch (s0 `S.append` s) vz tz
-    -- TODO: 'S.append' will recheck whether @s0@ is empty. We can avoid that extraneous check if we create an @unsafeAppend@...
+prepend_ s0 (Arc    s v  t)  = Arc    (s0 `BS.append` s) v t
+prepend_ s0 (Branch s vz tz) = Branch (s0 `BS.append` s) vz tz
+    -- TODO: 'BS.append' will recheck whether @s0@ is empty. We can avoid that extraneous check if we create an @unsafeAppend@...
 
 
 {---------------------------------------------------------------
@@ -230,7 +198,7 @@ prepend_ s0 (Branch s vz tz) = Branch (s0 `S.append` s) vz tz
 instance (Show a) => Show (Trie a) where
     showsPrec p t =
         showParen (p > 10)
-            $ ("Data.Trie.fromList "++) . shows (toListBy (,) t)
+            $ ("fromList "++) . shows (toListBy (,) t)
 
 
 {-
@@ -415,6 +383,7 @@ instance MonadPlus Trie where
 -- Extra mapping functions
 ---------------------------------------------------------------}
 
+-- TODO: when reconstructing keys should we be strict or not??
 
 -- | Apply a function to all values, potentially removing them.
 filterMap :: (a -> Maybe b) -> Trie a -> Trie b
@@ -423,19 +392,25 @@ filterMap f (Reject   t) = Reject       (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = arc s (f v) (go t)
-    go (Branch s vz tz) = ... branch s (filterMap f vz) (filterMap go tz)
+    go (Branch s vz tz) = branch s (SA.filterMap f vz) (SA.filterMap go tz)
 
 
+-- TODO: (?) use a large buffer for the bytestring and overwrite it in place, only copying it off for handing to @f@...? Benchmark it; also Builder stuff
+-- TODO: just use contextualMapBy and ignore the Trunk argument?
 -- | Generic version of 'fmap'. This function is notably more
 -- expensive than 'fmap' or 'filterMap' because we have to reconstruct
 -- the keys.
 mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
-mapBy f (Accept v t) = accept (f S.empty v) (go S.empty t)
-mapBy f (Reject   t) = go S.empty t
+mapBy f (Accept v t) = accept (f BS.empty v) (go BS.empty t)
+mapBy f (Reject   t) = go BS.empty t
     where
-    go !_ Empty            = Empty
-    go s0 (Arc    s v  t)  = arc s (f s' v) (go s' t) where !s' = S.append s0 s
-    go s0 (Branch s vz tz) = ... -- TODO
+    go !_ Empty        = Empty
+    go s0 (Arc s v t)  =
+        let !s' = BS.append s0 s in
+        arc s (f s' v) (go s' t)
+    go s0 (Branch s vz tz) =
+        let !s' = BS.append s0 s in
+        branch s (SA.filterMap (f s') vz) (SA.filterMap (go s') tz)
 
 
 -- | A variant of 'fmap' which provides access to the subtrie rooted
@@ -446,7 +421,7 @@ contextualMap f (Reject   t) = Reject         (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = Arc s (f v t) (go t)
-    go (Branch s vz tz) = ... -- TODO
+    go (Branch s vz tz) = branch s (SA.intersectWith f vz tz) (fmap go tz)
 
 
 -- | A variant of 'contextualMap' which applies the function strictly.
@@ -456,7 +431,7 @@ contextualMap' f (Reject   t) = Reject            (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = (Arc s $! f v t) (go t)
-    go (Branch s vz tz) = ... -- TODO
+    go (Branch s vz tz) = branch s (SA.intersectWith' f vz tz) (fmap go tz)
 
 
 -- | A contextual variant of 'filterMap'.
@@ -466,30 +441,23 @@ contextualFilterMap f (Reject   t) = Reject (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = arc s (f v t) (go t)
-    go (Branch s vz tz) = ... -- TODO
+    go (Branch s vz tz) = branch s (SA.intersectFilterWith f vz tz) (SA.filterMap go tz)
 
 
+-- TODO: (?) use a large buffer for the bytestring and overwrite it in place, only copying it off for handing to @f@...? Benchmark it; also Builder stuff
 -- | A contextual variant of 'mapBy'. Again note that this is
 -- expensive since we must reconstruct the keys.
 contextualMapBy :: (ByteString -> a -> Trunk a -> Maybe b) -> Trie a -> Trie b
-contextualMapBy f (Accept v t) = accept (f S.empty v t) (go S.empty t)
-contextualMapBy f (Reject   t) = go S.empty t
+contextualMapBy f (Accept v t) = accept (f BS.empty v t) (go BS.empty t)
+contextualMapBy f (Reject   t) = go BS.empty t
     where
     go !_ Empty            = Empty
-    go s0 (Arc    s v  t)  = arc s (f s' v t) (go s' t) where !s' = S.append s0 s
-    go s0 (Branch s vz tz) = ... -- TODO
-
-
-{---------------------------------------------------------------
--- Error messages
----------------------------------------------------------------}
-
--- TODO: shouldn't we inline the logic and just NOINLINE the string constant? There are only three use sites, which themselves aren't inlined...
-errorLogHead :: String -> ByteString -> ByteStringElem
-{-# NOINLINE errorLogHead #-}
-errorLogHead fn q
-    | S.null q  = error $ "Data.Trie.Internal." ++ fn ++": found null subquery"
-    | otherwise = S.head q
+    go s0 (Arc    s v  t)  =
+        let !s' = BS.append s0 s in
+        arc s (f s' v t) (go s' t)
+    go s0 (Branch s vz tz) =
+        let !s' = BS.append s0 s in
+        branch s (SA.intersectFilterWith (f s') vz tz) (SA.filterMap (go s') tz)
 
 
 {---------------------------------------------------------------
@@ -513,7 +481,7 @@ null _              = False
 singleton :: ByteString -> a -> Trie a
 {-# INLINE singleton #-}
 singleton s v
-    | S.null s  = Accept v Empty
+    | BS.null s = Accept v Empty
     | otherwise = Reject (Arc s v Empty) -- TODO: clone @s@ to trim it!
 
 
@@ -534,38 +502,37 @@ size (Reject   t0) = go 0 t0
 -- Conversion functions 
 ---------------------------------------------------------------}
 
+-- TODO: when reconstructing keys should we be strict or not??
+
+
 -- | Convert a trie into a list (in key-sorted order) using a
 -- function, folding the list as we go.
 foldrWithKey :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
-foldrWithKey f = flip (start S.empty)
+foldrWithKey f = flip (start BS.empty)
     where
     start !s0 (Accept v t) z = f s0 v (go s0 t z)
     start  s0 (Reject   t) z =         go s0 t z
     
     go !_ Empty            z = z
-    go s0 (Arc    s v  t)  z = f s' v (go s' t z) where !s' = S.append s0 s
+    go s0 (Arc    s v  t)  z = f s' v (go s' t z) where !s' = BS.append s0 s
     go s0 (Branch s vz tz) z =
-        -- BUG: we need to snoc the byte for the key before calling @start@!
-        -- TODO: should we define a fused append/snoc operation? Would that help reduce copying?
-        foldr' (start (S.append s0 s)) z
-            (zipSubarrayWith_ Accept Reject vz tz)
+        SA.foldrWithKey' (start . appendSnoc s0 s) z
+            (SA.rzipWith_ Accept Reject vz tz)
 
 
 -- | Convert a trie into a list (in key-sorted order) using a
 -- function, folding the list as we go.
 foldrWithKey' :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
-foldrWithKey' f = flip (start S.empty)
+foldrWithKey' f = flip (start BS.empty)
     where
     start !s0 (Accept v t) !z = f s0 v $! go s0 t z
     start  s0 (Reject   t)  z =           go s0 t z
     
     go !_ Empty            !z = z
-    go s0 (Arc    s v  t)   z = f s' v $! go s' t z where !s' = S.append s0 s
+    go s0 (Arc    s v  t)   z = f s' v $! go s' t z where !s' = BS.append s0 s
     go s0 (Branch s vz tz)  z =
-        -- BUG: we need to snoc the byte for the key before calling @start@!
-        -- TODO: should we define a fused append/snoc operation? Would that help reduce copying?
-        foldr' (start (S.append s0 s)) z
-            (zipSubarrayWith_ Accept Reject vz tz)
+        SA.foldrWithKey' (start . appendSnoc s0 s) z
+            (SA.rzipWith_ Accept Reject vz tz)
     
 
 -- cf Data.ByteString.unpack
@@ -642,7 +609,7 @@ lookup = lookupBy_ (\v _ -> Just v) (const Nothing)
 -- | Return the quotient trie containing the keys beginning with a
 -- prefix. That is, the following definition is satisfied:
 --
--- > lookup s2 (submap s1 t) = if S.isPrefixOf s1 s2 then lookup s2 t else False
+-- > lookup s2 (submap s1 t) = if BS.isPrefixOf s1 s2 then lookup s2 t else False
 --
 submap :: ByteString -> Trie a -> Trie a
 submap s = lookupBy_ ((prepend s .) . Accept) (prepend s . Reject) s
@@ -654,7 +621,7 @@ submap s = lookupBy_ ((prepend s .) . Accept) (prepend s . Reject) s
 -- | Return the subtrie rooted at a prefix. That is, the following
 -- definition is satisfied:
 --
--- > lookup s2 (subtrie s1 t) = lookup (s1 `S.append` s2) t
+-- > lookup s2 (subtrie s1 t) = lookup (s1 `BS.append` s2) t
 --
 subtrie :: ByteString -> Trie a -> Trie a
 subtrie = lookupBy_ Accept Reject
@@ -681,23 +648,23 @@ lookupBy_ :: (a -> Trunk a -> b) -> (Trunk a -> b) -> ByteString -> Trie a -> b
 lookupBy_ accept reject = start
     where
     start s0
-        | S.null s0 = trie accept reject
-        | otherwise = go s0 . trie (flip const) id
+        | BS.null s0 = trie accept reject
+        | otherwise  = go s0 . trie (flip const) id
     
     go !_ Empty       = reject Empty
     go s0 (Arc s v t) =
         let (_, s0', s') = breakMaximalPrefix s0 s in
-        case (S.null s0', S.null s') of
+        case (BS.null s0', BS.null s') of
         (True,  True)  -> accept v t
         (True,  False) -> reject (prepend_ s' t)
         (False, True)  -> go s0' t
         (False, False) -> reject Empty
     go s0 (Branch s vz tz) =
         let (_, s0', s') = breakMaximalPrefix s0 s in
-        case S.uncons s0' of
+        case BS.uncons s0' of
         Nothing     -> reject (Branch s' vz tz)
         Just (w,ws) ->
-            case (S.null ws, lookup w vz, lookup w tz) of
+            case (BS.null ws, lookup w vz, lookup w tz) of
             (True,  Nothing, Nothing) -> reject Empty
             (True,  Nothing, Just t)  -> reject t
             (True,  Just v,  Nothing) -> __impossible
@@ -724,20 +691,21 @@ alterSubtrie_
 alterSubtrie_ accept reject = start
     where
     start s0
-        | S.null s0 = trie accept reject
-        | otherwise = go s0 . trie (flip const) id
+        | BS.null s0 = trie accept reject
+        | otherwise  = go s0 . trie (flip const) id
 
     go !s0 Empty       = prepend s0 (reject Empty)
     go  s0 (Arc s v t) =
         let (sh, s0', s') = breakMaximalPrefix s0 s in
-        case (S.null s0', S.null s') of
+        case (BS.null s0', BS.null s') of
         (True,  True)  -> prepend_ s  (accept v t)
         (True,  False) -> prepend_ sh (reject (prepend_ s' t))
         (False, True)  -> trie __impossible (Arc s v) (go s0' t)
         (False, False) -> merge2 sh (Arc s' v t) (prepend s0' (reject Empty))
     go  s0 (Branch s vz tz) =
-        let (_, s0', s') = breakMaximalPrefix s0 s in
+        let (sh, s0', s') = breakMaximalPrefix s0 s in
         ... -- TODO
+        
 
 
 adjustWithKey :: (ByteString -> a -> a) -> ByteString -> Trie a -> Trie a
@@ -753,13 +721,13 @@ adjust :: (a -> a) -> ByteString -> Trie a -> Trie a
 adjust f = start
     where
     start s0 t0
-        | S.null s0 = trie (Accept . f) (const t0) t0
-        | otherwise = go s0 (trie (flip const) id t0)
+        | BS.null s0 = trie (Accept . f) (const t0) t0
+        | otherwise  = go s0 (trie (flip const) id t0)
 
     go !s0 Empty       = Empty
     go  s0 (Arc s v t) =
         let (_, s0', s') = breakMaximalPrefix s0 s in
-        case (S.null s0', S.null s') of
+        case (BS.null s0', BS.null s') of
         (True,  True)  -> prepend_ s  (accept v t)
         (True,  False) -> prepend_ sh (reject (prepend_ s' t))
         (False, True)  -> trie __impossible (Arc s v) (go s0' t)
@@ -784,54 +752,12 @@ adjust f = start
 -- to resolve conflicts (or non-conflicts).
 alterBy :: (ByteString -> a -> Maybe a -> Maybe a)
          -> ByteString -> a -> Trie a -> Trie a
-alterBy f = alterBy_ (\k v mv t -> (f k v mv, t))
--- TODO: use GHC's 'inline' function so that this gets specialized away.
--- TODO: benchmark to be sure that this doesn't introduce unforseen performance costs because of the uncurrying etc.
+alterBy f = alterBy_ (\k v mv t -> accept (f k v mv) t)
 
 
 -- | A variant of 'alterBy' which also allows modifying the sub-trie. 
-alterBy_ :: (ByteString -> a -> Maybe a -> Trie a -> (Maybe a, Trie a))
+alterBy_ :: (ByteString -> a -> Trie a -> Trie a)
          -> ByteString -> a -> Trie a -> Trie a
-alterBy_ f_ q_ x_
-    | S.null q_ = alterEpsilon
-    | otherwise = go q_
-    where
-    f         = f_ q_ x_
-    nothing q = uncurry (arc q) (f Nothing Empty)
-    
-    alterEpsilon t_@Empty                    = uncurry (arc q_) (f Nothing t_)
-    alterEpsilon t_@(Branch _ _ _ _)         = uncurry (arc q_) (f Nothing t_)
-    alterEpsilon t_@(Arc k mv t) | S.null k  = uncurry (arc q_) (f mv      t)
-                                 | otherwise = uncurry (arc q_) (f Nothing t_)
-    
-    
-    go q Empty            = nothing q
-    
-    go q t@(Branch p m l r)
-        | nomatch qh p m  = branchMerge p t  qh (nothing q)
-        | zero qh m       = branch p m (go q l) r
-        | otherwise       = branch p m l (go q r)
-        where
-        qh = errorLogHead "alterBy" q
-    
-    go q t_@(Arc k mv t) =
-        let (p,k',q') = breakMaximalPrefix k q in
-        case (not $ S.null k', S.null q') of
-        (True,  True)  -> -- add node to middle of arc
-                          uncurry (arc p) (f Nothing (Arc k' mv t))
-        (True,  False) ->
-            case nothing q' of
-            Empty -> t_ -- Nothing to add, reuse old arc
-            l     -> arc' (branchMerge (getPrefix l) l (getPrefix r) r)
-                    where
-                    r = Arc k' mv t
-                    
-                    -- inlined version of 'arc'
-                    arc' | S.null p  = id
-                         | otherwise = Arc p Nothing
-                    
-        (False, True)  -> uncurry (arc k) (f mv t)
-        (False, False) -> arc k mv (go q' t)
 
 
 -- | Alter the value associated with a given key. If the key is not
@@ -841,31 +767,6 @@ alterBy_ f_ q_ x_
 -- trie structure, it is somewhat faster than 'alterBy'.
 adjustBy :: (ByteString -> a -> a -> a)
          -> ByteString -> a -> Trie a -> Trie a
-adjustBy f_ q_ x_
-    | S.null q_ = adjustEpsilon
-    | otherwise = go q_
-    where
-    f = f_ q_ x_
-    
-    adjustEpsilon (Arc k (Just v) t) | S.null k = Arc k (Just (f v)) t
-    adjustEpsilon t_                            = t_
-    
-    go _ Empty            = Empty
-    
-    go q t@(Branch p m l r)
-        | nomatch qh p m  = t
-        | zero qh m       = Branch p m (go q l) r
-        | otherwise       = Branch p m l (go q r)
-        where
-        qh = errorLogHead "adjustBy" q
-    
-    go q t_@(Arc k mv t) =
-        let (_,k',q') = breakMaximalPrefix k q in
-        case (not $ S.null k', S.null q') of
-        (True,  True)  -> t_ -- don't break arc inline
-        (True,  False) -> t_ -- don't break arc branching
-        (False, True)  -> Arc k (liftM f mv) t
-        (False, False) -> Arc k mv (go q' t)
 
 
 {---------------------------------------------------------------
@@ -882,83 +783,6 @@ adjustBy f_ q_ x_
 -- symmetric difference but, with those two, all set operations can
 -- be defined (albeit inefficiently).
 mergeBy :: (a -> a -> Maybe a) -> Trie a -> Trie a -> Trie a
-mergeBy f = mergeBy'
-    where
-    -- | Deals with epsilon entries, before recursing into @go@
-    mergeBy'
-        t0_@(Arc k0 mv0 t0)
-        t1_@(Arc k1 mv1 t1)
-        | S.null k0 && S.null k1 = arc k0 (mergeMaybe f mv0 mv1) (go t0 t1)
-        | S.null k0              = arc k0 mv0 (go t0 t1_)
-        |              S.null k1 = arc k1 mv1 (go t1 t0_)
-    mergeBy'
-        (Arc k0 mv0@(Just _) t0)
-        t1_@(Branch _ _ _ _)
-        | S.null k0              = arc k0 mv0 (go t0 t1_)
-    mergeBy'
-        t0_@(Branch _ _ _ _)
-        (Arc k1 mv1@(Just _) t1)
-        | S.null k1              = arc k1 mv1 (go t1 t0_)
-    mergeBy' t0_ t1_             = go t0_ t1_
-    
-    
-    -- | The main recursion
-    go Empty t1    = t1
-    go t0    Empty = t0
-    
-    -- /O(n+m)/ for this part where /n/ and /m/ are sizes of the branchings
-    go  t0@(Branch p0 m0 l0 r0)
-        t1@(Branch p1 m1 l1 r1)
-        | shorter m0 m1  = union0
-        | shorter m1 m0  = union1
-        | p0 == p1       = branch p0 m0 (go l0 l1) (go r0 r1)
-        | otherwise      = branchMerge p0 t0 p1 t1
-        where
-        union0  | nomatch p1 p0 m0  = branchMerge p0 t0 p1 t1
-                | zero p1 m0        = branch p0 m0 (go l0 t1) r0
-                | otherwise         = branch p0 m0 l0 (go r0 t1)
-        
-        union1  | nomatch p0 p1 m1  = branchMerge p0 t0 p1 t1
-                | zero p0 m1        = branch p1 m1 (go t0 l1) r1
-                | otherwise         = branch p1 m1 l1 (go t0 r1)
-    
-    -- We combine these branches of 'go' in order to clarify where the definitions of 'p0', 'p1', 'm'', 'p'' are relevant. However, this may introduce inefficiency in the pattern matching automaton...
-    -- TODO: check. And get rid of 'go'' if it does.
-    go t0_ t1_ = go' t0_ t1_
-        where
-        p0 = getPrefix t0_
-        p1 = getPrefix t1_
-        m' = branchMask p0 p1
-        p' = mask p0 m'
-        
-        go' (Arc k0 mv0 t0)
-            (Arc k1 mv1 t1)
-            | m' == 0 =
-                let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
-                if S.null pre
-                then error "mergeBy: no mask, but no prefix string"
-                else let {-# INLINE arcMerge #-}
-                         arcMerge mv' t1' t2' = arc pre mv' (go t1' t2')
-                     in case (S.null k0', S.null k1') of
-                         (True, True)  -> arcMerge (mergeMaybe f mv0 mv1) t0 t1
-                         (True, False) -> arcMerge mv0 t0 (Arc k1' mv1 t1)
-                         (False,True)  -> arcMerge mv1 (Arc k0' mv0 t0) t1
-                         (False,False) -> arcMerge Nothing (Arc k0' mv0 t0)
-                                                           (Arc k1' mv1 t1)
-        go' (Arc _ _ _)
-            (Branch _p1 m1 l r)
-            | nomatch p0 p1 m1 = branchMerge p1 t1_  p0 t0_
-            | zero p0 m1       = branch p1 m1 (go t0_ l) r
-            | otherwise        = branch p1 m1 l (go t0_ r)
-        go' (Branch _p0 m0 l r)
-            (Arc _ _ _)
-            | nomatch p1 p0 m0 = branchMerge p0 t0_  p1 t1_
-            | zero p1 m0       = branch p0 m0 (go l t1_) r
-            | otherwise        = branch p0 m0 l (go r t1_)
-        
-        -- Inlined branchMerge. Both tries are disjoint @Arc@s now.
-        go' _ _ | zero p0 m'   = Branch p' m' t0_ t1_
-        go' _ _                = Branch p' m' t1_ t0_
 
 
 mergeMaybe :: (a -> a -> Maybe a) -> Maybe a -> Maybe a -> Maybe a
@@ -973,21 +797,31 @@ mergeMaybe f (Just v0)   (Just v1) = f v0 v1
 -- Priority-queue functions
 ---------------------------------------------------------------}
 
+-- TODO: use a single large buffer for building up the string, since we're guaranteed not to share it.
 minAssoc :: Trie a -> Maybe (ByteString, a)
-minAssoc = go S.empty
+minAssoc (Accept v _) = Just (BS.empty, v)
+minAssoc (Rekect   t) = go BS.empty t
     where
-    go _ Empty              = Nothing
-    go q (Arc k (Just v) _) = Just (S.append q k,v)
-    go q (Arc k Nothing  t) = go   (S.append q k) t
-    go q (Branch _ _ l _)   = go q l
+    go !_ Empty            = Nothing
+    go s0 (Arc    s v  t)  = Just (BS.append s0 s, v)
+    go s0 (Branch s vz tz) =
+        case SA.toList vz of
+        (k,v) : _ -> Just (appendSnoc s0 s k, v)
+        []        ->
+            -- N.B., this should only force mb if the recursion fails
+            foldrWithKey
+                (\k t mb -> go (appendSnoc s0 s k) t <|> mb) __impossible tz
+        
+    __impossible = error
+        "Data.Trie.ArrayMapped.Internal.minAssoc: the impossible happened"
 
 
 maxAssoc :: Trie a -> Maybe (ByteString, a)
-maxAssoc = go S.empty
+maxAssoc = go BS.empty
     where
     go _ Empty                  = Nothing
-    go q (Arc k (Just v) Empty) = Just (S.append q k,v)
-    go q (Arc k _        t)     = go   (S.append q k) t
+    go q (Arc k (Just v) Empty) = Just (BS.append q k,v)
+    go q (Arc k _        t)     = go   (BS.append q k) t
     go q (Branch _ _ _ r)       = go q r
 
 
@@ -999,23 +833,23 @@ mapView f (Just (k,v,t)) = Just (k,v, f t)
 
 updateMinViewBy :: (ByteString -> a -> Maybe a)
                 -> Trie a -> Maybe (ByteString, a, Trie a)
-updateMinViewBy f = go S.empty
+updateMinViewBy f = go BS.empty
     where
     go _ Empty              = Nothing
-    go q (Arc k (Just v) t) = let q' = S.append q k
+    go q (Arc k (Just v) t) = let q' = BS.append q k
                               in Just (q',v, arc k (f q' v) t)
-    go q (Arc k Nothing  t) = mapView (arc k Nothing) (go (S.append q k) t)
+    go q (Arc k Nothing  t) = mapView (arc k Nothing) (go (BS.append q k) t)
     go q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
 
 
 updateMaxViewBy :: (ByteString -> a -> Maybe a)
                 -> Trie a -> Maybe (ByteString, a, Trie a)
-updateMaxViewBy f = go S.empty
+updateMaxViewBy f = go BS.empty
     where
     go _ Empty                  = Nothing
-    go q (Arc k (Just v) Empty) = let q' = S.append q k
+    go q (Arc k (Just v) Empty) = let q' = BS.append q k
                                   in Just (q',v, arc k (f q' v) Empty)
-    go q (Arc k mv       t)     = mapView (arc k mv) (go (S.append q k) t)
+    go q (Arc k mv       t)     = mapView (arc k mv) (go (BS.append q k) t)
     go q (Branch p m l r)       = mapView (branch p m l) (go q r)
 
 ----------------------------------------------------------------

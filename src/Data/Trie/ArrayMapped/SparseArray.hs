@@ -35,7 +35,7 @@ module Data.Trie.ArrayMapped.SparseArray
     -- MSparseArray(), new, new_, trimMSA, unsafeFreezeMSA, runMSA 
     ) where
 
-import Prelude hiding (null, lookup, filter, foldr, length, map, read, elem, notElem)
+import Prelude hiding (null, lookup, filter, foldr, foldl, length, map, read, elem, notElem)
 #if defined(ASSERTS)
 import qualified Prelude
 #endif
@@ -551,14 +551,14 @@ instance Foldable SparseArray where
     foldr' f = \z0 (SA p xs) -> go xs (popCount p - 1) z0
         where
         go !xs !n !z
-            | n > 0     = go xs (n-1) (f (xs ! n) z)
+            | n >= 0    = go xs (n-1) (f (xs ! n) z)
             | otherwise = z
     
     {-# INLINE foldl #-}
     foldl f z = \(SA p xs) -> go xs (popCount p - 1)
         where
         go !xs !n
-            | n > 0     = f (go xs (n-1)) (xs ! n)
+            | n >= 0    = f (go xs (n-1)) (xs ! n)
             | otherwise = z
     
     {-# INLINE foldl' #-}

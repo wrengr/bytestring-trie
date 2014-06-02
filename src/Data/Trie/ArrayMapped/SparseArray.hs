@@ -453,7 +453,7 @@ toListBy f xz = build (\cons nil -> toListByFB cons nil f xz)
 {-# RULES "toListBy (flip const)"  toListBy (\_ x -> x) = elems #-}
 
 toListByFB :: (b -> c -> c) -> c -> (Key -> a -> b) -> SparseArray a -> c
-toListByFB cons nil f = \(SA p xs) -> go xs 0 p 1 1
+toListByFB cons nil f = \(SA p xs) -> go xs 0 p 1 0
     where
     go !xs !i !p !b !k
         | p == 0     = nil

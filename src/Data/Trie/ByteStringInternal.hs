@@ -12,10 +12,10 @@ distribution.
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.02.06
+--                                                  ~ 2014.06.01
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
--- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2014 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  experimental
@@ -26,12 +26,13 @@ distribution.
 
 
 module Data.Trie.ByteStringInternal
-    ( ByteString, ByteStringElem
+    ( ByteString(), ByteStringElem
+    , appendSnoc
     , breakMaximalPrefix
     ) where
 
-import qualified Data.ByteString as S
-import Data.ByteString.Internal (ByteString(..), inlinePerformIO)
+import Data.ByteString (empty)
+import Data.ByteString.Internal (ByteString(..), inlinePerformIO, unsafeCreate, memcpy)
 import Data.Word
 
 import Foreign.ForeignPtr (ForeignPtr, withForeignPtr)
@@ -51,6 +52,24 @@ import Control.Monad   (liftM)
 type ByteStringElem = Word8 
 
 
+-- | Fused 'append' and 'snoc'.
+appendSnoc :: ByteString -> ByteString -> ByteStringElem -> ByteString
+appendSnoc (PS s1 off1 len1) (PS s2 off2 len2) w =
+    unsafeCreate (len1 + len2 + 1) $ \p3 -> do
+        withForeignPtr s1 $ \p1 ->
+            memcpy p3
+                (p1 `plusPtr` off1)
+                (fromIntegral len1)
+        withForeignPtr s2 $ \p2 ->
+            memcpy (p3 `plusPtr` len1)
+                (p2 `plusPtr` off2)
+                (fromIntegral len2)
+        poke (p3 `plusPtr` (len1 + len2)) w
+{-# INLINE appendSnoc #-}
+
+
+
+----------------------------------------------------------------
 ----------------------------------------------------------------
 -- | Returns the longest shared prefix and the two remaining suffixes
 -- for a pair of strings.
@@ -63,8 +82,8 @@ breakMaximalPrefix :: ByteString -> ByteString
 breakMaximalPrefix
     str1@(PS s1 off1 len1)
     str2@(PS s2 off2 len2)
-    | len1 == 0 = (S.empty, S.empty, str2)
-    | len2 == 0 = (S.empty, str1, S.empty)
+    | len1 == 0 = (empty, empty, str2)
+    | len2 == 0 = (empty, str1, empty)
     | otherwise = inlinePerformIO $
         withForeignPtr s1 $ \p1 ->
         withForeignPtr s2 $ \p2 -> do
@@ -80,16 +99,20 @@ breakMaximalPrefix
             
             return $! (,,) !$ pre !$ s1' !$ s2'
 
+
+-- TODO: other than restricting the type, was this really necessary?
 -- | C-style pointer addition, without the liberal type of 'plusPtr'.
 ptrElemOff :: Storable a => Ptr a -> Int -> Ptr a
 {-# INLINE ptrElemOff #-}
 ptrElemOff p i =
     p `plusPtr` (i * sizeOf (undefined `asTypeOf` inlinePerformIO (peek p)))
 
+
 newPS :: ForeignPtr ByteStringElem -> Int -> Int -> ByteString
 {-# INLINE newPS #-}
 newPS s o l =
-    if l <= 0 then S.empty else PS s o l
+    if l <= 0 then empty else PS s o l
+
 
 -- | fix associativity bug
 (!$) :: (a -> b) -> a -> b

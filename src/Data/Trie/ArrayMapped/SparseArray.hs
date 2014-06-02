@@ -45,7 +45,7 @@ import qualified Data.Traversable as Traversable
 import Control.Applicative (Applicative)
 import Control.DeepSeq
 import Data.Word
-import Data.Bits ((.&.), (.|.), xor, unsafeShiftL, popCount, bit)
+import Data.Bits ((.&.), (.|.), xor, popCount, bit)
 -- TODO: if the version of base is too low, use ad-hoc 'popCount' implementation
 
 import Data.Monoid (Monoid(..))
@@ -59,9 +59,9 @@ import GHC.ST (ST(..))
 -- In order to avoid warnings on previous GHC versions, we provide
 -- an explicit import list instead of only hiding the offending symbols
 import GHC.Exts
-    (build, Array#, Int(..), Int#, newArray#, readArray#, writeArray#,
-    indexArray#, freezeArray#, unsafeFreezeArray#, unsafeThawArray#,
-    MutableArray#)
+    ( build
+    , Word(W#), Int(I#), Int#, uncheckedShiftL#
+    , Array#, newArray#, readArray#, writeArray#, indexArray#, freezeArray#, unsafeFreezeArray#, unsafeThawArray#, MutableArray#)
 #if __GLASGOW_HASKELL__ >= 702
 import GHC.Exts
     (sizeofArray#, copyArray#, thawArray#, sizeofMutableArray#,
@@ -124,7 +124,7 @@ type Index  = Int
 --
 -- > bsucc (bit k) == bit (k+1)
 bsucc :: OneBit -> OneBit
-bsucc b = b `unsafeShiftL` 1
+bsucc (W# b) = W# (b `uncheckedShiftL#` 1#)
 {-# INLINE bsucc #-}
 
 -- | Set all bits strictly below the argument.
@@ -137,13 +137,11 @@ maskLE :: OneBit -> Mask
 maskLE b = maskLT (bsucc b)
 {-# INLINE maskLE #-}
 
--- | Get the count of set bits, as an unboxed integer.
-popCount# :: Bitmap -> Int#
-popCount# p = case popCount p of I# i# -> i#
-{-# INLINE popCount# #-}
-
 key2bit :: Key -> OneBit
-key2bit = bit . fromIntegral -- TODO: replace with (1 `unsafeShiftL` k) ??
+-- key2bit = bit . fromIntegral
+key2bit k =
+    case fromIntegral k of
+    I# i -> W# (1## `uncheckedShiftL#` i)
 {-# INLINE key2bit #-}
 
 bit2index :: Bitmap -> OneBit -> Index
@@ -235,9 +233,10 @@ copy !src !sidx !dst !didx n =
 #endif
 
 
-shiftUpOne :: MutableArray# s e -> Int -> Int -> ST s ()
+-- TODO: would it be faster just to allocate a new array and use copyMutableArray# for each half?
+shiftUpOne :: MutableArray# s e -> Index -> Index -> ST s ()
 shiftUpOne !xs !i !n = 
-    CHECK_BOUNDS("shiftUpOne: ", lengthMA src, i + n - 1)
+    CHECK_BOUNDS("shiftUpOne: ", lengthMA src, i + n) -- TODO: (subtract 1) ??
     go xs i (i + n)
     where
     go !xs !i !n
@@ -249,9 +248,12 @@ shiftUpOne !xs !i !n =
 ----------------------------------------------------------------
 -- | Trim and freeze the array.
 trimMSA :: MSparseArray s a -> ST s (SparseArray a)
-trimMSA (MSA p xs) = ST $ \s ->
-    case freezeArray# xs 0# (popCount# p) s of
-    (# s', xs' #) -> (# s', SA p xs' #)
+trimMSA (MSA p xs) =
+    case popCount p of
+    I# n ->
+        ST $ \s ->
+            case freezeArray# xs 0# n s of
+            (# s', xs' #) -> (# s', SA p xs' #)
 {-# INLINE trimMSA #-}
 
 
@@ -278,6 +280,7 @@ runMSA act = runST (unsafeFreezeMSA =<< act)
 
 empty :: SparseArray a
 empty = runMSA (new_ 0 >>= \ (MA xs) -> return (MSA 0 xs))
+
 
 -- TODO: would it be better to have an invariant that SAs are non-empty, and use Maybe when we 'trimMSA', 'filter', etc?
 -- | /O(1)/. Is the array empty?
@@ -596,8 +599,8 @@ next p b = first p (bsucc b)
 
 filterMap :: (a -> Maybe b) -> SparseArray a -> SparseArray b
 filterMap f (SA p xs) =
+    let !n = popCount p in
     runST $ do
-        let !n = popCount p
         MA ys <- new_ n
         let go !i !bi !j !q
                 | i >= n    =
@@ -616,8 +619,8 @@ filterMap f (SA p xs) =
 
 filter :: (a -> Bool) -> SparseArray a -> SparseArray a
 filter f (SA p xs) =
+    let !n = popCount p in
     runST $ do
-        let !n = popCount p
         MA ys <- new_ n
         let go !i !bi !j !q
                 | i >= n    =
@@ -669,8 +672,8 @@ rzipFilter_
     :: (a -> b -> Maybe c) -> (b -> Maybe c)
     -> SparseArray a -> SparseArray b -> SparseArray c
 rzipFilter_ f g (SA p xs) (SA q ys) =
+    let !n = popCount q in
     runST $ do
-        let !n = popCount q
         MA zs <- new_ n
         let go !i !b !j !k !r
                 | j >= n     =

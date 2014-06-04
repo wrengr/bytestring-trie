@@ -87,7 +87,7 @@ import GHC.ST              (ST(..))
 import Control.DeepSeq
 import Data.Monoid         (Monoid(..))
 import Data.Word
-import Data.Bits           ((.&.), (.|.), xor, complement, popCount)
+import Data.Bits           ((.&.), (.|.), xor, popCount)
 -- TODO: if the version of base is too low, use ad-hoc 'popCount' implementation
 import Data.Or             (Or(..))
 
@@ -96,7 +96,7 @@ import Data.Or             (Or(..))
 -- an explicit import list instead of only hiding the offending symbols
 import GHC.Exts
     ( build
-    , Word(W#), Int(I#), uncheckedShiftL#
+    , Word(W#), Int(I#), uncheckedShiftL#, not#
     , Array#, newArray#, readArray#, writeArray#, indexArray#, freezeArray#, unsafeFreezeArray#, MutableArray#
 #if __GLASGOW_HASKELL__ >= 702
     , sizeofMutableArray#, copyMutableArray#
@@ -157,7 +157,6 @@ if not ((_lhs_) _op_ (_rhs_)) then __functionError (_func_) ("Check failed: _lhs
 type Key    = Word8 -- Actually, should be a Word4 for our uses...
 type Bitmap = Word  -- Actually, should be a Word16 == 2^Key == 2^(2^4)
 type OneBit = Bitmap 
-type Mask   = Bitmap 
 -- | Indicies into the underlying 'Array#' or 'MutableArray#'.
 type Index  = Int 
     -- HACK: actually, this should be Int#, but that causes code ugliness
@@ -172,18 +171,49 @@ bsucc (W# b) = W# (b `uncheckedShiftL#` 1#)
 -- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
+-- HACK: the definition of 'complement' in Bits is (xor maxBound) instead of not# (in order to narrow things as appropriate). But since we're only going to turn around and use (.&.) we can get rid of that and use not# directly. This does assume all the extraneous high-order bits are zero instead of garbage though.
+complement :: Word -> Word
+complement (W# w) = W# (not# w)
+{-# INLINE complement #-}
+
+
 -- | Set all bits strictly below the argument.
-maskLT :: OneBit -> Mask
-maskLT b = b - 1
+maskLT :: OneBit -> Bitmap -> Bitmap
+maskLT b p = (b - 1) .&. p
 {-# INLINE maskLT #-}
 -- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
 -- | Set all bits below or equal to the argument.
-maskLE :: OneBit -> Mask
-maskLE b = maskLT (bsucc b)
+maskLE :: OneBit -> Bitmap -> Bitmap
+maskLE b p = (bsucc b - 1) .&. p
 {-# INLINE maskLE #-}
 -- TODO: use INLINEABLE instead, in order to allow duplication?
+-- N.B., this only works because @b@ has only one bit set.
+
+
+-- | Set all bits strictly above the argument.
+maskGT :: OneBit -> Bitmap -> Bitmap
+maskGT b p = complement (bsucc b - 1) .&. p
+{-# INLINE maskGT #-}
+
+
+-- | Set all bits strictly above or equal to the argument.
+maskGE :: OneBit -> Bitmap -> Bitmap
+maskGE b p = complement (b - 1) .&. p
+{-# INLINE maskGE #-}
+
+
+-- | Get the first bit set in @p@.
+firstBit :: Bitmap -> OneBit
+firstBit p = complement (p - 1) .&. p
+{-# INLINE firstBit #-}
+
+
+-- | Get the next bit set in @p@; i.e., the first set bit after @b@.
+nextBit :: Bitmap -> OneBit -> OneBit
+nextBit p b = firstBit (maskGT b p)
+{-# INLINE nextBit #-}
 
 
 key2bit :: Key -> OneBit
@@ -199,29 +229,13 @@ key2bit k =
 -- N.B., there are also popCount primops for only looking at the lower 8, 16, or 32 bits
 -- popCount (W# x#) = I# (word2Int# (popCnt# x#))
 bit2index :: Bitmap -> OneBit -> Index
-bit2index p b = popCount (p .&. maskLT b)
+bit2index p b = popCount (maskLT b p)
 {-# INLINE bit2index #-}
 
 
 key2index :: Bitmap -> Key -> Index
 key2index p k = bit2index p (key2bit k)
 {-# INLINE key2index #-}
-
-
--- We pass @b@ in order to _prevent_ inlining, since that'll just bloat the code without helping due to the recursion
--- | Get the first bit set in @p@, starting from @b@.
-firstBit :: Bitmap -> OneBit -> OneBit
-firstBit !p !b
-    | b `elem` p = b
-    | otherwise  = firstBit p (bsucc b)
-
--- | Get the next bit set in @p@; i.e., the first set bit after @b@.
-nextBit :: Bitmap -> OneBit -> OneBit
-nextBit !p !b
-    | b' `elem` p = b'
-    | otherwise   = nextBit p b'
-    where
-    b' = bsucc b
 
 
 -- | Check if a bit is set in the bitmap.
@@ -801,7 +815,7 @@ filterMap f (SA p xs) =
                     Nothing ->
                         go (i+1) (nextBit p bi) j q
             --
-        go 0 (firstBit p 1) 0 0
+        go 0 (firstBit p) 0 0
 
 -- The inline pragma is to avoid warnings about the rules possibly not firing
 {-# NOINLINE [1] filterMap #-}
@@ -826,7 +840,7 @@ filter f xz@(SA p xs) =
                     go (i+1) (nextBit p bi) j q
                 where x = xs ! i
             --
-        go 0 (firstBit p 1) 0 0
+        go 0 (firstBit p) 0 0
 
 -- The inline pragma is to avoid warnings about the rules possibly not firing
 {-# NOINLINE [1] filter #-}
@@ -862,7 +876,7 @@ partition f xz@(SA p xs) =
                     go (i+1) (nextBit p bi) j q (k+1) (r .|. bi)
                 where x = xs ! i
             --
-        go 0 (firstBit p 1) 0 0 0 0
+        go 0 (firstBit p) 0 0 0 0
 
 -- The inline pragma is to avoid warnings about the rules possibly not firing
 {-# NOINLINE [1] partition #-}
@@ -895,7 +909,7 @@ rzipWith'_ f g (SA p xs) (SA q ys) =
                     write zs j $! g (ys ! j)
                     go i     (nextBit q b) (j+1)
             --
-        go 0 (firstBit q 1) 0
+        go 0 (firstBit q) 0
 
 rzipWith'
     :: (Maybe a -> b -> c)
@@ -921,7 +935,7 @@ rzipWith_ f g (SA p xs) (SA q ys) =
                     write zs j (g (ys ! j))
                     go i     (nextBit q b) (j+1)
             --
-        go 0 (firstBit q 1) 0
+        go 0 (firstBit q) 0
 
 
 rzipWith
@@ -961,7 +975,7 @@ rzipFilter_ f g (SA p xs) (SA q ys) =
                     Nothing ->
                         go i (nextBit q b) (j+1) k r
             --
-        go 0 (firstBit q 1) 0 0 0
+        go 0 (firstBit q) 0 0 0
 
 
 rzipFilter
@@ -1013,7 +1027,7 @@ unionWith_ f g h (SA p xs) (SA q ys) =
                         go (nextBit r b) i (j+1) (k+1)
                     (False, False) -> __impossible "unionWith_"
             --
-        go (firstBit r 1) 0 0 0
+        go (firstBit r) 0 0 0
 
 
 unionWith' :: (Or a b -> c) -> SparseArray a -> SparseArray b -> SparseArray c
@@ -1043,7 +1057,7 @@ unionWith'_ f g h (SA p xs) (SA q ys) =
                         go (nextBit r b) i (j+1) (k+1)
                     (False, False) -> __impossible "unionWith'_"
             --
-        go (firstBit r 1) 0 0 0
+        go (firstBit r) 0 0 0
 
 
 unionFilterWith
@@ -1089,7 +1103,7 @@ unionFilterWith_ f g h (SA p xs) (SA q ys) =
                             go (r0 `xor` b) (nextBit r0 b) i (j+1) k r
                     (False, False) -> __impossible "unionFilterWith_"
             --
-        go r0 (firstBit r0 1) 0 0 0 0
+        go r0 (firstBit r0) 0 0 0 0
 
 
 {-
@@ -1132,7 +1146,7 @@ intersectionWith f =
             !n = popCount r
         in runST $
             new_ n $ \zs ->
-            go n p xs q ys r zs (firstBit r 1) 0
+            go n p xs q ys r zs (firstBit r) 0
     where
     go !n !p !xs !q !ys !r !zs !b !k
         | k >= n    = unsafeFreeze r zs
@@ -1149,7 +1163,7 @@ intersectionWith' f =
             !n = popCount r
         in runST $
             new_ n $ \zs ->
-            go n p xs q ys r zs (firstBit r 1) 0
+            go n p xs q ys r zs (firstBit r) 0
     where
     go !n !p !xs !q !ys !r !zs !b !k
         | k >= n    = unsafeFreeze r zs
@@ -1173,7 +1187,7 @@ differenceL = \(SA p xs) (SA q _) ->
             !n = popCount r
         in runST $
             new_ n $ \zs -> do
-            go p xs r zs n 0 (firstBit r 1)
+            go p xs r zs n 0 (firstBit r)
     where
     go !p !xs !r !zs !n !k !b
         | k >= n    = unsafeFreeze r zs

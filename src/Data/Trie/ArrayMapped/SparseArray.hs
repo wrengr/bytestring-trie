@@ -176,6 +176,9 @@ complement :: Word -> Word
 complement (W# w) = W# (not# w)
 {-# INLINE complement #-}
 
+-- N.B., via twos-complement we have that:
+-- negate x == complement (x - 1) == complement x + 1
+
 
 -- | Set all bits strictly below the argument.
 maskLT :: OneBit -> Bitmap -> Bitmap
@@ -189,26 +192,30 @@ maskLE :: OneBit -> Bitmap -> Bitmap
 maskLE b p = (bsucc b - 1) .&. p
 {-# INLINE maskLE #-}
 -- TODO: use INLINEABLE instead, in order to allow duplication?
--- N.B., this only works because @b@ has only one bit set.
+-- N.B., this only works because @b@ has only one bit set; more generally, use (x .&. (x-1)) to clear the first bit
 
 
 -- | Set all bits strictly above the argument.
 maskGT :: OneBit -> Bitmap -> Bitmap
-maskGT b p = complement (bsucc b - 1) .&. p
+maskGT b p = negate (bsucc b) .&. p
 {-# INLINE maskGT #-}
 
 
 -- | Set all bits strictly above or equal to the argument.
 maskGE :: OneBit -> Bitmap -> Bitmap
-maskGE b p = complement (b - 1) .&. p
+maskGE b p = negate b .&. p
 {-# INLINE maskGE #-}
 
 
 -- | Get the first bit set in @p@.
 firstBit :: Bitmap -> OneBit
-firstBit p = complement (p - 1) .&. p
+firstBit p = p .&. negate p
 {-# INLINE firstBit #-}
 
+-- | Get the second bit set in @p@.
+secondBit :: Bitmap -> OneBit
+secondBit p = firstBit (p .&. (p-1))
+{-# INLINE secondBit #-}
 
 -- | Get the next bit set in @p@; i.e., the first set bit after @b@.
 nextBit :: Bitmap -> OneBit -> OneBit
@@ -236,6 +243,38 @@ bit2index p b = popCount (maskLT b p)
 key2index :: Bitmap -> Key -> Index
 key2index p k = bit2index p (key2bit k)
 {-# INLINE key2index #-}
+
+
+{-
+-- <http://stackoverflow.com/questions/757059>
+-- <http://chessprogramming.wikispaces.com/BitScan>
+-- <http://graphics.stanford.edu/~seander/bithacks.html>
+-- TODO: or use ffs(3) via FFI? or the x86 instruction bsf?
+bit2key :: OneBit -> Key
+
+unsigned char lowestBitTable[256];
+int get_lowest_set_bit(unsigned num) {
+    unsigned mask = 1;
+    for (int cnt = 1; cnt <= 32; cnt++, mask <<= 1) {
+        if (num & mask) return cnt;
+    }
+    return 0;
+}
+for (int i = 0; i < 256; i++) lowestBitTable[i] = get_lowest_set_bit(i);
+
+int find_first_bits_lookup_table(unsigned int value) {
+    // note that order to check indices will depend whether you are on a big or little endian machine. This is for little-endian
+    unsigned char *bytes = (unsigned char *)&value;
+    if (bytes[0])
+        return lowestBitTable[bytes[0]];
+    else if (bytes[1])
+        return lowestBitTable[bytes[1]] + 8;
+    else if (bytes[2])
+        return lowestBitTable[bytes[2]] + 16;
+    else
+        return lowestBitTable[bytes[3]] + 24;
+}
+-}
 
 
 -- | Check if a bit is set in the bitmap.
@@ -425,6 +464,11 @@ isSubarrayOf (SA p _) (SA q _) = (p .&. q == p)
 (!) xs (I# i) = case indexArray# xs i of (# x #) -> x
 {-# INLINE (!) #-}
 
+-- | A strict variant of '(!)' for hoisting the array lookup out of a continuation.
+index :: Array# a -> Index -> (a -> r) -> r
+index xs (I# i) cont = case indexArray# xs i of (# x #) -> cont x
+{-# INLINE index #-}
+
 
 member :: Key -> SparseArray a -> Bool
 member !k (SA p _) = key2bit k `elem` p
@@ -446,11 +490,7 @@ lookup' :: Key -> SparseArray a -> Maybe a
 lookup' !k (SA p xs) =
     let !b = key2bit k in
     if b `elem` p
-    then
-        case bit2index p b of
-        I# i ->
-            case indexArray# xs i of
-            (# x #) -> Just x
+    then index xs (bit2index p b) Just
     else Nothing
 {-# INLINE lookup' #-}
 
@@ -1193,12 +1233,9 @@ differenceL = \(SA p xs) (SA q _) ->
         | k >= n    = unsafeFreeze r zs
         | otherwise =
             -- We inline (!) in order to hoist it out and avoid thunks in the new array.
-            case bit2index p b of
-            I# i ->
-                case indexArray# xs i of
-                (# x #) -> do
-                    write zs k x
-                    go p xs r zs n (k+1) (nextBit r b)
+            index xs (bit2index p b) $ \x -> do
+                write zs k x
+                go p xs r zs n (k+1) (nextBit r b)
 
 
 differenceR

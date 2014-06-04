@@ -8,7 +8,7 @@
 {-# LANGUAGE CPP #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2014.06.01
+--                                                  ~ 2014.06.03
 -- |
 -- Module      :  Data.Trie.ArrayMapped.Internal
 -- Copyright   :  Copyright (c) 2014 wren gayle romano
@@ -33,7 +33,7 @@ module Data.Trie.ArrayMapped.Internal
     , empty, null, singleton, size
     
     -- * Conversion and folding functions
-    , foldrWithKey, toListBy
+    , foldrWithKey, foldrWithKey', toListBy
     
     -- * Query functions
     , lookupBy_, submap
@@ -119,18 +119,11 @@ data Trunk a
         !(SA.SparseArray a)          -- Values
         !(SA.SparseArray (Trunk a))  -- Sub-tries
     deriving (Typeable, Eq)
-    -- INVARIANT: if (Branch _ vz tz) then (vz `isSubarrayOf` ts)
+    -- INVARIANT: subtries of Branch are not Empty.
+    -- We could inline Empty everywhere in order to guarantee this invariant, but the added complexity doesn't seem worth it...
 
 
--- TODO: should we break the Branch apart into the following? unordered-containers does so, but what are the tradeoffs?
---
---     | Branch !!ByteString !BranchBody
---
--- data BranchBody a
---     = Fan  (SA.SparseArray a) !(SA.SparseArray (Trunk a))
---     | Full (SA.SparseArray a) !(A.Array (Trunk a))
---
--- INVARIANT: The length of the last argument to 'Full' is 2^bitsPerSubkey
+-- TODO: should we break the Branch apart into Partial and Full, the way unordered-containers does? what are the tradeoffs?
 
 
 -- TODO: verify that the derived Eq instance is correct
@@ -165,11 +158,19 @@ arc s Nothing  = prepend_ s
 
 branch :: ByteString -> SA.SparseArray a -> SA.SparseArray (Trunk a) -> Trunk a
 {-# INLINE branch #-}
-branch s vz tz =
-    case SA.toList tz of
-    []      -> Empty
-    [(k,t)] -> arc (s `BS.snoc` k) (lookup k vz) t
-    _       -> Branch s vz tz
+branch s vz tz = ... -- TODO
+
+
+trunk2maybe :: Trunk a -> Maybe (Trunk a)
+{-# INLINE trunk2maybe #-}
+trunk2maybe Empty = Nothing
+trunk2maybe t     = Just t
+
+
+maybe2trunk :: Maybe (Trunk a) -> Trunk a
+{-# INLINE maybe2trunk #-}
+maybe2trunk Nothing  = Empty
+maybe2trunk (Just t) = t
 
 
 -- Saves a bit on allocation/sharing; though, technically, the call to 'BS.append' will re-check for empty strings.
@@ -338,10 +339,10 @@ instance Monad Trie where
     Accept v t >>= f  = accept (f v `unionL` go t)
     Reject   t >>= f  = reject (go t)
         where
-        go Empty                = Empty
+        go Empty            = Empty
         -- TODO: fix this so that it actually works...
-        go (Arc s v t)          = arc s (f v) (go t)
-        go (Branch s p q vs ts) = branch s p q (f <&> vs) (go <&> ts)
+        go (Arc    s v  t)  = arc s (f v) (go t)
+        go (Branch s vz tz) = branch s (f <&> vz) (go <&> tz)
 -}
 
 
@@ -392,7 +393,9 @@ filterMap f (Reject   t) = Reject       (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = arc s (f v) (go t)
-    go (Branch s vz tz) = branch s (SA.filterMap f vz) (SA.filterMap go tz)
+    go (Branch s vz tz) =
+        branch s (SA.filterMap f vz)
+            (SA.filterMap (trunk2maybe . go) tz)
 
 
 -- TODO: (?) use a large buffer for the bytestring and overwrite it in place, only copying it off for handing to @f@...? Benchmark it; also Builder stuff
@@ -410,7 +413,8 @@ mapBy f (Reject   t) = go BS.empty t
         arc s (f s' v) (go s' t)
     go s0 (Branch s vz tz) =
         let !s' = BS.append s0 s in
-        branch s (SA.filterMap (f s') vz) (SA.filterMap (go s') tz)
+        branch s (SA.filterMap (f s') vz)
+            (SA.filterMap (trunk2maybe . go s') tz)
 
 
 -- | A variant of 'fmap' which provides access to the subtrie rooted
@@ -421,7 +425,10 @@ contextualMap f (Reject   t) = Reject         (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = Arc s (f v t) (go t)
-    go (Branch s vz tz) = branch s (SA.intersectWith f vz tz) (fmap go tz)
+    go (Branch s vz tz) = Branch s (SA.rzipWith_ f2 f1 tz vz) (fmap go tz)
+    
+    f1   v = f v Empty
+    f2 t v = f v t
 
 
 -- | A variant of 'contextualMap' which applies the function strictly.
@@ -431,7 +438,10 @@ contextualMap' f (Reject   t) = Reject            (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = (Arc s $! f v t) (go t)
-    go (Branch s vz tz) = branch s (SA.intersectWith' f vz tz) (fmap go tz)
+    go (Branch s vz tz) = Branch s (SA.rzipWith_' f2 f1 tz vz) (fmap go tz)
+    
+    f1   v = f v Empty
+    f2 t v = f v t
 
 
 -- | A contextual variant of 'filterMap'.
@@ -441,7 +451,12 @@ contextualFilterMap f (Reject   t) = Reject (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = arc s (f v t) (go t)
-    go (Branch s vz tz) = branch s (SA.intersectFilterWith f vz tz) (SA.filterMap go tz)
+    go (Branch s vz tz) =
+        branch s (SA.rzipFilter_ f2 f1 tz vz)
+            (SA.filterMap (trunk2maybe . go) tz)
+    
+    f1   v = f v Empty
+    f2 t v = f v t
 
 
 -- TODO: (?) use a large buffer for the bytestring and overwrite it in place, only copying it off for handing to @f@...? Benchmark it; also Builder stuff
@@ -457,7 +472,11 @@ contextualMapBy f (Reject   t) = go BS.empty t
         arc s (f s' v t) (go s' t)
     go s0 (Branch s vz tz) =
         let !s' = BS.append s0 s in
-        branch s (SA.intersectFilterWith (f s') vz tz) (SA.filterMap (go s') tz)
+        branch s (SA.rzipFilter_ (f2 s') (f1 s') vz tz)
+            (SA.filterMap (trunk2maybe . go s') tz)
+    
+    f1 s0   v = f s0 v Empty
+    f2 s0 t v = f s0 v t
 
 
 {---------------------------------------------------------------
@@ -517,7 +536,7 @@ foldrWithKey f = flip (start BS.empty)
     go s0 (Arc    s v  t)  z = f s' v (go s' t z) where !s' = BS.append s0 s
     go s0 (Branch s vz tz) z =
         SA.foldrWithKey' (start . appendSnoc s0 s) z
-            (SA.rzipWith_ Accept Reject vz tz)
+            (SA.unionWith_ (\v -> Accept v Empty) Accept Reject vz tz)
 
 
 -- | Convert a trie into a list (in key-sorted order) using a
@@ -532,7 +551,7 @@ foldrWithKey' f = flip (start BS.empty)
     go s0 (Arc    s v  t)   z = f s' v $! go s' t z where !s' = BS.append s0 s
     go s0 (Branch s vz tz)  z =
         SA.foldrWithKey' (start . appendSnoc s0 s) z
-            (SA.rzipWith_ Accept Reject vz tz)
+            (SA.unionWith_ (\v -> Accept v Empty) Accept Reject vz tz)
     
 
 -- cf Data.ByteString.unpack
@@ -662,18 +681,13 @@ lookupBy_ accept reject = start
     go s0 (Branch s vz tz) =
         let (_, s0', s') = breakMaximalPrefix s0 s in
         case BS.uncons s0' of
-        Nothing     -> reject (Branch s' vz tz)
-        Just (w,ws) ->
-            case (BS.null ws, lookup w vz, lookup w tz) of
-            (True,  Nothing, Nothing) -> reject Empty
-            (True,  Nothing, Just t)  -> reject t
-            (True,  Just v,  Nothing) -> __impossible
-            (True,  Just v,  Just t)  -> accept v t
-            (False, _,       Nothing) -> reject Empty
-            (False, _,       Just t)  -> go ws t
-
-    __impossible = error
-        "Data.Trie.ArrayMapped.Internal.lookupBy_: the impossible happened"
+        Nothing          -> reject (Branch s' vz tz)
+        Just (w,ws)
+            | BS.null ws ->
+                maybe reject accept (SA.lookup w vz)
+                    (maybe2trunk (SA.lookup w tz))
+            | otherwise  ->
+                maybe (reject Empty) (go ws) (SA.lookup w tz)
 
 
 {---------------------------------------------------------------

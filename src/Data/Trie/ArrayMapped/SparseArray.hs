@@ -10,7 +10,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2014.06.03
+--                                                  ~ 2014.06.04
 -- |
 -- Module      :  Data.Trie.ArrayMapped.SparseArray
 -- Copyright   :  Copyright (c) 2014 wren gayle romano; 2010--2012 Johan Tibell
@@ -31,7 +31,7 @@ module Data.Trie.ArrayMapped.SparseArray
     -- * Extra mapping functions
     , map, map'
     , filter, partition
-    -- filterWithKey, partitionWithKey
+    -- filterWithKey, partitionWithKey, mapEitherWithKey
     , filterMap -- mapEither
     
     -- * Extra folding functions
@@ -44,12 +44,16 @@ module Data.Trie.ArrayMapped.SparseArray
     -- * Set-theoretic operations
     -- ** Right-biased zipping functions
     , rzip, rzipWith, rzipWith_
+    -- rzipWithKey, rzipWithKey_
     , rzipWith', rzipWith'_
+    -- rzipWithKey', rzipWithKey'_
     , rzipFilter, rzipFilter_
     
     -- ** TODO: left-biased zipping functions
     -- lzip, lzipWith, lzipWith_
+    -- lzipWithKey, lzipWithKey_
     -- lzipWith', lzipWith'_
+    -- lzipWithKey', lzipWithKey'_
     -- lzipFilter, lzipFilter_
     
     -- ** Union-like operators
@@ -171,7 +175,11 @@ bsucc (W# b) = W# (b `uncheckedShiftL#` 1#)
 -- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
--- HACK: the definition of 'complement' in Bits is (xor maxBound) instead of not# (in order to narrow things as appropriate). But since we're only going to turn around and use (.&.) we can get rid of that and use not# directly. This does assume all the extraneous high-order bits are zero instead of garbage though.
+-- HACK: the definition of 'complement' in Bits is (xor maxBound)
+-- instead of not# (in order to narrow things as appropriate). But
+-- since we're only going to turn around and use (.&.) we can get
+-- rid of that and use not# directly. This does assume all the
+-- extraneous high-order bits are zero instead of garbage though.
 complement :: Word -> Word
 complement (W# w) = W# (not# w)
 {-# INLINE complement #-}
@@ -184,15 +192,12 @@ complement (W# w) = W# (not# w)
 maskLT :: OneBit -> Bitmap -> Bitmap
 maskLT b p = (b - 1) .&. p
 {-# INLINE maskLT #-}
--- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
 -- | Set all bits below or equal to the argument.
 maskLE :: OneBit -> Bitmap -> Bitmap
 maskLE b p = (bsucc b - 1) .&. p
 {-# INLINE maskLE #-}
--- TODO: use INLINEABLE instead, in order to allow duplication?
--- N.B., this only works because @b@ has only one bit set; more generally, use (x .&. (x-1)) to clear the first bit
 
 
 -- | Set all bits strictly above the argument.
@@ -208,19 +213,29 @@ maskGE b p = negate b .&. p
 
 
 -- | Get the first bit set in @p@.
-firstBit :: Bitmap -> OneBit
-firstBit p = p .&. negate p
-{-# INLINE firstBit #-}
+getFirstBit :: Bitmap -> OneBit
+getFirstBit p = p .&. negate p
+{-# INLINE getFirstBit #-}
+
+
+-- | Clear the first bit set in @p@ (without knowing what it is
+-- beforehand). If you already know what it is, you can use 'xor'
+-- instead.
+clearFirstBit :: Bitmap -> OneBit
+clearFirstBit p = p .&. (p-1)
+{-# INLINE clearFirstBit #-}
+
 
 -- | Get the second bit set in @p@.
-secondBit :: Bitmap -> OneBit
-secondBit p = firstBit (p .&. (p-1))
-{-# INLINE secondBit #-}
+getSecondBit :: Bitmap -> OneBit
+getSecondBit p = getFirstBit (clearFirstBit p)
+{-# INLINE getSecondBit #-}
+
 
 -- | Get the next bit set in @p@; i.e., the first set bit after @b@.
-nextBit :: Bitmap -> OneBit -> OneBit
-nextBit p b = firstBit (maskGT b p)
-{-# INLINE nextBit #-}
+getNextBit :: Bitmap -> OneBit -> OneBit
+getNextBit p b = getFirstBit (maskGT b p)
+{-# INLINE getNextBit #-}
 
 
 key2bit :: Key -> OneBit
@@ -229,7 +244,7 @@ key2bit k =
     case fromIntegral k of
     I# i -> W# (1## `uncheckedShiftL#` i)
 {-# INLINE key2bit #-}
--- TODO: use INLINEABLE instead, in order to allow duplication? This one seems the most pressing
+-- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
 -- TODO: we might want to inline the appropriate definition of popCount in order to avoid indirection... Not sure why it isn't resolved already; apparently the primop doesn't have architecture support for me?
@@ -281,14 +296,12 @@ int find_first_bits_lookup_table(unsigned int value) {
 elem :: OneBit -> Bitmap -> Bool
 elem b p = (p .&. b /= 0)
 {-# INLINE elem #-}
--- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
 -- | Check if a bit is unset in the bitmap.
 notElem :: OneBit -> Bitmap -> Bool
 notElem b p = (p .&. b == 0)
 {-# INLINE notElem #-}
--- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
 ----------------------------------------------------------------
@@ -301,7 +314,11 @@ data SparseArray a = SA !Bitmap !(Array# a)
 
 ----------------------------------------------------------------
 
--- We must box up the MutableArray# into something of kind * before we can return it. Rather than making an explicit box just to unwrap it, we use CPS to achieve the same effect with more efficient Core code. We need to inline it in order to really do the right thing with the CPS form
+-- We must box up the MutableArray# into something of kind * before
+-- we can return it. Rather than making an explicit box just to
+-- unwrap it, we use CPS to achieve the same effect with more
+-- efficient Core code. We need to inline it in order to really do
+-- the right thing with the CPS form
 new :: Int -> a -> (MutableArray# s a -> ST s r) -> ST s r
 new _n@(I# n) x cont =
     CHECK_GT("new", _n, (0 :: Int))
@@ -344,7 +361,8 @@ write !xs !_i@(I# i) x =
 
 
 -- TODO: why was n not marked with a bang??
--- | Unsafely copy the elements of an array. Array bounds are not checked.
+-- | Unsafely copy the elements of an array. Array bounds are not
+-- checked.
 copy :: MutableArray# s e -> Index -> MutableArray# s e -> Index -> Index -> ST s ()
 #if __GLASGOW_HASKELL__ >= 702
 {-# INLINE copy #-}
@@ -421,14 +439,6 @@ unsafeFreezeOrTrim False = trim
 {-# INLINE unsafeFreezeOrTrim #-}
 
 
-{-
--- This has performance issues because it's not smart enough to eliminate the MSA by pushing 'unsafeFreezeMSA' to the leaves...
-runMSA :: (forall s. ST s (MSparseArray s a)) -> SparseArray a
-runMSA act = runST (unsafeFreezeMSA =<< act)
-{-# INLINE runMSA #-}
--}
-
-
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
@@ -456,7 +466,6 @@ length (SA p _) = popCount p
 isSubarrayOf :: SparseArray a -> SparseArray b -> Bool
 isSubarrayOf (SA p _) (SA q _) = (p .&. q == p)
 {-# INLINE isSubarrayOf #-}
--- TODO: use INLINEABLE instead, in order to allow duplication? 
 
 
 -- HACK: must use the prefix notation in the definition, otherwise it isn't recognized for some reason...
@@ -464,7 +473,9 @@ isSubarrayOf (SA p _) (SA q _) = (p .&. q == p)
 (!) xs (I# i) = case indexArray# xs i of (# x #) -> x
 {-# INLINE (!) #-}
 
--- | A strict variant of '(!)' for hoisting the array lookup out of a continuation.
+
+-- | A CPS'ed variant of '(!)' for hoisting the array lookup out
+-- of a continuation.
 index :: Array# a -> Index -> (a -> r) -> r
 index xs (I# i) cont = case indexArray# xs i of (# x #) -> cont x
 {-# INLINE index #-}
@@ -526,7 +537,8 @@ insertDSA :: Key -> a -> DynamicSA s a -> ST s (DynamicSA s a)
 insertDSA k v dsa = insertDSA_ k v dsa return
 
 
--- We CPS it in order to avoid boxing up the DSA on returning; to really do that we must INLINE as well.
+-- We CPS it in order to avoid boxing up the DSA on returning; to
+-- really do that we must INLINE as well.
 insertDSA_ :: Key -> a -> DynamicSA s a -> (DynamicSA s a -> ST s r) -> ST s r
 {-# INLINE insertDSA_ #-}
 insertDSA_ !k x dsa@(DSA p maxK n maxN xs) cont
@@ -563,8 +575,14 @@ insertDSA_ !k x dsa@(DSA p maxK n maxN xs) cont
     -- TODO: maxN' gets let-bound for sharing; we might want to add a pragma hinting that it can be duplicated relatively cheaply (or maybe the gcc/llvm backends can figure that out?)
 
 
--- Since we know the effective size limit for our use cases is 16(=2^Key), we just start there so that we only ever need to allocate once and then trim; thus avoiding the need to resize along the way.
--- TODO: that being the case, we should get rid of DSA and just use SA and insertSA... Doing so will save us the (n < maxN) check every iteration, albeit at the cost of unsafety if we overflow...
+-- Since we know the effective size limit for our use cases is
+-- 16(=2^Key), we just start there so that we only ever need to
+-- allocate once and then trim; thus avoiding the need to resize
+-- along the way.
+--
+-- TODO: that being the case, we should get rid of DSA and just use
+-- SA and insertSA... Doing so will save us the (n < maxN) check
+-- every iteration, albeit at the cost of unsafety if we overflow...
 fromList :: [(Key,a)] -> SparseArray a
 fromList = fromList_ 16
 {-# INLINE fromList #-}
@@ -587,7 +605,9 @@ fromList_  n ((!k,x):kxs) = runST $
     -}
 
 {-
--- The inline pragma is to avoid warnings about the rules possibly not firing; but having it means we don't get the worker/wrapper transform to unpack DSA in the loop...
+-- The inline pragma is to avoid warnings about the rules possibly
+-- not firing; but having it means we don't get the worker/wrapper
+-- transform to unpack DSA in the loop...
 {-# NOINLINE [1] fromList_ #-}
 {-# RULES
 "fromList_/singleton"
@@ -729,7 +749,7 @@ map' f =
     \(SA p xs) ->
         let !n = popCount p in
         runST $
-            new_ n $ \ys -> 
+            new_ n $ \ys ->
             go p xs n ys 0
     where
     go !p !xs !n !ys !i
@@ -741,8 +761,12 @@ map' f =
 -}
 
 
--- N.B., trying to force the closure to be generated before passing in the extra arguments via lambda does not work. GHC floats the closure down... presumably because the arities of these methods are already specified...
--- N.B., adding INLINE pragma prevents these from generating the version which unpacks SA!
+-- N.B., trying to force the closure to be generated before passing
+-- in the extra arguments via lambda does not work. GHC floats the
+-- closure down... presumably because the arities of these methods
+-- are already specified...
+--
+-- N.B., adding INLINE pragma prevents the worker/wrapper transform
 instance Foldable SparseArray where
     fold      = foldr' mappend mempty
     
@@ -819,7 +843,10 @@ instance Traversable SparseArray where
 -}
 
 
--- we can optimize Traversable for ST since we know ST computations "only contain a single value", and thus we don't need to reallocate the underlying array for each nondeterminism. We can also eliminate/fuse the runST call
+-- we can optimize Traversable for ST since we know ST computations
+-- "only contain a single value", and thus we don't need to reallocate
+-- the underlying array for each nondeterminism. We can also
+-- eliminate/fuse the runST call
 sequenceST :: SparseArray (ST s a) -> ST s (SparseArray a)
 sequenceST = traverseST id
 
@@ -851,13 +878,14 @@ filterMap f (SA p xs) =
                     case f (xs ! i) of
                     Just y  -> do
                         write ys j y
-                        go (i+1) (nextBit p bi) (j+1) (q .|. bi)
+                        go (i+1) (getNextBit p bi) (j+1) (q .|. bi)
                     Nothing ->
-                        go (i+1) (nextBit p bi) j q
+                        go (i+1) (getNextBit p bi) j q
             --
-        go 0 (firstBit p) 0 0
+        go 0 (getFirstBit p) 0 0
 
--- The inline pragma is to avoid warnings about the rules possibly not firing
+-- The inline pragma is to avoid warnings about the rules possibly
+-- not firing
 {-# NOINLINE [1] filterMap #-}
 {-# RULES "filterMap Just"  filterMap Just = id #-}
 
@@ -875,14 +903,15 @@ filter f xz@(SA p xs) =
                     else trim q ys
                 | f x       = do
                     write ys j x
-                    go (i+1) (nextBit p bi) (j+1) (q .|. bi)
+                    go (i+1) (getNextBit p bi) (j+1) (q .|. bi)
                 | otherwise =
-                    go (i+1) (nextBit p bi) j q
+                    go (i+1) (getNextBit p bi) j q
                 where x = xs ! i
             --
-        go 0 (firstBit p) 0 0
+        go 0 (getFirstBit p) 0 0
 
--- The inline pragma is to avoid warnings about the rules possibly not firing
+-- The inline pragma is to avoid warnings about the rules possibly
+-- not firing
 {-# NOINLINE [1] filter #-}
 {-# RULES
 "filter (const True)"     filter (\_ -> True)  = id
@@ -910,15 +939,16 @@ partition f xz@(SA p xs) =
                             return (yz, zz)
                 | f x       = do
                     write ys j x
-                    go (i+1) (nextBit p bi) (j+1) (q .|. bi) k r
+                    go (i+1) (getNextBit p bi) (j+1) (q .|. bi) k r
                 | otherwise = do
                     write zs k x
-                    go (i+1) (nextBit p bi) j q (k+1) (r .|. bi)
+                    go (i+1) (getNextBit p bi) j q (k+1) (r .|. bi)
                 where x = xs ! i
             --
-        go 0 (firstBit p) 0 0 0 0
+        go 0 (getFirstBit p) 0 0 0 0
 
--- The inline pragma is to avoid warnings about the rules possibly not firing
+-- The inline pragma is to avoid warnings about the rules possibly
+-- not firing
 {-# NOINLINE [1] partition #-}
 {-# RULES
 "partition (const True)"     partition (\_ -> True)  = \xz -> (xz, empty)
@@ -928,7 +958,9 @@ partition f xz@(SA p xs) =
 
 
 ----------------------------------------------------------------
--- All these functions assume (xz `isSubarrayOf` yz) and operate accordingly. If that's not the case, then they work as if operating on the subarray of xz such that it is the case
+-- All these functions assume (xz `isSubarrayOf` yz) and operate
+-- accordingly. If that's not the case, then they work as if operating
+-- on the subarray of xz such that it is the case
 
 
 
@@ -944,12 +976,12 @@ rzipWith'_ f g (SA p xs) (SA q ys) =
                 | j >= n     = unsafeFreeze q zs
                 | b `elem` p = do
                     write zs j $! f (xs ! i) (ys ! j)
-                    go (i+1) (nextBit q b) (j+1)
+                    go (i+1) (getNextBit q b) (j+1)
                 | otherwise  = do
                     write zs j $! g (ys ! j)
-                    go i     (nextBit q b) (j+1)
+                    go i     (getNextBit q b) (j+1)
             --
-        go 0 (firstBit q) 0
+        go 0 (getFirstBit q) 0
 
 rzipWith'
     :: (Maybe a -> b -> c)
@@ -970,12 +1002,12 @@ rzipWith_ f g (SA p xs) (SA q ys) =
                 | j >= n     = unsafeFreeze q zs
                 | b `elem` p = do
                     write zs j (f (xs ! i) (ys ! j))
-                    go (i+1) (nextBit q b) (j+1)
+                    go (i+1) (getNextBit q b) (j+1)
                 | otherwise  = do
                     write zs j (g (ys ! j))
-                    go i     (nextBit q b) (j+1)
+                    go i     (getNextBit q b) (j+1)
             --
-        go 0 (firstBit q) 0
+        go 0 (getFirstBit q) 0
 
 
 rzipWith
@@ -1004,18 +1036,18 @@ rzipFilter_ f g (SA p xs) (SA q ys) =
                     case f (xs ! i) (ys ! j) of
                     Just z -> do
                         write zs k z
-                        go (i+1) (nextBit q b) (j+1) (k+1) (r .|. b)
+                        go (i+1) (getNextBit q b) (j+1) (k+1) (r .|. b)
                     Nothing ->
-                        go (i+1) (nextBit q b) (j+1) k r
+                        go (i+1) (getNextBit q b) (j+1) k r
                 | otherwise  =
                     case g (ys ! j) of
                     Just z -> do
                         write zs k z
-                        go i (nextBit q b) (j+1) (k+1) (r .|. b)
+                        go i (getNextBit q b) (j+1) (k+1) (r .|. b)
                     Nothing ->
-                        go i (nextBit q b) (j+1) k r
+                        go i (getNextBit q b) (j+1) k r
             --
-        go 0 (firstBit q) 0 0 0
+        go 0 (getFirstBit q) 0 0 0
 
 
 rzipFilter
@@ -1027,7 +1059,10 @@ rzipFilter f = rzipFilter_ (f . Just) (f Nothing)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
--- TODO: is there a way to unify unionWith_ and unionWith'_ by abstracting over ($) vs ($!) such that those applicators get inlined appropriately so as to have no overhead for this abstraction?
+-- TODO: is there a way to unify unionWith_ and unionWith'_ by
+-- abstracting over ($) vs ($!) such that those applicators get
+-- inlined appropriately so as to have no overhead for this
+-- abstraction?
 
 -- | Left-biased union.
 unionL :: SparseArray a -> SparseArray a -> SparseArray a
@@ -1039,7 +1074,9 @@ unionR :: SparseArray a -> SparseArray a -> SparseArray a
 unionR = unionWith_ id (flip const) id
 
 
-unionWith :: (Or a b -> c) -> SparseArray a -> SparseArray b -> SparseArray c
+unionWith
+    :: (Or a b -> c)
+    -> SparseArray a -> SparseArray b -> SparseArray c
 unionWith f = unionWith_ (f . Fst) ((f .) . Both) (f . Snd)
 {-# INLINE unionWith #-}
 
@@ -1058,21 +1095,24 @@ unionWith_ f g h (SA p xs) (SA q ys) =
                     case (b `elem` p, b `elem` q) of
                     (True, False) -> do
                         write zs k (f (xs ! i))
-                        go (nextBit r b) (i+1) j (k+1)
+                        go (getNextBit r b) (i+1) j (k+1)
                     (True, True) -> do
                         write zs k (g (xs ! i) (ys ! j))
-                        go (nextBit r b) (i+1) (j+1) (k+1)
+                        go (getNextBit r b) (i+1) (j+1) (k+1)
                     (False, True) -> do
                         write zs k (h (ys ! j))
-                        go (nextBit r b) i (j+1) (k+1)
+                        go (getNextBit r b) i (j+1) (k+1)
                     (False, False) -> __impossible "unionWith_"
             --
-        go (firstBit r) 0 0 0
+        go (getFirstBit r) 0 0 0
 
 
-unionWith' :: (Or a b -> c) -> SparseArray a -> SparseArray b -> SparseArray c
+unionWith'
+    :: (Or a b -> c)
+    -> SparseArray a -> SparseArray b -> SparseArray c
 unionWith' f = unionWith'_ (f . Fst) ((f .) . Both) (f . Snd)
 {-# INLINE unionWith' #-}
+
 
 unionWith'_
     :: (a -> c) -> (a -> b -> c) -> (b -> c)
@@ -1088,16 +1128,16 @@ unionWith'_ f g h (SA p xs) (SA q ys) =
                     case (b `elem` p, b `elem` q) of
                     (True, False) -> do
                         write zs k $! f (xs ! i)
-                        go (nextBit r b) (i+1) j (k+1)
+                        go (getNextBit r b) (i+1) j (k+1)
                     (True, True) -> do
                         write zs k $! g (xs ! i) (ys ! j)
-                        go (nextBit r b) (i+1) (j+1) (k+1)
+                        go (getNextBit r b) (i+1) (j+1) (k+1)
                     (False, True) -> do
                         write zs k $! h (ys ! j)
-                        go (nextBit r b) i (j+1) (k+1)
+                        go (getNextBit r b) i (j+1) (k+1)
                     (False, False) -> __impossible "unionWith'_"
             --
-        go (firstBit r) 0 0 0
+        go (getFirstBit r) 0 0 0
 
 
 unionFilterWith
@@ -1124,26 +1164,26 @@ unionFilterWith_ f g h (SA p xs) (SA q ys) =
                         case f (xs ! i) of
                         Just z -> do
                             write zs k z
-                            go (r0 `xor` b) (nextBit r0 b) (i+1) j (k+1) (r .|. b)
+                            go (r0 `xor` b) (getNextBit r0 b) (i+1) j (k+1) (r .|. b)
                         Nothing ->
-                            go (r0 `xor` b) (nextBit r0 b) (i+1) j k r
+                            go (r0 `xor` b) (getNextBit r0 b) (i+1) j k r
                     (True, True) ->
                         case g (xs ! i) (ys ! j) of
                         Just z -> do
                             write zs k z
-                            go (r0 `xor` b) (nextBit r0 b) (i+1) (j+1) (k+1) (r .|. b)
+                            go (r0 `xor` b) (getNextBit r0 b) (i+1) (j+1) (k+1) (r .|. b)
                         Nothing ->
-                            go (r0 `xor` b) (nextBit r0 b) (i+1) (j+1) k r
+                            go (r0 `xor` b) (getNextBit r0 b) (i+1) (j+1) k r
                     (False, True) ->
                         case h (ys ! j) of
                         Just z -> do
                             write zs k z
-                            go (r0 `xor` b) (nextBit r0 b) i (j+1) (k+1) (r .|. b)
+                            go (r0 `xor` b) (getNextBit r0 b) i (j+1) (k+1) (r .|. b)
                         Nothing ->
-                            go (r0 `xor` b) (nextBit r0 b) i (j+1) k r
+                            go (r0 `xor` b) (getNextBit r0 b) i (j+1) k r
                     (False, False) -> __impossible "unionFilterWith_"
             --
-        go r0 (firstBit r0) 0 0 0 0
+        go r0 (getFirstBit r0) 0 0 0 0
 
 
 {-
@@ -1158,7 +1198,9 @@ unionFilterWithKey f =
 {-# INLINE unionFilterWithKey #-}
 
 
--- | This is the most powerful binary merging function for 'SparseArray', and consequently the most expensive. If you can get away with using one of the simpler functions, you should.
+-- | This is the most powerful binary merging function for
+-- 'SparseArray', and consequently the most expensive. If you can
+-- get away with using one of the simpler functions, you should.
 unionFilterWithKey_
     :: (Key -> a -> Maybe c)
     -> (Key -> a -> b -> Maybe c)
@@ -1166,7 +1208,7 @@ unionFilterWithKey_
     -> SparseArray a -> SparseArray b -> SparseArray c
 -}
 
----------------------------------------------------------------- 
+----------------------------------------------------------------
 -- | Left-biased intersection.
 intersectionL :: SparseArray a -> SparseArray b -> SparseArray a
 intersectionL = intersectionWith const
@@ -1186,13 +1228,13 @@ intersectionWith f =
             !n = popCount r
         in runST $
             new_ n $ \zs ->
-            go n p xs q ys r zs (firstBit r) 0
+            go n p xs q ys r zs (getFirstBit r) 0
     where
     go !n !p !xs !q !ys !r !zs !b !k
         | k >= n    = unsafeFreeze r zs
         | otherwise = do
             write zs k (f (xs ! bit2index p b) (ys ! bit2index q b))
-            go n p xs q ys r zs (nextBit r b) (k+1)
+            go n p xs q ys r zs (getNextBit r b) (k+1)
 
 intersectionWith'
     :: (a -> b -> c)
@@ -1203,13 +1245,13 @@ intersectionWith' f =
             !n = popCount r
         in runST $
             new_ n $ \zs ->
-            go n p xs q ys r zs (firstBit r) 0
+            go n p xs q ys r zs (getFirstBit r) 0
     where
     go !n !p !xs !q !ys !r !zs !b !k
         | k >= n    = unsafeFreeze r zs
         | otherwise = do
             write zs k $! f (xs ! bit2index p b) (ys ! bit2index q b)
-            go n p xs q ys r zs (nextBit r b) (k+1)
+            go n p xs q ys r zs (getNextBit r b) (k+1)
 
 {-
 intersectionWithKey
@@ -1217,7 +1259,7 @@ intersectionWithKey
     -> SparseArray a -> SparseArray b -> SparseArray c
 -}
 
----------------------------------------------------------------- 
+----------------------------------------------------------------
     -- differenceL, differenceR, symdiff, symdiffWith, symdiffWith_
 
 differenceL
@@ -1227,15 +1269,15 @@ differenceL = \(SA p xs) (SA q _) ->
             !n = popCount r
         in runST $
             new_ n $ \zs -> do
-            go p xs r zs n 0 (firstBit r)
+            go p xs r zs n 0 (getFirstBit r)
     where
     go !p !xs !r !zs !n !k !b
         | k >= n    = unsafeFreeze r zs
         | otherwise =
-            -- We inline (!) in order to hoist it out and avoid thunks in the new array.
+            -- We use 'index' to avoid thunks in the new array.
             index xs (bit2index p b) $ \x -> do
                 write zs k x
-                go p xs r zs n (k+1) (nextBit r b)
+                go p xs r zs n (k+1) (getNextBit r b)
 
 
 differenceR

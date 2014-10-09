@@ -61,7 +61,7 @@ import Prelude hiding    (null, lookup)
 import qualified Prelude (null, lookup)
 
 import qualified Data.ByteString as BS
-import Data.Trie.ByteStringInternal
+import           Data.Trie.ByteStringInternal
 import qualified Data.Trie.ArrayMapped.SparseArray as SA
 
 import Data.Binary

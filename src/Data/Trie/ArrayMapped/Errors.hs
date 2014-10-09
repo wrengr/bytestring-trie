@@ -3,7 +3,7 @@
 ----------------------------------------------------------------
 --                                                  ~ 2014.10.08
 -- |
--- Module      :  Data.Trie.BigEndianPatricia.Errors
+-- Module      :  Data.Trie.ArrayMapped.Errors
 -- Copyright   :  Copyright (c) 2008--2014 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
@@ -13,7 +13,7 @@
 -- Internal convenience functions for giving error messages.
 ----------------------------------------------------------------
 
-module Data.Trie.BigEndianPatricia.Errors
+module Data.Trie.ArrayMapped.Errors
     ( impossible
     ) where
 
@@ -24,7 +24,7 @@ module Data.Trie.BigEndianPatricia.Errors
 impossible :: String -> a
 {-# NOINLINE impossible #-}
 impossible fn =
-    error $ "Data.Trie.BigEndianPatricia." ++ fn ++ ": the impossible happened. This is a bug, please report it to the maintainer."
+    error $ "Data.Trie.ArrayMapped" ++ fn ++ ": the impossible happened. This is a bug, please report it to the maintainer."
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

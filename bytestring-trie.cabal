@@ -78,9 +78,22 @@ Library
                    , Data.Trie.BigEndianPatricia.Base
                    , Data.Trie.BigEndianPatricia.Internal
                    , Data.Trie.BigEndianPatricia.Convenience
+                   -- Data.Trie.ArrayMapped.Base
+                   -- Data.Trie.ArrayMapped.Internal
+                   -- Data.Trie.ArrayMapped.Convenience
     Other-Modules:   Data.Trie.BigEndianPatricia.BitTwiddle
                    , Data.Trie.BigEndianPatricia.Errors
-    Build-Depends: binary
+                   , Data.Trie.ArrayMapped.SparseArray
+                   , Data.Trie.ArrayMapped.Errors
+                   -- Currently unused; needs benchmarking
+                   , Data.Trie.ArrayMapped.UnsafeST
+                   -- Unneeded
+                   , Data.Trie.ArrayMapped.Array
+                   , Data.Trie.ArrayMapped.UnsafeShift
+                   , Data.Trie.ArrayMapped.PopCount
+    Build-Depends:   binary
+                   , deepseq >= 1.3 && < 1.4
+                   , data-or >= 1.0 && < 1.1
     
     -- I think this is all that needs doing to get rid of the warnings?
     -- BUG: looks like it's not enough

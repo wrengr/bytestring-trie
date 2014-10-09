@@ -67,7 +67,7 @@ module Data.Trie.ArrayMapped.SparseArray
     
     -- ** Intersection-like operators
     , intersectionL, intersectionR, intersectionWith -- intersectionWithKey
-    -- intersectionWith', intersectionWithKey'
+    , intersectionWith' -- intersectionWithKey'
     -- intersectionFilterWith
     -- intersectionsWith
     
@@ -86,7 +86,7 @@ import Data.Foldable hiding (elem, notElem, toList)
 import Data.Traversable
 import Control.Applicative (Applicative(..), (<$>))
 import Control.Monad.ST -- hiding (runST)
--- import Data.Trie.ArrayMapped.Unsafe (runST)
+-- import Data.Trie.ArrayMapped.UnsafeST (runST)
 import GHC.ST              (ST(..))
 import Control.DeepSeq
 import Data.Monoid         (Monoid(..))
@@ -100,7 +100,7 @@ import Data.Or             (Or(..))
 -- an explicit import list instead of only hiding the offending symbols
 import GHC.Exts
     ( build
-    , Word(W#), Int(I#), uncheckedShiftL#, not#
+    , Word(W#), Int(I#), uncheckedShiftL#, not#, and#, neWord#
     , Array#, newArray#, readArray#, writeArray#, indexArray#, freezeArray#, unsafeFreezeArray#, MutableArray#
 #if __GLASGOW_HASKELL__ >= 702
     , sizeofMutableArray#, copyMutableArray#
@@ -173,6 +173,7 @@ bsucc :: OneBit -> OneBit
 bsucc (W# b) = W# (b `uncheckedShiftL#` 1#)
 {-# INLINE bsucc #-}
 -- TODO: use INLINEABLE instead, in order to allow duplication?
+-- TODO: use Data.Trie.ArrayMapped.UnsafeShift.unsafeShiftL instead?
 
 
 -- HACK: the definition of 'complement' in Bits is (xor maxBound)
@@ -189,26 +190,26 @@ complement (W# w) = W# (not# w)
 
 
 -- | Set all bits strictly below the argument.
-maskLT :: OneBit -> Bitmap -> Bitmap
-maskLT b p = (b - 1) .&. p
+maskLT :: Bitmap -> OneBit -> Bitmap
+maskLT p b = p .&. (b - 1)
 {-# INLINE maskLT #-}
 
 
 -- | Set all bits below or equal to the argument.
-maskLE :: OneBit -> Bitmap -> Bitmap
-maskLE b p = (bsucc b - 1) .&. p
+maskLE :: Bitmap -> OneBit -> Bitmap
+maskLE p b = p .&. (bsucc b - 1)
 {-# INLINE maskLE #-}
 
 
 -- | Set all bits strictly above the argument.
-maskGT :: OneBit -> Bitmap -> Bitmap
-maskGT b p = negate (bsucc b) .&. p
+maskGT :: Bitmap -> OneBit -> Bitmap
+maskGT p b = p .&. negate (bsucc b)
 {-# INLINE maskGT #-}
 
 
 -- | Set all bits strictly above or equal to the argument.
-maskGE :: OneBit -> Bitmap -> Bitmap
-maskGE b p = negate b .&. p
+maskGE :: Bitmap -> OneBit -> Bitmap
+maskGE p b = p .&. negate b
 {-# INLINE maskGE #-}
 
 
@@ -234,7 +235,7 @@ getSecondBit p = getFirstBit (clearFirstBit p)
 
 -- | Get the next bit set in @p@; i.e., the first set bit after @b@.
 getNextBit :: Bitmap -> OneBit -> OneBit
-getNextBit p b = getFirstBit (maskGT b p)
+getNextBit p b = getFirstBit (p `maskGT` b)
 {-# INLINE getNextBit #-}
 
 
@@ -245,13 +246,14 @@ key2bit k =
     I# i -> W# (1## `uncheckedShiftL#` i)
 {-# INLINE key2bit #-}
 -- TODO: use INLINEABLE instead, in order to allow duplication?
+-- TODO: use Data.Trie.ArrayMapped.UnsafeShift.unsafeShiftL instead?
 
 
 -- TODO: we might want to inline the appropriate definition of popCount in order to avoid indirection... Not sure why it isn't resolved already; apparently the primop doesn't have architecture support for me?
 -- N.B., there are also popCount primops for only looking at the lower 8, 16, or 32 bits
 -- popCount (W# x#) = I# (word2Int# (popCnt# x#))
 bit2index :: Bitmap -> OneBit -> Index
-bit2index p b = popCount (maskLT b p)
+bit2index p b = popCount (p `maskLT` b)
 {-# INLINE bit2index #-}
 
 
@@ -298,6 +300,12 @@ elem b p = (p .&. b /= 0)
 {-# INLINE elem #-}
 
 
+-- BUG: it looks like neWord# isn't actually branch-free. So this hack doesn't actually help anything...
+elem# :: OneBit -> Bitmap -> Index
+elem# (W# b) (W# p) = I# (neWord# (and# p b) 0##)
+{-# INLINE elem# #-}
+
+
 -- | Check if a bit is unset in the bitmap.
 notElem :: OneBit -> Bitmap -> Bool
 notElem b p = (p .&. b == 0)
@@ -307,25 +315,18 @@ notElem b p = (p .&. b == 0)
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
-data SparseArray a = SA !Bitmap !(Array# a)
-
--- No longer actually used anywhere
--- data MSparseArray s a = MSA !Bitmap !(MutableArray# s a)
-
-----------------------------------------------------------------
-
 -- We must box up the MutableArray# into something of kind * before
 -- we can return it. Rather than making an explicit box just to
 -- unwrap it, we use CPS to achieve the same effect with more
 -- efficient Core code. We need to inline it in order to really do
 -- the right thing with the CPS form
 new :: Int -> a -> (MutableArray# s a -> ST s r) -> ST s r
-new _n@(I# n) x cont =
+new _n@(I# n) x continue =
     CHECK_GT("new", _n, (0 :: Int))
     ST $ \s ->
         case newArray# n x s of
         (# s', xs #) ->
-            case cont xs of
+            case continue xs of
             ST strep -> strep s'
 {-# INLINE new #-}
 
@@ -408,6 +409,11 @@ shiftUpOne !xs !i !n =
 
 
 ----------------------------------------------------------------
+----------------------------------------------------------------
+
+data SparseArray a = SA !Bitmap !(Array# a)
+
+
 -- | Create a 'SparseArray' by trimming a 'MutableArray#'.
 trim :: Bitmap -> MutableArray# s a -> ST s (SparseArray a)
 trim !p !xs =
@@ -440,11 +446,18 @@ unsafeFreezeOrTrim False = trim
 
 
 ----------------------------------------------------------------
-----------------------------------------------------------------
 
 -- TODO: is there a better implementation of length-0 arrays?
 empty :: SparseArray a
 empty = runST (new_ 0 $ unsafeFreeze 0)
+{-
+empty =
+    runST . ST $ \s0 ->
+        case newArray# 0# __undefinedElem s0 of
+        (# s1, xs1 #) ->
+            case unsafeFreezeArray# xs1 s1 of
+            (# s2, xs2 #) -> (# s2, SA 0 xs2 #)
+-}
 
 
 -- TODO: would it be better to have an invariant that SAs are non-empty, and use Maybe when we 'trim', 'filter', etc?
@@ -475,20 +488,21 @@ isSubarrayOf (SA p _) (SA q _) = (p .&. q == p)
 
 
 -- | A CPS'ed variant of '(!)' for hoisting the array lookup out
--- of a continuation.
+-- of a continuation. Mostly useful for avoiding thunks without
+-- forcing the array values.
 index :: Array# a -> Index -> (a -> r) -> r
-index xs (I# i) cont = case indexArray# xs i of (# x #) -> cont x
+index xs (I# i) continue = case indexArray# xs i of (# x #) -> continue x
 {-# INLINE index #-}
 
 
 member :: Key -> SparseArray a -> Bool
-member !k (SA p _) = key2bit k `elem` p
+member k (SA p _) = key2bit k `elem` p
 {-# INLINE member #-}
 
 
 lookup :: Key -> SparseArray a -> Maybe a
-lookup !k (SA p xs) =
-    let !b = key2bit k in
+lookup k (SA p xs) =
+    let b = key2bit k in
     if b `elem` p
     then Just (xs ! bit2index p b)
     else Nothing
@@ -496,10 +510,11 @@ lookup !k (SA p xs) =
 
 
 -- This version forces the array lookup before returning
--- TODO: but in what circumstances is that preferable? Do we ever actually want the lazier version?
+-- TODO: but in what circumstances is that preferable? Or rather,
+-- do we ever actually want the lazier version?
 lookup' :: Key -> SparseArray a -> Maybe a
-lookup' !k (SA p xs) =
-    let !b = key2bit k in
+lookup' k (SA p xs) =
+    let b = key2bit k in
     if b `elem` p
     then index xs (bit2index p b) Just
     else Nothing
@@ -520,10 +535,10 @@ doubleton !k x !l y = runST $
 
 
 data DynamicSA s a = DSA
-    !Bitmap -- The bitmap in progress
-    !Key    -- The maximum key seen so far; should be the highest set bit
-    !Index  -- The next free index in the array
-    !Index  -- The first invalid index, aka the size of the array
+    !Bitmap              -- The bitmap in progress
+    !Key                 -- The maximum key seen so far == the highest set bit
+    !Index               -- The next free index in the array
+    !Index               -- The first invalid index == the size of the array
     !(MutableArray# s a) -- The array in progress
 
 
@@ -541,31 +556,31 @@ insertDSA k v dsa = insertDSA_ k v dsa return
 -- really do that we must INLINE as well.
 insertDSA_ :: Key -> a -> DynamicSA s a -> (DynamicSA s a -> ST s r) -> ST s r
 {-# INLINE insertDSA_ #-}
-insertDSA_ !k x dsa@(DSA p maxK n maxN xs) cont
+insertDSA_ !k x dsa@(DSA p maxK n maxN xs) continue
     | b `elem` p = do
         write xs i x
-        cont dsa
+        continue dsa
     | otherwise =
         case (n < maxN, k > maxK) of
         (True, True) -> do
             write xs n x
-            cont $! DSA p' k n' maxN xs
+            continue $! DSA p' k n' maxN xs
         (True, False) -> do
             -- TODO: if shiftUpOne cannot be implemented efficiently, then maybe we should just reallocate and copy everything?
             shiftUpOne xs i (n-i)
             write xs i x
-            cont $! DSA p' maxK n' maxN xs
+            continue $! DSA p' maxK n' maxN xs
         (False, True) ->
             new_ maxN' $ \xs' -> do
             copy xs 0 xs' 0 maxN
             write xs' n x
-            cont $! DSA p' k n' maxN' xs'
+            continue $! DSA p' k n' maxN' xs'
         (False, False) ->
             new_ maxN' $ \xs' -> do
             copy xs 0 xs' 0 i
             write xs' i x
             copy xs i xs' (i+1) (maxN-i)
-            cont $! DSA p' maxK n' maxN' xs'
+            continue $! DSA p' maxK n' maxN' xs'
     where
     b     = key2bit k
     i     = bit2index p b
@@ -640,7 +655,8 @@ toListBy :: (Key -> a -> b) -> SparseArray a -> [b]
 toListBy f xz = build (\cons nil -> toListByFB ((cons .) . f) nil xz)
 {-# INLINE toListBy #-}
 
--- TODO: can we improve the asymptotics without needing bit2key?
+-- BUG: can we improve the asymptotics without needing bit2key for incrementing k?
+-- TODO: (?) given b0, k += popCount (not 1 `maskLE` getNextBit b0 `maskGT` b0)
 toListByFB :: (Key -> a -> c -> c) -> c -> SparseArray a -> c
 toListByFB cons_f nil = \(SA p xs) -> go xs 0 p 1 0
     where
@@ -683,7 +699,7 @@ keys :: SparseArray a -> [Key]
 keys xz = build (\cons nil -> keysFB cons nil xz)
 {-# INLINE keys #-}
 
--- TODO: can we improve the asymptotics without needing bit2key?
+-- BUG: can we improve the asymptotics without needing bit2key to increment k?
 keysFB :: (Key -> c -> c) -> c -> SparseArray a -> c
 keysFB cons nil = \(SA p _) -> go p 1 1
     where
@@ -729,36 +745,30 @@ instance Functor SparseArray where
 
 
 map :: (a -> b) -> SparseArray a -> SparseArray b
-map f =
-    \(SA p xs) ->
-        let !n = popCount p in
-        runST $
-            new_ n $ \ys ->
-            go p xs n ys 0
-    where
-    go !p !xs !n !ys !i
-        | i < n     = do write ys i (f (xs ! i)); go p xs n ys (i+1)
-        | otherwise = unsafeFreeze p ys
-{-# INLINE [0] map #-}
-{-# RULES "map id"  map id = id #-}
+map f = __map ($) f
 
 
 -- TODO: is there a class for this yet?
 map' :: (a -> b) -> SparseArray a -> SparseArray b
-map' f =
+map' f = __map ($!) f
+
+
+-- HACK: to avoid repeating ourselves
+__map
+    :: (forall a b. (a -> b) -> a -> b)
+    -> (a -> b) -> SparseArray a -> SparseArray b
+{-# INLINE __map #-}
+__map ($?) f = 
     \(SA p xs) ->
         let !n = popCount p in
         runST $
             new_ n $ \ys ->
             go p xs n ys 0
     where
+    -- TODO: should we use index instead of (!) ??
     go !p !xs !n !ys !i
-        | i < n     = do write ys i $! f (xs ! i); go p xs n ys (i+1)
+        | i < n     = do write ys i $? f (xs ! i); go p xs n ys (i+1)
         | otherwise = unsafeFreeze p ys
-{-
-{-# INLINE [0] map' #-}
-{-# RULES "map' id"  map' id = seqArray #-}
--}
 
 
 -- N.B., trying to force the closure to be generated before passing
@@ -964,21 +974,36 @@ partition f xz@(SA p xs) =
 
 
 
--- TODO: float @go@ out instead of closing over stuff?
+rzipWith_
+    :: (a -> b -> c) -> (b -> c)
+    -> SparseArray a -> SparseArray b -> SparseArray c
+rzipWith_ f g = __rzipWith ($) f g
+
+
 rzipWith'_
     :: (a -> b -> c) -> (b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
-rzipWith'_ f g (SA p xs) (SA q ys) =
+rzipWith'_ f g = __rzipWith ($!) f g
+
+
+-- HACK: to avoid repeating ourselves
+-- TODO: float @go@ out instead of closing over stuff?
+__rzipWith
+    :: (forall a b. (a -> b) -> a -> b)
+    -> (a -> b -> c) -> (b -> c)
+    -> SparseArray a -> SparseArray b -> SparseArray c
+{-# INLINE __rzipWith #-}
+__rzipWith ($?) f g (SA p xs) (SA q ys) =
     let !n = popCount q in
     runST $
         new_ n $ \zs -> do
         let go !i !b !j
                 | j >= n     = unsafeFreeze q zs
                 | b `elem` p = do
-                    write zs j $! f (xs ! i) (ys ! j)
+                    write zs j $? f (xs ! i) (ys ! j)
                     go (i+1) (getNextBit q b) (j+1)
                 | otherwise  = do
-                    write zs j $! g (ys ! j)
+                    write zs j $? g (ys ! j)
                     go i     (getNextBit q b) (j+1)
             --
         go 0 (getFirstBit q) 0
@@ -988,26 +1013,6 @@ rzipWith'
     -> SparseArray a -> SparseArray b -> SparseArray c
 rzipWith' f = rzipWith'_ (f . Just) (f Nothing)
 {-# INLINE rzipWith' #-}
-
-
--- TODO: float @go@ out instead of closing over stuff?
-rzipWith_
-    :: (a -> b -> c) -> (b -> c)
-    -> SparseArray a -> SparseArray b -> SparseArray c
-rzipWith_ f g (SA p xs) (SA q ys) =
-    let !n = popCount q in
-    runST $
-        new_ n $ \zs -> do
-        let go !i !b !j
-                | j >= n     = unsafeFreeze q zs
-                | b `elem` p = do
-                    write zs j (f (xs ! i) (ys ! j))
-                    go (i+1) (getNextBit q b) (j+1)
-                | otherwise  = do
-                    write zs j (g (ys ! j))
-                    go i     (getNextBit q b) (j+1)
-            --
-        go 0 (getFirstBit q) 0
 
 
 rzipWith
@@ -1059,19 +1064,31 @@ rzipFilter f = rzipFilter_ (f . Just) (f Nothing)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
--- TODO: is there a way to unify unionWith_ and unionWith'_ by
--- abstracting over ($) vs ($!) such that those applicators get
--- inlined appropriately so as to have no overhead for this
--- abstraction?
 
 -- | Left-biased union.
 unionL :: SparseArray a -> SparseArray a -> SparseArray a
-unionL = unionWith_ id const id
+unionL (SA p xs) (SA q ys) =
+    let !r = p .|. q
+        !n = popCount r
+    in runST $
+        new_ n $ \zs -> do
+        let go !b !i !j !k
+                | k >= n     = unsafeFreeze r zs
+                | b `elem` p =
+                    index xs i $ \x -> do
+                    write zs k x
+                    go (getNextBit r b) (i+1) (j + elem# b q) (k+1)
+                | otherwise =
+                    index ys j $ \y -> do
+                    write zs k y
+                    go (getNextBit r b) i (j+1) (k+1)
+            --
+        go (getFirstBit r) 0 0 0
 
 
 -- | Right-biased union.
 unionR :: SparseArray a -> SparseArray a -> SparseArray a
-unionR = unionWith_ id (flip const) id
+unionR = flip unionL
 
 
 unionWith
@@ -1084,27 +1101,7 @@ unionWith f = unionWith_ (f . Fst) ((f .) . Both) (f . Snd)
 unionWith_
     :: (a -> c) -> (a -> b -> c) -> (b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
-unionWith_ f g h (SA p xs) (SA q ys) =
-    let !r = p .|. q
-        !n = popCount r
-    in runST $
-        new_ n $ \zs -> do
-        let go !b !i !j !k
-                | k >= n    = unsafeFreeze r zs
-                | otherwise =
-                    case (b `elem` p, b `elem` q) of
-                    (True, False) -> do
-                        write zs k (f (xs ! i))
-                        go (getNextBit r b) (i+1) j (k+1)
-                    (True, True) -> do
-                        write zs k (g (xs ! i) (ys ! j))
-                        go (getNextBit r b) (i+1) (j+1) (k+1)
-                    (False, True) -> do
-                        write zs k (h (ys ! j))
-                        go (getNextBit r b) i (j+1) (k+1)
-                    (False, False) -> __impossible "unionWith_"
-            --
-        go (getFirstBit r) 0 0 0
+unionWith_ f g h = __unionWith ($) f g h
 
 
 unionWith'
@@ -1117,7 +1114,17 @@ unionWith' f = unionWith'_ (f . Fst) ((f .) . Both) (f . Snd)
 unionWith'_
     :: (a -> c) -> (a -> b -> c) -> (b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
-unionWith'_ f g h (SA p xs) (SA q ys) =
+unionWith'_ f g h = __unionWith ($!) f g h
+
+
+-- HACK: to avoid repeating ourselves
+-- TODO: float @go@ out instead of closing over stuff?
+__unionWith
+    :: (forall a b. (a -> b) -> a -> b)
+    -> (a -> c) -> (a -> b -> c) -> (b -> c)
+    -> SparseArray a -> SparseArray b -> SparseArray c
+{-# INLINE __unionWith #-}
+__unionWith ($?) f g h (SA p xs) (SA q ys) =
     let !r = p .|. q
         !n = popCount r
     in runST $
@@ -1127,15 +1134,15 @@ unionWith'_ f g h (SA p xs) (SA q ys) =
                 | otherwise =
                     case (b `elem` p, b `elem` q) of
                     (True, False) -> do
-                        write zs k $! f (xs ! i)
+                        write zs k $? f (xs ! i)
                         go (getNextBit r b) (i+1) j (k+1)
                     (True, True) -> do
-                        write zs k $! g (xs ! i) (ys ! j)
+                        write zs k $? g (xs ! i) (ys ! j)
                         go (getNextBit r b) (i+1) (j+1) (k+1)
                     (False, True) -> do
-                        write zs k $! h (ys ! j)
+                        write zs k $? h (ys ! j)
                         go (getNextBit r b) i (j+1) (k+1)
-                    (False, False) -> __impossible "unionWith'_"
+                    (False, False) -> __impossible "__unionWith"
             --
         go (getFirstBit r) 0 0 0
 
@@ -1211,35 +1218,47 @@ unionFilterWithKey_
 ----------------------------------------------------------------
 -- | Left-biased intersection.
 intersectionL :: SparseArray a -> SparseArray b -> SparseArray a
-intersectionL = intersectionWith const
+intersectionL =
+    \(SA p xs) (SA q _) ->
+        let !r = p .&. q
+            !n = popCount r
+        in runST $
+            new_ n $ \zs ->
+            go n p xs r zs (getFirstBit r) 0
+    where
+    go !n !p !xs !r !zs !b !k
+        | k >= n    = unsafeFreeze r zs
+        | otherwise =
+            -- We use 'index' instead of '(!)' to avoid thunks in the new array
+            index xs (bit2index p b) $ \x -> do
+            write zs k x
+            go n p xs r zs (getNextBit r b) (k+1)
 
 
 -- | Right-biased intersection.
 intersectionR :: SparseArray a -> SparseArray b -> SparseArray b
-intersectionR = intersectionWith (flip const)
+intersectionR = flip intersectionL
 
 
 intersectionWith
     :: (a -> b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
-intersectionWith f =
-    \(SA p xs) (SA q ys) ->
-        let !r = p .&. q
-            !n = popCount r
-        in runST $
-            new_ n $ \zs ->
-            go n p xs q ys r zs (getFirstBit r) 0
-    where
-    go !n !p !xs !q !ys !r !zs !b !k
-        | k >= n    = unsafeFreeze r zs
-        | otherwise = do
-            write zs k (f (xs ! bit2index p b) (ys ! bit2index q b))
-            go n p xs q ys r zs (getNextBit r b) (k+1)
+intersectionWith f = __intersectionWith ($) f
+
 
 intersectionWith'
     :: (a -> b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
-intersectionWith' f =
+intersectionWith' f = __intersectionWith ($!) f
+
+
+-- HACK: to avoid repeating ourselves
+__intersectionWith
+    :: (forall a b. (a -> b) -> a -> b)
+    -> (a -> b -> c)
+    -> SparseArray a -> SparseArray b -> SparseArray c
+{-# INLINE __intersectionWith #-}
+__intersectionWith ($?) f =
     \(SA p xs) (SA q ys) ->
         let !r = p .&. q
             !n = popCount r
@@ -1250,7 +1269,7 @@ intersectionWith' f =
     go !n !p !xs !q !ys !r !zs !b !k
         | k >= n    = unsafeFreeze r zs
         | otherwise = do
-            write zs k $! f (xs ! bit2index p b) (ys ! bit2index q b)
+            write zs k $? f (xs ! bit2index p b) (ys ! bit2index q b)
             go n p xs q ys r zs (getNextBit r b) (k+1)
 
 {-

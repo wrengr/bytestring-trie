@@ -2,10 +2,10 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 ----------------------------------------------------------------
---                                                  ~ 2011.02.12
+--                                                  ~ 2014.10.09
 -- |
 -- Module      :  Data.Trie
--- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2014 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  experimental
@@ -45,7 +45,7 @@ module Data.Trie
     , fromList, toListBy, toList, keys, elems
     
     -- * Query functions
-    , lookupBy, lookup, member, submap
+    , lookupBy, lookup, member, submap, match, matches
     
     -- * Single-value modification
     , alterBy, insert, adjust, delete
@@ -63,6 +63,7 @@ import qualified Prelude  (null, lookup)
 import Data.Trie.Internal
 import Data.Trie.Errors   (impossible)
 import Data.ByteString    (ByteString)
+import qualified Data.ByteString as S
 import Data.Maybe         (isJust)
 import Control.Monad      (liftM)
 ----------------------------------------------------------------
@@ -112,11 +113,35 @@ lookup :: ByteString -> Trie a -> Maybe a
 {-# INLINE lookup #-}
 lookup = lookupBy_ const Nothing (const Nothing)
 
--- TODO? move to "Data.Trie.Conventience"?
+-- TODO? move to "Data.Trie.Convenience"?
 -- | Does a string have a value in the trie?
 member :: ByteString -> Trie a -> Bool
 {-# INLINE member #-}
 member q = isJust . lookup q
+
+
+-- | Given a query, find the longest prefix with an associated value
+-- in the trie, returning that prefix, it's value, and the remaining
+-- string.
+match :: Trie a -> ByteString -> Maybe (ByteString, a, ByteString)
+match t q =
+    case match_ t q of
+    Nothing    -> Nothing
+    Just (n,x) ->
+        case S.splitAt n q of
+        (p,q') -> Just (p, x, q')
+
+
+-- | Given a query, find all prefixes with associated values in the
+-- trie, returning the prefixes, their values, and their remaining
+-- strings. This function is a good producer for list fusion.
+matches :: Trie a -> ByteString -> [(ByteString, a, ByteString)]
+{-# INLINE matches #-}
+matches t q = map f (matches_ t q)
+    where
+    f (n,x) =
+        case S.splitAt n q of
+        (p,q') -> (p, x, q')
 
 
 {---------------------------------------------------------------

@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren gayle romano <wren@community.haskell.org>   ~ 2013.01.10
+-- wren gayle romano <wren@community.haskell.org>   ~ 2014.10.09
 ----------------------------------------------------------------
 
 -- By and large Cabal >=1.2 is fine; but >= 1.6 gives tested-with:
@@ -8,12 +8,12 @@ Cabal-Version:  >= 1.6
 Build-Type:     Simple
 
 Name:           bytestring-trie
-Version:        0.2.3.2
+Version:        0.2.4
 Stability:      provisional
 Homepage:       http://code.haskell.org/~wren/
 Author:         wren gayle romano
 Maintainer:     wren@community.haskell.org
-Copyright:      Copyright (c) 2008--2013 wren gayle romano
+Copyright:      Copyright (c) 2008--2014 wren gayle romano
 License:        BSD3
 License-File:   LICENSE
 

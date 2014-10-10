@@ -6,10 +6,10 @@
 {-# LANGUAGE CPP #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2010.08.15
+--                                                  ~ 2014.10.09
 -- |
 -- Module      :  Data.Trie.Internal
--- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2014 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  provisional
@@ -38,6 +38,7 @@ module Data.Trie.Internal
     
     -- * Query functions
     , lookupBy_, submap
+    , match_, matches_
     
     -- * Single-value modification
     , alterBy, alterBy_, adjustBy
@@ -644,6 +645,147 @@ errorEmptyAfterNothing  :: String -> a
 {-# NOINLINE errorEmptyAfterNothing #-}
 errorEmptyAfterNothing s = errorInvariantBroken s "Empty after Nothing"
 -- -}
+
+
+
+-- TODO: would it be worth it to have a variant like 'lookupBy_' which takes the three continuations?
+
+-- | Given a query, find the longest prefix with an associated value
+-- in the trie, returning the length of that prefix and the associated
+-- value.
+--
+-- This function may not have the most useful return type. For a
+-- version that returns the prefix itself as well as the remaining
+-- string, see @breakMember@ in "Data.Trie".
+match_ :: Trie a -> ByteString -> Maybe (Int, a)
+match_ = flip start
+    where
+    -- | Deal with epsilon query (when there is no epsilon value)
+    start q (Branch _ _ _ _) | S.null q = Nothing
+    start q t                           = goNothing 0 q t
+    
+    -- | The initial recursion
+    goNothing _ _    Empty       = Nothing
+    
+    goNothing n q   (Arc k mv t) =
+        let (p,k',q') = breakMaximalPrefix k q
+            n'        = n + S.length p
+        in n' `seq`
+            if S.null k'
+            then
+                if S.null q'
+                then (,) n' <$> mv
+                else
+                    case mv of
+                    Nothing -> goNothing   n' q' t
+                    Just v  -> goJust n' v n' q' t
+            else Nothing
+        
+    goNothing n q t_@(Branch _ _ _ _) = findArc t_
+        where
+        qh = errorLogHead "match_" q
+        
+        -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
+        -- branching, and /W/ is the word size of the Prefix,Mask type.
+        findArc (Branch p m l r)
+            | nomatch qh p m  = Nothing
+            | zero qh m       = findArc l
+            | otherwise       = findArc r
+        findArc t@(Arc _ _ _) = goNothing n q t
+        findArc Empty         = Nothing
+        
+    -- | The main recursion
+    goJust n0 v0 _ _    Empty       = Just (n0,v0)
+    
+    goJust n0 v0 n q   (Arc k mv t) =
+        let (p,k',q') = breakMaximalPrefix k q
+            n'        = n + S.length p
+        in n' `seq`
+            if S.null k'
+            then
+                if S.null q'
+                then
+                    case mv of
+                    Nothing -> Just (n0,v0)
+                    Just v  -> Just (n',v)
+                else
+                    case mv of
+                    Nothing -> goJust n0 v0 n' q' t
+                    Just v  -> goJust n' v  n' q' t
+            else Just (n0,v0)
+        
+    goJust n0 v0 n q t_@(Branch _ _ _ _) = findArc t_
+        where
+        qh = errorLogHead "match_" q
+        
+        -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
+        -- branching, and /W/ is the word size of the Prefix,Mask type.
+        findArc (Branch p m l r)
+            | nomatch qh p m  = Just (n0,v0)
+            | zero qh m       = findArc l
+            | otherwise       = findArc r
+        findArc t@(Arc _ _ _) = goJust n0 v0 n q t
+        findArc Empty         = Just (n0,v0)
+
+
+-- | Given a query, find all prefixes with associated values in the
+-- trie, returning their lengths and values. This function is a
+-- good producer for list fusion.
+--
+-- This function may not have the most useful return type. For a
+-- version that returns the prefix itself as well as the remaining
+-- string, see @breakMembers@ in "Data.Trie".
+matches_ :: Trie a -> ByteString -> [(Int,a)]
+matches_ t q =
+#if !defined(__GLASGOW_HASKELL__)
+    matchFB_ t q (((:) .) . (,)) []
+#else
+    build (\cons nil -> matchFB_ t q ((cons .) . (,)) nil)
+{-# INLINE matches_ #-}
+#endif
+
+
+-- | Given a query, find all prefixes with associated values in the
+-- trie, returning their lengths and values.
+--
+-- This function may not have the most useful return type. For a
+-- version that returns the prefix itself as well as the remaining
+-- string, see @breakMembers@ in "Data.Trie".
+matchFB_ :: Trie a -> ByteString -> (Int -> a -> r -> r) -> r -> r
+matchFB_ = \t q cons nil -> matchFB_' cons q t nil
+    where
+    matchFB_' cons = start
+        where
+        -- | Deal with epsilon query (when there is no epsilon value)
+        start q (Branch _ _ _ _) | S.null q = id
+        start q t                           = go 0 q t
+    
+        -- | The main recursion
+        go _ _    Empty       = id
+        
+        go n q   (Arc k mv t) =
+            let (p,k',q') = breakMaximalPrefix k q
+                n'        = n + S.length p
+            in n' `seq`
+                if S.null k'
+                then
+                    case mv of { Nothing -> id; Just v  -> cons n' v}
+                    .
+                    if S.null q' then id else go n' q' t
+                else id
+            
+        go n q t_@(Branch _ _ _ _) = findArc t_
+            where
+            qh = errorLogHead "matches_" q
+            
+            -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
+            -- branching, and /W/ is the word size of the Prefix,Mask type.
+            findArc (Branch p m l r)
+                | nomatch qh p m  = id
+                | zero qh m       = findArc l
+                | otherwise       = findArc r
+            findArc t@(Arc _ _ _) = go n q t
+            findArc Empty         = id
 
 
 {---------------------------------------------------------------

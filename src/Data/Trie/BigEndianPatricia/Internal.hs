@@ -653,7 +653,7 @@ errorEmptyAfterNothing s = errorInvariantBroken s "Empty after Nothing"
 --
 -- This function may not have the most useful return type. For a
 -- version that returns the prefix itself as well as the remaining
--- string, see @breakMember@ in "Data.Trie".
+-- string, see @match@ in "Data.Trie".
 match_ :: Trie a -> ByteString -> Maybe (Int, a)
 match_ = flip start
     where
@@ -731,7 +731,7 @@ match_ = flip start
 --
 -- This function may not have the most useful return type. For a
 -- version that returns the prefix itself as well as the remaining
--- string, see @breakMembers@ in "Data.Trie".
+-- string, see @matches@ in "Data.Trie".
 matches_ :: Trie a -> ByteString -> [(Int,a)]
 matches_ t q =
 #if !defined(__GLASGOW_HASKELL__)
@@ -741,13 +741,6 @@ matches_ t q =
 {-# INLINE matches_ #-}
 #endif
 
-
--- | Given a query, find all prefixes with associated values in the
--- trie, returning their lengths and values.
---
--- This function may not have the most useful return type. For a
--- version that returns the prefix itself as well as the remaining
--- string, see @breakMembers@ in "Data.Trie".
 matchFB_ :: Trie a -> ByteString -> (Int -> a -> r -> r) -> r -> r
 matchFB_ = \t q cons nil -> matchFB_' cons q t nil
     where

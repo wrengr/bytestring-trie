@@ -5,6 +5,7 @@
     #-}
 {-# LANGUAGE BangPatterns
            , CPP
+           , ForeignFunctionInterface
            , MagicHash
            , Rank2Types
            , UnboxedTuples
@@ -28,6 +29,9 @@ module Data.Trie.ArrayMapped.SparseArray
     , null, length, member, lookup_, lookup', isSubarrayOf
     , singleton, doubleton, fromList -- fromAscList, fromDistinctAscList
     , toList, toListBy, keys, elems
+    
+    -- * Views
+    , SubsingletonView, viewSubsingleton
     
     -- * Extra mapping functions
     , map, map'
@@ -113,6 +117,8 @@ import GHC.Exts
     , sizeofMutableArray#, copyMutableArray#
 #endif
     )
+-- for c_ffs, used by bit2key, used in turn by viewSubsingleton
+import Foreign.C (CInt(..))
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
@@ -258,7 +264,7 @@ key2bit k =
 
 
 -- TODO: we might want to inline the appropriate definition of popCount in order to avoid indirection... Not sure why it isn't resolved already; apparently the primop doesn't have architecture support for me?
--- N.B., there are also popCount primops for only looking at the lower 8, 16, or 32 bits
+-- N.B., there are also popCount primops for only looking at the lower 8, 16, or 32 bits of a Word#
 -- > popCount (W# x#) = I# (word2Int# (popCnt# x#))
 -- Only /O(1)/ if 'popCount' is.
 bit2index :: Bitmap -> OneBit -> Index
@@ -276,33 +282,15 @@ key2index p k = bit2index p (key2bit k)
 -- <http://stackoverflow.com/questions/757059>
 -- <http://chessprogramming.wikispaces.com/BitScan>
 -- <http://graphics.stanford.edu/~seander/bithacks.html>
--- TODO: or use ffs(3) via FFI? or the x86 instruction bsf?
-bit2key :: OneBit -> Key
-
-unsigned char lowestBitTable[256];
-int get_lowest_set_bit(unsigned num) {
-    unsigned mask = 1;
-    for (int cnt = 1; cnt <= 32; cnt++, mask <<= 1) {
-        if (num & mask) return cnt;
-    }
-    return 0;
-}
-for (int i = 0; i < 256; i++) lowestBitTable[i] = get_lowest_set_bit(i);
-
-int find_first_bits_lookup_table(unsigned int value) {
-    // note that order to check indices will depend whether you are
-    // on a big or little endian machine. This is for little-endian
-    unsigned char *bytes = (unsigned char *)&value;
-    if (bytes[0])
-        return lowestBitTable[bytes[0]];
-    else if (bytes[1])
-        return lowestBitTable[bytes[1]] + 8;
-    else if (bytes[2])
-        return lowestBitTable[bytes[2]] + 16;
-    else
-        return lowestBitTable[bytes[3]] + 24;
-}
+-- TODO: can we use the x86 instruction bsf in lieu of POSIX's ffs(3)?
+-- TODO: can we use GCC's __builtin_ffs in lieu of POSIX's ffs(3)?
+-- TODO: add a new GHC primop for this...?
 -}
+bit2key :: OneBit -> Key
+bit2key b = fromIntegral (c_ffs (fromIntegral b))
+{-# INLINE bit2key #-}
+-- Return the position of the lowest set bit
+foreign import ccall unsafe "strings.h ffs" c_ffs :: CInt -> CInt
 
 
 -- | /O(1)/. Check if a bit is set in the bitmap.
@@ -551,6 +539,18 @@ doubleton !k x !l y = runST $
     write xs (if k < l then 1 else 0) y
     unsafeFreeze (key2bit k .|. key2bit l) xs
 {-# INLINE doubleton #-}
+
+
+data SubsingletonView a = IsEmpty | IsSingleton !Key a | IsNotSubsingleton
+    deriving (Eq, Show)
+
+viewSubsingleton :: SparseArray a -> SubsingletonView a
+viewSubsingleton xz@(SA p xs) =
+    case length xz of
+    0 -> IsEmpty
+    1 -> index xs 0 (IsSingleton (bit2key p))
+    _ -> IsNotSubsingleton
+{-# INLINE viewSubsingleton #-}
 
 
 data DynamicSA s a = DSA
@@ -904,6 +904,7 @@ traverseST f = \ (SA p xs) ->
 
 -- TODO: float @go@ out instead of closing over stuff?
 -- AKA: mapMaybe
+-- | Apply a function to all values, potentially removing them.
 filterMap :: (a -> Maybe b) -> SparseArray a -> SparseArray b
 filterMap f (SA p xs) =
     let !n = popCount p in

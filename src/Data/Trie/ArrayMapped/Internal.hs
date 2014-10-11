@@ -4,11 +4,10 @@
     -funbox-strict-fields #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 
--- For list fusion on toListBy
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE CPP, BangPatterns #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2014.06.03
+--                                                  ~ 2014.10.10
 -- |
 -- Module      :  Data.Trie.ArrayMapped.Internal
 -- Copyright   :  Copyright (c) 2014 wren gayle romano
@@ -99,8 +98,8 @@ type NonEmptyByteString = ByteString
 -- be curious to know.
 
 data Trie a
-    = Accept a !(Arc a)
-    | Reject   !(Arc a)
+    = Accept a !(Trunk a)
+    | Reject   !(Trunk a)
     deriving (Typeable, Eq)
 
 
@@ -158,7 +157,13 @@ arc s Nothing  = prepend_ s
 
 branch :: ByteString -> SA.SparseArray a -> SA.SparseArray (Trunk a) -> Trunk a
 {-# INLINE branch #-}
-branch s vz tz = ... -- TODO
+branch s vz tz =
+    case (SA.viewSubsingleton vz, SA.viewSubsingleton tz) of
+    (IsEmpty,         IsEmpty)                    -> Empty
+    (IsEmpty,         IsSingleton _ t)            -> prepend s t
+    (IsSingleton _ v, IsEmpty)                    -> Arc s v Empty
+    (IsSingleton k v, IsSingleton k' t) | k == k' -> Arc s v t
+    _                                             -> Branch s vz tz
 
 
 trunk2maybe :: Trunk a -> Maybe (Trunk a)
@@ -286,7 +291,7 @@ fmap' f (Reject   t) = Reject          (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = (Arc s $! f v) (go t)
-    go (Branch s vz tz) = Branch s (f <$!> vz) (go <$> tz)
+    go (Branch s vz tz) = Branch s (f <$!> vz) (go <$?> tz)
     
 
 -- TODO: newtype Keys = K Trie  ; instance Foldable Keys
@@ -397,6 +402,37 @@ filterMap f (Reject   t) = Reject       (go t)
         branch s (SA.filterMap f vz)
             (SA.filterMap (trunk2maybe . go) tz)
 
+-- The inline pragma is to avoid warnings about the rules possibly
+-- not firing
+{-# NOINLINE [1] filterMap #-}
+{-# RULES
+-- These ones are probably useless...
+"filterMap Just"
+        filterMap Just = id
+"filterMap (Just . f)"
+    forall f.
+        filterMap (\x -> Just (f x)) = fmap f
+"filterMap (const Nothing)"
+        filterMap (\_ -> Nothing) = const empty
+
+-- These ones are probably more worthwhile...
+"filterMap . filterMap"
+    forall f g xs.
+        filterMap f (filterMap g xs) = filterMap (\x -> f =<< g x) xs
+"filterMap . fmap"
+    forall f g xs.
+        filterMap f (fmap g xs) = filterMap (\x -> f (g x)) xs
+"filterMap . fmap'"
+    forall f g xs.
+        filterMap f (fmap' g xs) = filterMap (\x -> f $! g x) xs
+"fmap . filterMap"
+    forall f g xs.
+        fmap f (filterMap g xs) = filterMap (\x -> f <$> g x) xs
+"fmap' . filterMap"
+    forall f g xs.
+        fmap' f (filterMap g xs) =
+            filterMap (\x -> case g x of {Just y -> Just $! f y; _ -> Nothing}) xs
+    #-}
 
 -- TODO: (?) use a large buffer for the bytestring and overwrite it in place, only copying it off for handing to @f@...? Benchmark it; also Builder stuff
 -- TODO: just use contextualMapBy and ignore the Trunk argument?

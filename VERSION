@@ -1,3 +1,8 @@
+0.3.0 (2014.XX.XX):
+    - Reimplemented everything a la Bagwell's Array Mapped Tries.
+
+0.2.4 (2014.10.09):
+    - added Data.Trie.Internal.{match_,matches_}, Data.Trie.Base.{match,matches}
 0.2.3 (2010.02.12):
     - added Data.Trie.Internal.alterBy_
     - added Data.Trie.Internal.{contextualMap, contextualMap', contextualFilterMap, contextualMapBy}

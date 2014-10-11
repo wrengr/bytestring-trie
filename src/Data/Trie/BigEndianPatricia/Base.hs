@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 ----------------------------------------------------------------
---                                                  ~ 2014.10.09
+--                                                  ~ 2014.10.10
 -- |
 -- Module      :  Data.Trie.BigEndianPatricia.Base
 -- Copyright   :  Copyright (c) 2008--2014 wren gayle romano
@@ -60,11 +60,12 @@ module Data.Trie.BigEndianPatricia.Base
 import Prelude hiding    (null, lookup)
 import qualified Prelude (null, lookup)
 
-import Data.Trie.Internal
-import Data.Trie.Errors   (impossible)
-import Data.ByteString    (ByteString)
-import Data.Maybe         (isJust)
-import Control.Monad      (liftM)
+import Data.Trie.BigEndianPatricia.Internal
+import Data.Trie.BigEndianPatricia.Errors (impossible)
+import Data.ByteString                    (ByteString)
+import qualified Data.ByteString as S
+import Data.Maybe                         (isJust)
+import Control.Monad                      (liftM)
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 

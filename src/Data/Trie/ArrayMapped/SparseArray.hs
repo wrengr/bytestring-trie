@@ -1,3 +1,4 @@
+-- The -fno-full-laziness required by Data.Trie.ArrayMapped.UnsafeST
 {-# OPTIONS_GHC
     -Wall -fwarn-tabs -fno-warn-name-shadowing -fno-warn-unused-binds
     -fno-full-laziness -funbox-strict-fields
@@ -10,7 +11,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2014.06.04
+--                                                  ~ 2014.10.10
 -- |
 -- Module      :  Data.Trie.ArrayMapped.SparseArray
 -- Copyright   :  Copyright (c) 2014 wren gayle romano; 2010--2012 Johan Tibell
@@ -24,7 +25,7 @@
 
 module Data.Trie.ArrayMapped.SparseArray
     ( Key, SparseArray()
-    , null, length, member, lookup, lookup', isSubarrayOf
+    , null, length, member, lookup_, lookup', isSubarrayOf
     , singleton, doubleton, fromList -- fromAscList, fromDistinctAscList
     , toList, toListBy, keys, elems
     
@@ -32,7 +33,7 @@ module Data.Trie.ArrayMapped.SparseArray
     , map, map'
     , filter, partition
     -- filterWithKey, partitionWithKey, mapEitherWithKey
-    , filterMap -- mapEither
+    , filterMap, partitionMap
     
     -- * Extra folding functions
     , foldL, foldR
@@ -82,18 +83,24 @@ module Data.Trie.ArrayMapped.SparseArray
 
 import Prelude hiding (null, lookup, filter, foldr, foldl, length, map, read, elem, notElem)
 
-import Data.Foldable hiding (elem, notElem, toList)
-import Data.Traversable
-import Control.Applicative (Applicative(..), (<$>))
-import Control.Monad.ST -- hiding (runST)
+import Data.Foldable                  hiding (elem, notElem, toList)
+-- import Data.Traversable
+-- import Control.Applicative         (Applicative(..))
+import Control.Applicative            ((<$>))
+import Control.Monad.ST               -- hiding (runST)
 -- import Data.Trie.ArrayMapped.UnsafeST (runST)
-import GHC.ST              (ST(..))
+import GHC.ST                         (ST(..))
 import Control.DeepSeq
-import Data.Monoid         (Monoid(..))
+import Data.Monoid                    (Monoid(..))
 import Data.Word
-import Data.Bits           ((.&.), (.|.), xor, popCount)
--- TODO: if the version of base is too low, use ad-hoc 'popCount' implementation
-import Data.Or             (Or(..))
+import Data.Bits                      ((.&.), (.|.), xor)
+#if (MIN_VERSION_base(4,5,0))
+-- TODO: Should we also/instead use (__GLASGOW_HASKELL__ >= 704) ??
+import Data.Bits                      (popCount)
+#else
+import Data.Trie.ArrayMapped.PopCount (popCount)
+#endif
+import Data.Or                        (Or(..))
 
 -- GHC 7.7 exports toList/fromList from GHC.Exts
 -- In order to avoid warnings on previous GHC versions, we provide
@@ -166,7 +173,7 @@ type Index  = Int
     -- HACK: actually, this should be Int#, but that causes code ugliness
 
 
--- | Given a bit, return the next bit.
+-- | /O(1)/. Given a bit, return the next bit.
 --
 -- > bsucc (bit k) == bit (k+1)
 bsucc :: OneBit -> OneBit
@@ -189,56 +196,57 @@ complement (W# w) = W# (not# w)
 -- negate x == complement (x - 1) == complement x + 1
 
 
--- | Set all bits strictly below the argument.
+-- | /O(1)/. Set all bits strictly below the argument.
 maskLT :: Bitmap -> OneBit -> Bitmap
 maskLT p b = p .&. (b - 1)
 {-# INLINE maskLT #-}
 
 
--- | Set all bits below or equal to the argument.
+-- | /O(1)/. Set all bits below or equal to the argument.
 maskLE :: Bitmap -> OneBit -> Bitmap
 maskLE p b = p .&. (bsucc b - 1)
 {-# INLINE maskLE #-}
 
 
--- | Set all bits strictly above the argument.
+-- | /O(1)/. Set all bits strictly above the argument.
 maskGT :: Bitmap -> OneBit -> Bitmap
 maskGT p b = p .&. negate (bsucc b)
 {-# INLINE maskGT #-}
 
 
--- | Set all bits strictly above or equal to the argument.
+-- | /O(1)/. Set all bits strictly above or equal to the argument.
 maskGE :: Bitmap -> OneBit -> Bitmap
 maskGE p b = p .&. negate b
 {-# INLINE maskGE #-}
 
 
--- | Get the first bit set in @p@.
+-- | /O(1)/. Get the first bit set in @p@.
 getFirstBit :: Bitmap -> OneBit
 getFirstBit p = p .&. negate p
 {-# INLINE getFirstBit #-}
 
 
--- | Clear the first bit set in @p@ (without knowing what it is
--- beforehand). If you already know what it is, you can use 'xor'
--- instead.
+-- | /O(1)/. Clear the first bit set in @p@ (without knowing what
+-- it is beforehand). If you already know what it is, you can use
+-- 'xor' instead.
 clearFirstBit :: Bitmap -> OneBit
 clearFirstBit p = p .&. (p-1)
 {-# INLINE clearFirstBit #-}
 
 
--- | Get the second bit set in @p@.
+-- | /O(1)/. Get the second bit set in @p@.
 getSecondBit :: Bitmap -> OneBit
 getSecondBit p = getFirstBit (clearFirstBit p)
 {-# INLINE getSecondBit #-}
 
 
--- | Get the next bit set in @p@; i.e., the first set bit after @b@.
+-- | /O(1)/. Get the next bit set in @p@; i.e., the first set bit after @b@.
 getNextBit :: Bitmap -> OneBit -> OneBit
 getNextBit p b = getFirstBit (p `maskGT` b)
 {-# INLINE getNextBit #-}
 
 
+-- /O(1)/ assuming @fromIntegral :: Key -> Int@ is
 key2bit :: Key -> OneBit
 -- key2bit = bit . fromIntegral
 key2bit k =
@@ -251,12 +259,14 @@ key2bit k =
 
 -- TODO: we might want to inline the appropriate definition of popCount in order to avoid indirection... Not sure why it isn't resolved already; apparently the primop doesn't have architecture support for me?
 -- N.B., there are also popCount primops for only looking at the lower 8, 16, or 32 bits
--- popCount (W# x#) = I# (word2Int# (popCnt# x#))
+-- > popCount (W# x#) = I# (word2Int# (popCnt# x#))
+-- Only /O(1)/ if 'popCount' is.
 bit2index :: Bitmap -> OneBit -> Index
 bit2index p b = popCount (p `maskLT` b)
 {-# INLINE bit2index #-}
 
 
+-- Only /O(1)/ if (a) @fromIntegral :: Key -> Int@ is, and (b) 'popCount' is.
 key2index :: Bitmap -> Key -> Index
 key2index p k = bit2index p (key2bit k)
 {-# INLINE key2index #-}
@@ -280,7 +290,8 @@ int get_lowest_set_bit(unsigned num) {
 for (int i = 0; i < 256; i++) lowestBitTable[i] = get_lowest_set_bit(i);
 
 int find_first_bits_lookup_table(unsigned int value) {
-    // note that order to check indices will depend whether you are on a big or little endian machine. This is for little-endian
+    // note that order to check indices will depend whether you are
+    // on a big or little endian machine. This is for little-endian
     unsigned char *bytes = (unsigned char *)&value;
     if (bytes[0])
         return lowestBitTable[bytes[0]];
@@ -294,7 +305,7 @@ int find_first_bits_lookup_table(unsigned int value) {
 -}
 
 
--- | Check if a bit is set in the bitmap.
+-- | /O(1)/. Check if a bit is set in the bitmap.
 elem :: OneBit -> Bitmap -> Bool
 elem b p = (p .&. b /= 0)
 {-# INLINE elem #-}
@@ -306,7 +317,7 @@ elem# (W# b) (W# p) = I# (neWord# (and# p b) 0##)
 {-# INLINE elem# #-}
 
 
--- | Check if a bit is unset in the bitmap.
+-- | /O(1)/. Check if a bit is unset in the bitmap.
 notElem :: OneBit -> Bitmap -> Bool
 notElem b p = (p .&. b == 0)
 {-# INLINE notElem #-}
@@ -394,6 +405,7 @@ copy !src !sidx !dst !didx n =
 
 
 -- TODO: would it be faster just to allocate a new array and use copyMutableArray# for each half?
+-- | Shift the elements between @i@ and @n-1@ to @i+1@ and @n@.
 shiftUpOne :: MutableArray# s e -> Index -> Index -> ST s ()
 shiftUpOne !xs !i !n = 
     CHECK_GE("shiftUpOne: i", i, (0 :: Int))
@@ -469,7 +481,8 @@ null _        = False
 -- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
--- | /O(1)/. Get the number of elements in the array.
+-- Only /O(1)/ if 'popCount' is.
+-- | Get the number of elements in the array.
 length :: SparseArray a -> Int
 length (SA p _) = popCount p
 {-# INLINE length #-}
@@ -481,7 +494,8 @@ isSubarrayOf (SA p _) (SA q _) = (p .&. q == p)
 {-# INLINE isSubarrayOf #-}
 
 
--- HACK: must use the prefix notation in the definition, otherwise it isn't recognized for some reason...
+-- HACK: must use the prefix notation in the definition, otherwise
+-- it isn't recognized for some reason...
 (!) :: Array# a -> Index -> a
 (!) xs (I# i) = case indexArray# xs i of (# x #) -> x
 {-# INLINE (!) #-}
@@ -495,27 +509,32 @@ index xs (I# i) continue = case indexArray# xs i of (# x #) -> continue x
 {-# INLINE index #-}
 
 
+-- /O(1)/.
 member :: Key -> SparseArray a -> Bool
 member k (SA p _) = key2bit k `elem` p
 {-# INLINE member #-}
 
 
-lookup :: Key -> SparseArray a -> Maybe a
-lookup k (SA p xs) =
+-- This version does as much work as possible without doing the
+-- array lookup itself. Maybe helpful for reducing/delaying memory
+-- reads, while still being as eager as possible?
+-- TODO: would we *ever* want to postpone computing @bit2index p b@ too??
+lookup_ :: Key -> SparseArray a -> Maybe a
+lookup_ k (SA p xs) =
     let b = key2bit k in
-    if b `elem` p
-    then Just (xs ! bit2index p b)
+    if  b `elem` p
+    then let i = bit2index p b in i `seq` Just (xs ! i)
     else Nothing
-{-# INLINE lookup #-}
+{-# INLINE lookup_ #-}
 
 
 -- This version forces the array lookup before returning
--- TODO: but in what circumstances is that preferable? Or rather,
--- do we ever actually want the lazier version?
+-- TODO: do we ever want the lazier version above, which postpones
+-- the memory access at the expense of constructing a thunk?
 lookup' :: Key -> SparseArray a -> Maybe a
 lookup' k (SA p xs) =
     let b = key2bit k in
-    if b `elem` p
+    if  b `elem` p
     then index xs (bit2index p b) Just
     else Nothing
 {-# INLINE lookup' #-}
@@ -744,20 +763,15 @@ instance Functor SparseArray where
     fmap = map
 
 
-map :: (a -> b) -> SparseArray a -> SparseArray b
-map f = __map ($) f
-
-
--- TODO: is there a class for this yet?
-map' :: (a -> b) -> SparseArray a -> SparseArray b
+-- TODO: is there a class for map' yet?
+map, map' :: (a -> b) -> SparseArray a -> SparseArray b
+map  f = __map ($)  f
 map' f = __map ($!) f
-
-
 -- HACK: to avoid repeating ourselves
+{-# INLINE __map #-}
 __map
     :: (forall a b. (a -> b) -> a -> b)
     -> (a -> b) -> SparseArray a -> SparseArray b
-{-# INLINE __map #-}
 __map ($?) f = 
     \(SA p xs) ->
         let !n = popCount p in
@@ -769,6 +783,18 @@ __map ($?) f =
     go !p !xs !n !ys !i
         | i < n     = do write ys i $? f (xs ! i); go p xs n ys (i+1)
         | otherwise = unsafeFreeze p ys
+
+
+-- The inline pragma is to avoid warnings about the rules possibly
+-- not firing
+{-# NOINLINE [1] map  #-}
+{-# NOINLINE [1] map' #-}
+{-# RULES
+"map . map"    forall f g xs.  map  f (map  g xs) = map  (\x -> f (g x)) xs
+"map' . map"   forall f g xs.  map' f (map  g xs) = map' (\x -> f (g x)) xs
+"map . map'"   forall f g xs.  map  f (map' g xs) = map  (\x -> f $! g x) xs
+"map' . map'"  forall f g xs.  map' f (map' g xs) = map' (\x -> f $! g x) xs
+    #-}
 
 
 -- N.B., trying to force the closure to be generated before passing
@@ -871,6 +897,8 @@ traverseST f = \ (SA p xs) ->
         | i < n     = do write ys i =<< f (xs ! i); go p xs n ys (i+1)
         | otherwise = unsafeFreeze p ys
 
+-- TODO: traverseST fusion rules
+
 
 ----------------------------------------------------------------
 
@@ -880,7 +908,7 @@ filterMap :: (a -> Maybe b) -> SparseArray a -> SparseArray b
 filterMap f (SA p xs) =
     let !n = popCount p in
     runST $
-        new_ n $ \ys -> do
+        new_ n $ \ys ->
         let go !i !bi !j !q
                 | i >= n    =
                     unsafeFreezeOrTrim (i == j {- aka: p == q -}) q ys
@@ -892,12 +920,40 @@ filterMap f (SA p xs) =
                     Nothing ->
                         go (i+1) (getNextBit p bi) j q
             --
-        go 0 (getFirstBit p) 0 0
+        in go 0 (getFirstBit p) 0 0
 
 -- The inline pragma is to avoid warnings about the rules possibly
 -- not firing
 {-# NOINLINE [1] filterMap #-}
-{-# RULES "filterMap Just"  filterMap Just = id #-}
+{-# RULES
+-- These ones are probably useless...
+"filterMap Just"
+        filterMap Just = id
+"filterMap (Just . f)"
+    forall f.
+        filterMap (\x -> Just (f x)) = map f
+"filterMap (const Nothing)"
+        filterMap (\_ -> Nothing) = const empty
+
+-- These ones are probably more worthwhile...
+"filterMap . filterMap"
+    forall f g xs.
+        filterMap f (filterMap g xs) = filterMap (\x -> f =<< g x) xs
+"filterMap . map"
+    forall f g xs.
+        filterMap f (map g xs) = filterMap (\x -> f (g x)) xs
+"filterMap . map'"
+    forall f g xs.
+        filterMap f (map' g xs) = filterMap (\x -> f $! g x) xs
+"map . filterMap"
+    forall f g xs.
+        map f (filterMap g xs) = filterMap (\x -> f <$> g x) xs
+"map' . filterMap"
+    forall f g xs.
+        map' f (filterMap g xs) =
+            filterMap (\x -> case g x of {Just y -> Just $! f y; _ -> Nothing}) xs
+    #-}
+
 
 
 -- TODO: float @go@ out instead of closing over stuff?
@@ -905,7 +961,7 @@ filter :: (a -> Bool) -> SparseArray a -> SparseArray a
 filter f xz@(SA p xs) =
     let !n = popCount p in
     runST $
-        new_ n $ \ys -> do
+        new_ n $ \ys ->
         let go !i !bi !j !q
                 | i >= n    =
                     if i == j {- aka: p == q -}
@@ -918,14 +974,44 @@ filter f xz@(SA p xs) =
                     go (i+1) (getNextBit p bi) j q
                 where x = xs ! i
             --
-        go 0 (getFirstBit p) 0 0
+        in go 0 (getFirstBit p) 0 0
 
 -- The inline pragma is to avoid warnings about the rules possibly
 -- not firing
 {-# NOINLINE [1] filter #-}
 {-# RULES
+-- These ones are probably useless...
 "filter (const True)"     filter (\_ -> True)  = id
 "filter (const False)"    filter (\_ -> False) = const empty
+
+-- These ones are probably more worthwhile...
+"filter . filter"
+    forall f g xs.
+        filter f (filter g xs) = filter (\x -> g x && f x) xs
+"filter . map"
+    forall f g xs.
+        filter f (map g xs) =
+            filterMap (\x -> let y = g x in if f y then Just y else Nothing) xs
+"filter . map'"
+    forall f g xs.
+        filter f (map' g xs) =
+            filterMap (\x -> let y = g x in if f $! y then Just y else Nothing) xs
+"map . filter"
+    forall f g xs.
+        map f (filter g xs) =
+            filterMap (\x -> if g x then Just (f x) else Nothing) xs
+"map' . filter"
+    forall f g xs.
+        map' f (filter g xs) =
+            filterMap (\x -> if g x then Just $! f x else Nothing) xs
+"filterMap . filter"
+    forall f g xs.
+        filterMap f (filter g xs) =
+            filterMap (\x -> if g x then f x else Nothing) xs
+"filter . filterMap"
+    forall f g xs.
+        filter f (filterMap g xs) =
+            filterMap (\x -> case g x of { my@(Just y) | f y -> my; _ -> Nothing }) xs
     #-}
 
 
@@ -935,7 +1021,7 @@ partition f xz@(SA p xs) =
     let !n = popCount p in
     runST $
         new_ n $ \ys ->
-        new_ n $ \zs -> do
+        new_ n $ \zs ->
         let go !i !bi !j !q !k !r
                 | i >= n    =
                     if i == j {- aka: p == q; aka: r == 0 -}
@@ -955,16 +1041,60 @@ partition f xz@(SA p xs) =
                     go (i+1) (getNextBit p bi) j q (k+1) (r .|. bi)
                 where x = xs ! i
             --
-        go 0 (getFirstBit p) 0 0 0 0
+        in go 0 (getFirstBit p) 0 0 0 0
 
 -- The inline pragma is to avoid warnings about the rules possibly
 -- not firing
 {-# NOINLINE [1] partition #-}
 {-# RULES
+-- These ones are probably useless...
 "partition (const True)"     partition (\_ -> True)  = \xz -> (xz, empty)
 "partition (const False)"    partition (\_ -> False) = \xz -> (empty, xz)
+
+-- TODO: the more worthwhile interaction rules
     #-}
 
+
+-- AKA: mapEither
+-- TODO: float @go@ out instead of closing over stuff?
+partitionMap :: (a -> Either b c) -> SparseArray a -> (SparseArray b, SparseArray c)
+partitionMap f (SA p xs) =
+    let !n = popCount p in
+    runST $
+        new_ n $ \ys ->
+        new_ n $ \zs ->
+        let go !i !bi !j !q !k !r
+                | i >= n = do
+                    yz <- trim q ys
+                    zz <- trim r zs
+                    return (yz, zz)
+                | otherwise =
+                    case f (xs ! i) of
+                    Left  y -> do
+                        write ys j y
+                        go (i+1) (getNextBit p bi) (j+1) (q .|. bi) k r
+                    Right z -> do
+                        write zs k z
+                        go (i+1) (getNextBit p bi) j q (k+1) (r .|. bi)
+            --
+        in go 0 (getFirstBit p) 0 0 0 0
+
+-- The inline pragma is to avoid warnings about the rules possibly
+-- not firing
+{-# NOINLINE [1] partitionMap #-}
+{-# RULES
+-- These ones are probably useless...
+"partitionMap Left"     partitionMap Left  = \xz -> (xz, empty)
+"partitionMap Right"    partitionMap Right = \xz -> (empty, xz)
+"partitionMap (Left . f)"
+    forall f.
+        partitionMap (\x -> Left (f x)) = \xz -> (map f xz, empty)
+"partitionMap (Right . f)"
+    forall f.
+        partitionMap (\x -> Right (f x)) = \xz -> (empty, map f xz)
+
+-- TODO: the more worthwhile interaction rules
+    #-}
 
 
 ----------------------------------------------------------------
@@ -974,39 +1104,34 @@ partition f xz@(SA p xs) =
 
 
 
-rzipWith_
+rzipWith_, rzipWith'_
     :: (a -> b -> c) -> (b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
-rzipWith_ f g = __rzipWith ($) f g
-
-
-rzipWith'_
-    :: (a -> b -> c) -> (b -> c)
-    -> SparseArray a -> SparseArray b -> SparseArray c
+rzipWith_  f g = __rzipWith ($)  f g
 rzipWith'_ f g = __rzipWith ($!) f g
-
-
 -- HACK: to avoid repeating ourselves
--- TODO: float @go@ out instead of closing over stuff?
+{-# INLINE __rzipWith #-}
 __rzipWith
     :: (forall a b. (a -> b) -> a -> b)
     -> (a -> b -> c) -> (b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
-{-# INLINE __rzipWith #-}
-__rzipWith ($?) f g (SA p xs) (SA q ys) =
-    let !n = popCount q in
-    runST $
-        new_ n $ \zs -> do
-        let go !i !b !j
-                | j >= n     = unsafeFreeze q zs
-                | b `elem` p = do
-                    write zs j $? f (xs ! i) (ys ! j)
-                    go (i+1) (getNextBit q b) (j+1)
-                | otherwise  = do
-                    write zs j $? g (ys ! j)
-                    go i     (getNextBit q b) (j+1)
-            --
-        go 0 (getFirstBit q) 0
+-- TODO: float @go@ out instead of closing over stuff?
+__rzipWith ($?) f g =
+    \ (SA p xs) (SA q ys) ->
+        let !n = popCount q in
+        runST $
+            new_ n $ \zs ->
+            let go !i !b !j
+                    | j >= n     = unsafeFreeze q zs
+                    | b `elem` p = do
+                        write zs j $? f (xs ! i) (ys ! j)
+                        go (i+1) (getNextBit q b) (j+1)
+                    | otherwise  = do
+                        write zs j $? g (ys ! j)
+                        go i     (getNextBit q b) (j+1)
+                --
+            in go 0 (getFirstBit q) 0
+
 
 rzipWith'
     :: (Maybe a -> b -> c)
@@ -1033,7 +1158,7 @@ rzipFilter_
 rzipFilter_ f g (SA p xs) (SA q ys) =
     let !n = popCount q in
     runST $
-        new_ n $ \zs -> do
+        new_ n $ \zs ->
         let go !i !b !j !k !r
                 | j >= n     =
                     unsafeFreezeOrTrim (j == k {- aka: q == r -}) r zs
@@ -1052,7 +1177,7 @@ rzipFilter_ f g (SA p xs) (SA q ys) =
                     Nothing ->
                         go i (getNextBit q b) (j+1) k r
             --
-        go 0 (getFirstBit q) 0 0 0
+        in go 0 (getFirstBit q) 0 0 0
 
 
 rzipFilter
@@ -1071,7 +1196,7 @@ unionL (SA p xs) (SA q ys) =
     let !r = p .|. q
         !n = popCount r
     in runST $
-        new_ n $ \zs -> do
+        new_ n $ \zs ->
         let go !b !i !j !k
                 | k >= n     = unsafeFreeze r zs
                 | b `elem` p =
@@ -1083,7 +1208,7 @@ unionL (SA p xs) (SA q ys) =
                     write zs k y
                     go (getNextBit r b) i (j+1) (k+1)
             --
-        go (getFirstBit r) 0 0 0
+        in go (getFirstBit r) 0 0 0
 
 
 -- | Right-biased union.
@@ -1098,12 +1223,6 @@ unionWith f = unionWith_ (f . Fst) ((f .) . Both) (f . Snd)
 {-# INLINE unionWith #-}
 
 
-unionWith_
-    :: (a -> c) -> (a -> b -> c) -> (b -> c)
-    -> SparseArray a -> SparseArray b -> SparseArray c
-unionWith_ f g h = __unionWith ($) f g h
-
-
 unionWith'
     :: (Or a b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
@@ -1111,24 +1230,23 @@ unionWith' f = unionWith'_ (f . Fst) ((f .) . Both) (f . Snd)
 {-# INLINE unionWith' #-}
 
 
-unionWith'_
+unionWith_, unionWith'_
     :: (a -> c) -> (a -> b -> c) -> (b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
+unionWith_  f g h = __unionWith ($)  f g h
 unionWith'_ f g h = __unionWith ($!) f g h
-
-
 -- HACK: to avoid repeating ourselves
--- TODO: float @go@ out instead of closing over stuff?
+{-# INLINE __unionWith #-}
 __unionWith
     :: (forall a b. (a -> b) -> a -> b)
     -> (a -> c) -> (a -> b -> c) -> (b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
-{-# INLINE __unionWith #-}
+-- TODO: float @go@ out instead of closing over stuff?
 __unionWith ($?) f g h (SA p xs) (SA q ys) =
     let !r = p .|. q
         !n = popCount r
     in runST $
-        new_ n $ \zs -> do
+        new_ n $ \zs ->
         let go !b !i !j !k
                 | k >= n    = unsafeFreeze r zs
                 | otherwise =
@@ -1144,7 +1262,7 @@ __unionWith ($?) f g h (SA p xs) (SA q ys) =
                         go (getNextBit r b) i (j+1) (k+1)
                     (False, False) -> __impossible "__unionWith"
             --
-        go (getFirstBit r) 0 0 0
+        in go (getFirstBit r) 0 0 0
 
 
 unionFilterWith
@@ -1162,7 +1280,7 @@ unionFilterWith_ f g h (SA p xs) (SA q ys) =
     let !r0 = p .|. q
         !n  = popCount r0
     in runST $
-        new_ n $ \zs -> do
+        new_ n $ \zs ->
         let go !r0 !b !i !j !k !r
                 | r0 == 0   = unsafeFreezeOrTrim (k >= n) r zs
                 | otherwise =
@@ -1190,7 +1308,7 @@ unionFilterWith_ f g h (SA p xs) (SA q ys) =
                             go (r0 `xor` b) (getNextBit r0 b) i (j+1) k r
                     (False, False) -> __impossible "unionFilterWith_"
             --
-        go r0 (getFirstBit r0) 0 0 0 0
+        in go r0 (getFirstBit r0) 0 0 0 0
 
 
 {-
@@ -1240,24 +1358,17 @@ intersectionR :: SparseArray a -> SparseArray b -> SparseArray b
 intersectionR = flip intersectionL
 
 
-intersectionWith
+intersectionWith, intersectionWith'
     :: (a -> b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
-intersectionWith f = __intersectionWith ($) f
-
-
-intersectionWith'
-    :: (a -> b -> c)
-    -> SparseArray a -> SparseArray b -> SparseArray c
+intersectionWith  f = __intersectionWith ($)  f
 intersectionWith' f = __intersectionWith ($!) f
-
-
 -- HACK: to avoid repeating ourselves
+{-# INLINE __intersectionWith #-}
 __intersectionWith
     :: (forall a b. (a -> b) -> a -> b)
     -> (a -> b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
-{-# INLINE __intersectionWith #-}
 __intersectionWith ($?) f =
     \(SA p xs) (SA q ys) ->
         let !r = p .&. q

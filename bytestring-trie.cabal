@@ -87,11 +87,13 @@ Library
                    , Data.Trie.ArrayMapped.Errors
                    -- Currently unused; needs benchmarking
                    , Data.Trie.ArrayMapped.UnsafeST
+                   -- Only used when @base@ is too old to have it
+                   , Data.Trie.ArrayMapped.PopCount
                    -- Unneeded
                    , Data.Trie.ArrayMapped.Array
                    , Data.Trie.ArrayMapped.UnsafeShift
-                   , Data.Trie.ArrayMapped.PopCount
     Build-Depends:   binary
+                   -- Actual min-version of deepseq is unknown
                    , deepseq >= 1.3 && < 1.4
                    , data-or >= 1.0 && < 1.1
     

@@ -1,4 +1,5 @@
 -- This file copied without modifications from unordered-containers-0.2.4.0
+-- Not sure why (__GLASGOW_HASKELL__ >= 704) instead of (MIN_VERSION_base(4,5,0))
 
 {-# LANGUAGE CPP, ForeignFunctionInterface #-}
 

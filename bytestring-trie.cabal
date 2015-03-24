@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren gayle romano <wren@community.haskell.org>   ~ 2014.10.10
+-- wren gayle romano <wren@community.haskell.org>   ~ 2015.03.23
 ----------------------------------------------------------------
 
 -- By and large Cabal >=1.2 is fine; but >= 1.6 gives tested-with:
@@ -8,12 +8,12 @@ Cabal-Version:  >= 1.6
 Build-Type:     Simple
 
 Name:           bytestring-trie
-Version:        0.3.0
+Version:        0.3.0.2
 Stability:      experimental
 Homepage:       http://code.haskell.org/~wren/
 Author:         wren gayle romano
 Maintainer:     wren@community.haskell.org
-Copyright:      Copyright (c) 2008--2014 wren gayle romano
+Copyright:      Copyright (c) 2008--2015 wren gayle romano
 License:        BSD3
 License-File:   LICENSE
 
@@ -42,7 +42,7 @@ Description:    An efficient finite map from (byte)strings to values.
 
 
 Tested-With:
-    GHC == 6.12.1, GHC == 7.6.1
+    GHC == 6.12.1, GHC == 7.6.1, GHC == 7.10.0.20150316
 Extra-source-files:
     AUTHORS, VERSION
 Source-Repository head
@@ -90,11 +90,10 @@ Library
                    -- Only used when @base@ is too old to have it
                    , Data.Trie.ArrayMapped.PopCount
                    -- Unneeded
-                   , Data.Trie.ArrayMapped.Array
                    , Data.Trie.ArrayMapped.UnsafeShift
     Build-Depends:   binary
                    -- Actual min-version of deepseq is unknown
-                   , deepseq >= 1.3 && < 1.4
+                   , deepseq >= 1.3 && < 1.5
                    , data-or >= 1.0 && < 1.1
     
     -- I think this is all that needs doing to get rid of the warnings?

@@ -6,10 +6,10 @@
 {-# LANGUAGE CPP #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2014.10.09
+--                                                  ~ 2015.03.23
 -- |
 -- Module      :  Data.Trie.BigEndianPatricia.Internal
--- Copyright   :  Copyright (c) 2008--2014 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2015 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  provisional
@@ -70,7 +70,8 @@ import Control.Monad       (liftM, liftM3, liftM4)
 #ifdef APPLICATIVE_IN_BASE
 import Control.Monad       (ap)
 import Control.Applicative (Applicative(..), (<$>))
-import Data.Foldable       (Foldable(..))
+-- Don't use (..); to hide the import of 'null' on GHC 7.10
+import Data.Foldable       (Foldable(foldMap))
 import Data.Traversable    (Traversable(traverse))
 #endif
 

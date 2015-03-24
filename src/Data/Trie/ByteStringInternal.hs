@@ -10,16 +10,17 @@ distribution.
 -}
 
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+{-# LANGUAGE CPP #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2014.06.01
+--                                                  ~ 2015.03.23
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
--- Copyright   :  Copyright (c) 2008--2014 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2015 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  experimental
--- Portability :  portable
+-- Portability :  portable with CPP
 --
 -- Helper functions on 'ByteString's for "Data.Trie.Internal".
 ----------------------------------------------------------------
@@ -31,8 +32,13 @@ module Data.Trie.ByteStringInternal
     , breakMaximalPrefix
     ) where
 
-import Data.ByteString (empty)
-import Data.ByteString.Internal (ByteString(..), inlinePerformIO, unsafeCreate, memcpy)
+import Data.ByteString          (empty)
+import Data.ByteString.Internal (ByteString(..), unsafeCreate, memcpy)
+#if __GLASGOW_HASKELL__ >= 710
+import System.IO.Unsafe         (unsafeDupablePerformIO)
+#else
+import Data.ByteString.Internal (inlinePerformIO)
+#endif
 import Data.Word
 
 import Foreign.ForeignPtr (ForeignPtr, withForeignPtr)
@@ -45,6 +51,11 @@ import Foreign.C.Types (CInt)
 import Control.Monad   (liftM)
 #endif
 -}
+
+#if __GLASGOW_HASKELL__ >= 710
+inlinePerformIO :: IO a -> a
+inlinePerformIO = unsafeDupablePerformIO
+#endif
 
 ----------------------------------------------------------------
 

@@ -12,10 +12,10 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2014.10.10
+--                                                  ~ 2015.03.23
 -- |
 -- Module      :  Data.Trie.ArrayMapped.SparseArray
--- Copyright   :  Copyright (c) 2014 wren gayle romano; 2010--2012 Johan Tibell
+-- Copyright   :  Copyright (c) 2014--2015 wren gayle romano; 2010--2012 Johan Tibell
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  experimental
@@ -27,11 +27,12 @@
 module Data.Trie.ArrayMapped.SparseArray
     ( Key, SparseArray()
     , null, length, member, lookup_, lookup', isSubarrayOf
-    , singleton, doubleton, fromList -- fromAscList, fromDistinctAscList
+    , empty, singleton, doubleton
+    , fromList -- fromAscList, fromDistinctAscList
     , toList, toListBy, keys, elems
     
     -- * Views
-    , SubsingletonView, viewSubsingleton
+    , SubsingletonView(..), viewSubsingleton
     
     -- * Extra mapping functions
     , map, map'
@@ -85,17 +86,43 @@ module Data.Trie.ArrayMapped.SparseArray
     -- new, new_, trim, unsafeFreeze, unsafeFreezeOrTrim
     ) where
 
-import Prelude hiding (null, lookup, filter, foldr, foldl, length, map, read, elem, notElem)
+import Prelude hiding
+    ( null
+    , lookup
+    , filter
+    , foldr
+    , foldl
+    , length
+    , map
+    , read
+    , elem
+    , notElem
+#if __GLASGOW_HASKELL__ >= 710
+    , traverse
+#endif
+    )
 
-import Data.Foldable                  hiding (elem, notElem, toList)
+import Data.Foldable hiding
+    ( elem
+    , notElem
+    , toList
+#if __GLASGOW_HASKELL__ >= 710
+    , null
+    , length
+#endif
+    )
 -- import Data.Traversable
 -- import Control.Applicative         (Applicative(..))
+#if __GLASGOW_HASKELL__ < 710
 import Control.Applicative            ((<$>))
+#endif
 import Control.Monad.ST               -- hiding (runST)
 -- import Data.Trie.ArrayMapped.UnsafeST (runST)
 import GHC.ST                         (ST(..))
-import Control.DeepSeq
+import Control.DeepSeq                (NFData(rnf))
+#if __GLASGOW_HASKELL__ < 710
 import Data.Monoid                    (Monoid(..))
+#endif
 import Data.Word
 import Data.Bits                      ((.&.), (.|.), xor)
 #if (MIN_VERSION_base(4,5,0))
@@ -541,7 +568,10 @@ doubleton !k x !l y = runST $
 {-# INLINE doubleton #-}
 
 
-data SubsingletonView a = IsEmpty | IsSingleton !Key a | IsNotSubsingleton
+data SubsingletonView a
+    = IsEmpty
+    | IsSingleton !Key a
+    | IsNotSubsingleton
     deriving (Eq, Show)
 
 viewSubsingleton :: SparseArray a -> SubsingletonView a

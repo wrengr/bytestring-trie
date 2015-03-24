@@ -7,10 +7,10 @@
 {-# LANGUAGE CPP, BangPatterns #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2014.10.10
+--                                                  ~ 2015.03.23
 -- |
 -- Module      :  Data.Trie.ArrayMapped.Internal
--- Copyright   :  Copyright (c) 2014 wren gayle romano
+-- Copyright   :  Copyright (c) 2014--2015 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  provisional
@@ -60,10 +60,15 @@ import Prelude hiding    (null, lookup)
 import qualified Prelude (null, lookup)
 
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Unsafe as BSU
 import           Data.Trie.ByteStringInternal
 import qualified Data.Trie.ArrayMapped.SparseArray as SA
+import           Data.Trie.ArrayMapped.SparseArray (SubsingletonView(..))
 
 import Data.Binary
+
+import Data.Typeable       (Typeable(..))
+import Control.DeepSeq     (NFData(rnf))
 
 import Data.Monoid         (Monoid(..))
 import Control.Monad       (liftM, liftM3, liftM4)
@@ -71,6 +76,7 @@ import Control.Monad       (ap)
 import Control.Applicative (Applicative(..), (<$>))
 import Data.Foldable       (Foldable(..))
 import Data.Traversable    (Traversable(traverse))
+
 
 #ifdef __GLASGOW_HASKELL__
 import GHC.Exts (build)
@@ -135,18 +141,22 @@ data Trunk a
 -- Smart constructors
 ---------------------------------------------------------------}
 
-trie :: (a -> Trunk a -> b) -> (Trunk a -> b) -> Trie a -> b
-{-# INLINE trie #-}
-trie accept reject (Accept v t) = accept v t
-trie accept reject (Reject   t) = reject   t
+-- | Case elimination on 'Trie', as a higher-order function.
+elimTrie :: (a -> Trunk a -> b) -> (Trunk a -> b) -> Trie a -> b
+{-# INLINE elimTrie #-}
+elimTrie accept reject (Accept v t) = accept v t
+elimTrie accept reject (Reject   t) = reject   t
 
 
-accept :: Maybe a -> Trunk a -> Trie a
-{-# INLINE accept #-}
-accept (Just v) t = Accept v t
-accept Nothing  t = Reject   t
+-- | Smart constructor for 'Trie' type (or for the 'Accept'
+-- constructor, depending how you look at it).
+mkTrie :: Maybe a -> Trunk a -> Trie a
+{-# INLINE mkTrie #-}
+mkTrie (Just v) t = Accept v t
+mkTrie Nothing  t = Reject   t
 
 
+-- | Prepend a (possible) 'Arc' to any trunk.
 -- N.B., this does not verify the NonEmpty assertion on the argument
 -- N.B., this does not clone the string to prune it; callers must do that.
 arc :: NonEmptyByteString -> Maybe a -> Trunk a -> Trunk a
@@ -155,6 +165,8 @@ arc s (Just v) = Arc s v
 arc s Nothing  = prepend_ s
 
 
+-- | Construct a (nominal) 'Branch', pruning it down to an 'Arc'
+-- or 'Empty' if it's small enough.
 branch :: ByteString -> SA.SparseArray a -> SA.SparseArray (Trunk a) -> Trunk a
 {-# INLINE branch #-}
 branch s vz tz =
@@ -166,31 +178,72 @@ branch s vz tz =
     _                                             -> Branch s vz tz
 
 
+-- | Create a binary branch of two tries, where @s1@ and @s2@ are disjoint.
+branch2
+    :: ByteString
+    -> NonEmptyByteString -> Trie a
+    -> NonEmptyByteString -> Trie a
+    -> Trunk a
+{-# INLINE branch2 #-}
+branch2 s0 s1 vt1 s2 vt2 =
+    case (vt1, vt2) of
+    (Accept v1 t1, Accept v2 t2) -> go t1 t2 (SA.doubleton k1 v1 k2 v2)
+    (Accept v1 t1, Reject    t2) -> go t1 t2 (SA.singleton k1 v1)
+    (Reject    t1, Accept v2 t2) -> go t1 t2 (SA.singleton k2 v2)
+    (Reject    t1, Reject    t2) -> go t1 t2  SA.empty
+    where
+    k1 = BSU.unsafeHead s1
+    k2 = BSU.unsafeHead s2 
+    go t1 t2 vz = Branch s0 vz (SA.doubleton k1 t1 k2 t2)
+
+
+-- | Extract a non-empty trunk from a possibly 'Empty' trunk.
 trunk2maybe :: Trunk a -> Maybe (Trunk a)
 {-# INLINE trunk2maybe #-}
 trunk2maybe Empty = Nothing
 trunk2maybe t     = Just t
 
 
+-- | Embed non-empty trunks into possibly 'Empty' trunks.
 maybe2trunk :: Maybe (Trunk a) -> Trunk a
 {-# INLINE maybe2trunk #-}
 maybe2trunk Nothing  = Empty
 maybe2trunk (Just t) = t
 
 
--- Saves a bit on allocation/sharing; though, technically, the call to 'BS.append' will re-check for empty strings.
+-- Saves a bit on allocation/sharing; though, technically, the call
+-- to 'BS.append' will re-check for empty strings.
+--
+-- | Prepend a bytestring to a trunk, coalescing nodes as necessary.
 prepend :: ByteString -> Trunk a -> Trunk a
 {-# INLINE prepend #-}
 prepend s
     | BS.null s = id
     | otherwise = prepend_ s
 
+
+-- | Prepend a non-empty bytestring to a trunk, coalescing nodes
+-- as necessary.
 prepend_ :: NonEmptyByteString -> Trunk a -> Trunk a
 {-# INLINE prepend_ #-}
 prepend_ s0 Empty            = Empty
 prepend_ s0 (Arc    s v  t)  = Arc    (s0 `BS.append` s) v t
 prepend_ s0 (Branch s vz tz) = Branch (s0 `BS.append` s) vz tz
     -- TODO: 'BS.append' will recheck whether @s0@ is empty. We can avoid that extraneous check if we create an @unsafeAppend@...
+
+
+-- | Prepend a non-empty bytestring to a trie, coalescing nodes
+-- as necessary.
+prependT_ :: NonEmptyByteString -> Trie a -> Trunk a
+{-# INLINE prependT_ #-}
+prependT_ s = elimTrie (Arc s) (prepend_ s)
+
+
+-- | Discard the value for the empty string, and return the underlying
+-- trunk.
+trie2trunk :: Trie a -> Trunk a
+{-# INLINE trie2trunk #-}
+trie2trunk = elimTrie (flip const) id
 
 
 {---------------------------------------------------------------
@@ -283,11 +336,15 @@ instance Functor Trunk where
         go (Branch s vz tz) = Branch s (f <$> vz) (go <$> tz)
 
 
+-- HACK: it looks like GHC 7.10 changed the scoping rules for "where" clauses!! We have to explicitly unfold the case analysis on the second argument in order to get the recursive @go@ to be in scope for both branches, wtf?!
+
 -- TODO: is there a class for this yet?
 -- | A strict version of 'fmap'
 fmap' :: (a -> b) -> Trie a -> Trie b
-fmap' f (Accept v t) = (Accept $! f v) (go t)
-fmap' f (Reject   t) = Reject          (go t)
+fmap' f = \t0 ->
+        case t0 of
+        Accept v t -> (Accept $! f v) (go t)
+        Reject   t -> Reject          (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = (Arc s $! f v) (go t)
@@ -341,7 +398,7 @@ instance Applicative Trie where
 instance Monad Trie where
     return v = Accept v Empty
     
-    Accept v t >>= f  = accept (f v `unionL` go t)
+    Accept v t >>= f  = mkTrie (f v `unionL` go t)
     Reject   t >>= f  = reject (go t)
         where
         go Empty            = Empty
@@ -393,8 +450,10 @@ instance MonadPlus Trie where
 
 -- | Apply a function to all values, potentially removing them.
 filterMap :: (a -> Maybe b) -> Trie a -> Trie b
-filterMap f (Accept v t) = accept (f v) (go t)
-filterMap f (Reject   t) = Reject       (go t)
+filterMap f = \t0 ->
+        case t0 of
+        Accept v t -> mkTrie (f v) (go t)
+        Reject   t -> Reject       (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = arc s (f v) (go t)
@@ -440,8 +499,10 @@ filterMap f (Reject   t) = Reject       (go t)
 -- expensive than 'fmap' or 'filterMap' because we have to reconstruct
 -- the keys.
 mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
-mapBy f (Accept v t) = accept (f BS.empty v) (go BS.empty t)
-mapBy f (Reject   t) = go BS.empty t
+mapBy f = \t0 ->
+        case t0 of
+        Accept v t -> mkTrie (f BS.empty v) (go BS.empty t)
+        Reject   t ->                        go BS.empty t
     where
     go !_ Empty        = Empty
     go s0 (Arc s v t)  =
@@ -456,8 +517,10 @@ mapBy f (Reject   t) = go BS.empty t
 -- | A variant of 'fmap' which provides access to the subtrie rooted
 -- at each value.
 contextualMap :: (a -> Trunk a -> b) -> Trie a -> Trie b
-contextualMap f (Accept v t) = Accept (f v t) (go t)
-contextualMap f (Reject   t) = Reject         (go t)
+contextualMap f = \t0 ->
+        case t0 of
+        Accept v t -> Accept (f v t) (go t)
+        Reject   t -> Reject         (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = Arc s (f v t) (go t)
@@ -469,8 +532,10 @@ contextualMap f (Reject   t) = Reject         (go t)
 
 -- | A variant of 'contextualMap' which applies the function strictly.
 contextualMap' :: (a -> Trunk a -> b) -> Trie a -> Trie b
-contextualMap' f (Accept v t) = (Accept $! f v t) (go t)
-contextualMap' f (Reject   t) = Reject            (go t)
+contextualMap' f = \t0 ->
+        case t0 of
+        Accept v t -> (Accept $! f v t) (go t)
+        Reject   t -> Reject            (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = (Arc s $! f v t) (go t)
@@ -482,8 +547,10 @@ contextualMap' f (Reject   t) = Reject            (go t)
 
 -- | A contextual variant of 'filterMap'.
 contextualFilterMap :: (a -> Trunk a -> Maybe b) -> Trie a -> Trie b
-contextualFilterMap f (Accept v t) = accept (f v t) (go t)
-contextualFilterMap f (Reject   t) = Reject (go t)
+contextualFilterMap f = \t0 ->
+        case t0 of
+        Accept v t -> mkTrie (f v t) (go t)
+        Reject   t -> Reject         (go t)
     where
     go Empty            = Empty
     go (Arc    s v  t)  = arc s (f v t) (go t)
@@ -499,8 +566,10 @@ contextualFilterMap f (Reject   t) = Reject (go t)
 -- | A contextual variant of 'mapBy'. Again note that this is
 -- expensive since we must reconstruct the keys.
 contextualMapBy :: (ByteString -> a -> Trunk a -> Maybe b) -> Trie a -> Trie b
-contextualMapBy f (Accept v t) = accept (f BS.empty v t) (go BS.empty t)
-contextualMapBy f (Reject   t) = go BS.empty t
+contextualMapBy f = \t0 ->
+        case t0 of
+        Accept v t -> mkTrie (f BS.empty v t) (go BS.empty t)
+        Reject   t ->                          go BS.empty t
     where
     go !_ Empty            = Empty
     go s0 (Arc    s v  t)  =
@@ -545,8 +614,10 @@ singleton s v
 
 -- | /O(n)/, Get count of elements in trie.
 size  :: Trie a -> Int
-size (Accept _ t0) = go 1 t0
-size (Reject   t0) = go 0 t0
+size = \t0 ->
+        case t0 of
+        Accept _ t -> go 1 t
+        Reject   t -> go 0 t
     where
     go !z Empty            = z
     go  z (Arc    _ _  t)  = go (z+1) t
@@ -667,9 +738,9 @@ lookup = lookupBy_ (\v _ -> Just v) (const Nothing)
 -- > lookup s2 (submap s1 t) = if BS.isPrefixOf s1 s2 then lookup s2 t else False
 --
 submap :: ByteString -> Trie a -> Trie a
-submap s = lookupBy_ ((prepend s .) . Accept) (prepend s . Reject) s
--- submap s = prepend s . subtrie s
--- BUG: prepend takes a Trie not an Arc
+submap s
+    | BS.null s = id
+    | otherwise = Reject . lookupBy_ (Arc s) (prepend_ s) s
 {-# INLINE submap #-}
 
 
@@ -683,40 +754,47 @@ subtrie = lookupBy_ Accept Reject
 {-# INLINE subtrie #-}
 {- RULES
 -- Alas, we can't define a rule for the built-in case_of_
-"trie/subtrie"
+"elimTrie/subtrie"
     forall accept reject s t.
-        trie accept reject (subtrie s t) =
+        elimTrie accept reject (subtrie s t) =
             lookupBy_ accept reject s t
     -}
 
 
 -- | Generic function to find a value (if it exists) and the subtrie
--- rooted at the prefix.
+-- rooted at the prefix. If you're going to do case analysis on the
+-- 'Maybe' in order to decide what to do next, then you should use
+-- 'lookupBy_' instead.
 lookupBy :: (Maybe a -> Trunk a -> b) -> ByteString -> Trie a -> b
 lookupBy f = lookupBy_ (f . Just) (f Nothing)
 {-# INLINE lookupBy #-}
 
 
+-- TODO: we might need to hoist go out as unsafeLookupBy_ in order
+-- to avoid BS.null check of start which is redundant for the
+-- call-site in 'submap'
+--
 -- | Generic function to find a value (if it exists) and the subtrie
--- rooted at the prefix. Like 'lookupBy' but avoids constructing 'Maybe' terms
+-- rooted at the prefix. Like 'lookupBy' but avoids constructing
+-- 'Maybe' terms.
 lookupBy_ :: (a -> Trunk a -> b) -> (Trunk a -> b) -> ByteString -> Trie a -> b
 lookupBy_ accept reject = start
     where
-    start s0
-        | BS.null s0 = trie accept reject
-        | otherwise  = go s0 . trie (flip const) id
+    start q
+        | BS.null q = elimTrie accept reject
+        | otherwise = go q . trie2trunk
     
     go !_ Empty       = reject Empty
-    go s0 (Arc s v t) =
-        let (_, s0', s') = breakMaximalPrefix s0 s in
-        case (BS.null s0', BS.null s') of
+    go q  (Arc s v t) =
+        let (_,q',s') = breakMaximalPrefix q s in
+        case (BS.null q', BS.null s') of
         (True,  True)  -> accept v t
         (True,  False) -> reject (prepend_ s' t)
-        (False, True)  -> go s0' t
+        (False, True)  -> go q' t
         (False, False) -> reject Empty
-    go s0 (Branch s vz tz) =
-        let (_, s0', s') = breakMaximalPrefix s0 s in
-        case BS.uncons s0' of
+    go q (Branch s vz tz) =
+        let (_,q',s') = breakMaximalPrefix q s in
+        case BS.uncons q' of
         Nothing          -> reject (Branch s' vz tz)
         Just (w,ws)
             | BS.null ws ->
@@ -724,6 +802,100 @@ lookupBy_ accept reject = start
                     (maybe2trunk (SA.lookup w tz))
             | otherwise  ->
                 maybe (reject Empty) (go ws) (SA.lookup w tz)
+
+
+-- TODO: would it be worth it to have a variant like 'lookupBy_' which takes the two continuations?
+
+-- | Given a query, find the longest prefix with an associated value
+-- in the trie, returning the length of that prefix and the associated
+-- value.
+--
+-- This function may not have the most useful return type. For a
+-- version that returns the prefix itself as well as the remaining
+-- string, see @match@ in "Data.Trie.ArrayMapped.Base".
+match_ :: Trie a -> ByteString -> Maybe (Int, a)
+match_ = flip start
+    where
+    start q (Accept v t)
+        | BS.null q = Just (0,v)
+        | otherwise = goJust 0 v 0 q t
+    start q (Reject t)
+        | BS.null q = Nothing
+        | otherwise = goNothing 0 q t
+    
+    goNothing !_ !_ Empty       = Nothing
+    goNothing n  q  (Arc s v t) =
+        let (p,q',s') = breakMaximalPrefix q s in
+        if BS.null s'
+        then
+            let n' = n + BS.length p in n' `seq`
+            if BS.null q'
+            then Just (n',v)
+            else goJust n' v n' q' t
+        else Nothing
+    goNothing n q (Branch s vz tz) =
+        let (p,q',s') = breakMaximalPrefix q s in
+        case BS.uncons q' of
+        Nothing     -> Nothing
+        Just (w,ws) ->
+            let n' = n + BS.length p + 1 in n' `seq`
+            case (BS.null ws, SA.lookup w tz) of
+            (False, Just t) -> 
+                case SA.lookup w vz of
+                Nothing -> goNothing   n' ws t
+                Just v  -> goJust n' v n' ws t
+            _           -> (,) n' <$> SA.lookup w vz
+
+    goJust !n0 v0 !_ !_ Empty       = Just (n0,v0)
+    goJust  n0 v0 n  q  (Arc s v t) =
+        let (p,q',s') = breakMaximalPrefix q s in
+        if BS.null s'
+        then
+            let n' = n + BS.length p in n' `seq`
+            if BS.null q'
+            then Just (n',v)
+            else goJust n' v n' q' t
+        else Just (n0,v0)
+    goJust n0 v0 n q (Branch s vz tz) =
+        let (p,q',s') = breakMaximalPrefix q s in
+        case BS.uncons q' of
+        Nothing     -> Just (n0,v0)
+        Just (w,ws) ->
+            let n' = n + BS.length p + 1 in n' `seq`
+            case (BS.null ws, SA.lookup w tz) of
+            (False, Just t) -> 
+                case SA.lookup w vz of
+                Nothing -> goJust n0 v0 n' ws t
+                Just v  -> goJust n' v  n' ws t
+            _ ->
+                case SA.lookup w vz of
+                Nothing -> Just (n0,v0)
+                Just v  -> Just (n',v)
+
+
+{-
+-- | Given a query, find all prefixes with associated values in the
+-- trie, returning their lengths and values. This function is a
+-- good producer for list fusion.
+--
+-- This function may not have the most useful return type. For a
+-- version that returns the prefix itself as well as the remaining
+-- string, see @matches@ in "Data.Trie.ArrayMapped.Base".
+matches_ :: Trie a -> ByteString -> [(Int,a)]
+matches_ t q =
+#if !defined(__GLASGOW_HASKELL__)
+    matchFB_ t q (((:) .) . (,)) []
+#else
+    build (\cons nil -> matchFB_ t q ((cons .) . (,)) nil)
+{-# INLINE matches_ #-}
+#endif
+
+matchFB_ :: Trie a -> ByteString -> (Int -> a -> r -> r) -> r -> r
+matchFB_ = \t q cons nil -> matchFB_' cons q t nil
+    where
+    matchFB_' cons = start
+        where ...
+-}
 
 
 {---------------------------------------------------------------
@@ -740,22 +912,37 @@ alterSubtrie_
     -> ByteString -> Trie a -> Trie a
 alterSubtrie_ accept reject = start
     where
-    start s0
-        | BS.null s0 = trie accept reject
-        | otherwise  = go s0 . trie (flip const) id
+    start q (Accept v t)
+        | BS.null q = accept v t
+        | otherwise = Accept v (go q t)
+    start q (Reject t)
+        | BS.null q = reject t
+        | otherwise = Reject (go q t)
 
-    go !s0 Empty       = prepend s0 (reject Empty)
-    go  s0 (Arc s v t) =
-        let (sh, s0', s') = breakMaximalPrefix s0 s in
-        case (BS.null s0', BS.null s') of
-        (True,  True)  -> prepend_ s  (accept v t)
-        (True,  False) -> prepend_ sh (reject (prepend_ s' t))
-        (False, True)  -> trie __impossible (Arc s v) (go s0' t)
-        (False, False) -> merge2 sh (Arc s' v t) (prepend s0' (reject Empty))
-    go  s0 (Branch s vz tz) =
-        let (sh, s0', s') = breakMaximalPrefix s0 s in
-        ... -- TODO
-        
+    -- [#1] N.B., since @q@ isn't null, by our invariant, therefore we can't have both @p@ and @q'@ be null. And since @q'@ is null, by the guard, therefore @p@ mustn't be; and therefore 'prependT_' is safe to call.
+    go !q Empty       = prependT_ q (reject Empty)
+    go  q (Arc s v t) =
+        let (p,q',s') = breakMaximalPrefix q s in
+        case (BS.null q', BS.null s') of
+        (True,  True)  -> prependT_ p (accept v t)
+        (True,  False) -> prependT_ p (reject $ Arc s' v t) -- #1
+        (False, True)  -> Arc s v (go q' t)
+        (False, False) -> Branch p SA.empty $ SA.doubleton
+                            (BSU.unsafeHead s') (Arc s' v t)
+                            (BSU.unsafeHead q') (prependT_ q' $ reject Empty)
+    go  q (Branch s vz tz) =
+        let (p,q',s') = breakMaximalPrefix q s in
+        error "alterSubtrie_@Branch: unimplemented" {-
+        case BS.uncons q' of
+        Nothing          -> reject (Branch s' vz tz)
+        Just (w,ws)
+            | BS.null ws ->
+                maybe reject accept (SA.lookup w vz)
+                    (maybe2trunk (SA.lookup w tz))
+            | otherwise  ->
+                maybe (reject Empty) (go ws) (SA.lookup w tz)
+        -}
+
 
 
 adjustWithKey :: (ByteString -> a -> a) -> ByteString -> Trie a -> Trie a
@@ -770,21 +957,21 @@ adjustWithKey f s = adjust (f s) s
 adjust :: (a -> a) -> ByteString -> Trie a -> Trie a
 adjust f = start
     where
-    start s0 t0
-        | BS.null s0 = trie (Accept . f) (const t0) t0
-        | otherwise  = go s0 (trie (flip const) id t0)
+    start q t
+        | BS.null q = elimTrie (Accept . f) (const t) t
+        | otherwise = go q (trie2trunk t)
 
-    go !s0 Empty       = Empty
-    go  s0 (Arc s v t) =
-        let (_, s0', s') = breakMaximalPrefix s0 s in
-        case (BS.null s0', BS.null s') of
-        (True,  True)  -> prepend_ s  (accept v t)
-        (True,  False) -> prepend_ sh (reject (prepend_ s' t))
-        (False, True)  -> trie __impossible (Arc s v) (go s0' t)
-        (False, False) -> merge2 sh (Arc s' v t) (prepend s0' (reject Empty))
-    go  s0 (Branch s vz tz) =
-        let (_, s0', s') = breakMaximalPrefix s0 s in
-        ... -- TODO
+    go !q Empty       = Empty
+    go  q (Arc s v t) =
+        let (sh,q',s') = breakMaximalPrefix q s in
+        case (BS.null q', BS.null s') of
+        (True,  True)  -> prepend_ s  (Accept v t) -- q == s == sh
+        (True,  False) -> prepend_ sh (Reject (prepend_ s' t))
+        (False, True)  -> elimTrie __impossible (Arc s v) (go q' t)
+        (False, False) -> merge2 sh (Arc s' v t) (prepend q' (Reject Empty))
+    go  q (Branch s vz tz) =
+        let (sh,q',s') = breakMaximalPrefix q s in
+        error "adjust@Branch: unimplemented" -- TODO
 
 
 ----------------------------------------------------------------
@@ -802,12 +989,13 @@ adjust f = start
 -- to resolve conflicts (or non-conflicts).
 alterBy :: (ByteString -> a -> Maybe a -> Maybe a)
          -> ByteString -> a -> Trie a -> Trie a
-alterBy f = alterBy_ (\k v mv t -> accept (f k v mv) t)
+alterBy f = alterBy_ (\k v mv t -> mkTrie (f k v mv) t)
 
 
 -- | A variant of 'alterBy' which also allows modifying the sub-trie. 
 alterBy_ :: (ByteString -> a -> Trie a -> Trie a)
          -> ByteString -> a -> Trie a -> Trie a
+alterBy_ = error "alterBy_: unimplemented" -- TODO
 
 
 -- | Alter the value associated with a given key. If the key is not
@@ -817,6 +1005,7 @@ alterBy_ :: (ByteString -> a -> Trie a -> Trie a)
 -- trie structure, it is somewhat faster than 'alterBy'.
 adjustBy :: (ByteString -> a -> a -> a)
          -> ByteString -> a -> Trie a -> Trie a
+adjustBy = error "adjustBy: unimplemented" -- TODO
 
 
 {---------------------------------------------------------------
@@ -833,6 +1022,7 @@ adjustBy :: (ByteString -> a -> a -> a)
 -- symmetric difference but, with those two, all set operations can
 -- be defined (albeit inefficiently).
 mergeBy :: (a -> a -> Maybe a) -> Trie a -> Trie a -> Trie a
+mergeBy = error "mergeBy: unimplemented" -- TODO
 
 
 mergeMaybe :: (a -> a -> Maybe a) -> Maybe a -> Maybe a -> Maybe a
@@ -850,7 +1040,7 @@ mergeMaybe f (Just v0)   (Just v1) = f v0 v1
 -- TODO: use a single large buffer for building up the string, since we're guaranteed not to share it.
 minAssoc :: Trie a -> Maybe (ByteString, a)
 minAssoc (Accept v _) = Just (BS.empty, v)
-minAssoc (Rekect   t) = go BS.empty t
+minAssoc (Reject   t) = go BS.empty t
     where
     go !_ Empty            = Nothing
     go s0 (Arc    s v  t)  = Just (BS.append s0 s, v)

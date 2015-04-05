@@ -9,7 +9,7 @@
 -- TODO: benchmark using SA.lookup_ instead of SA.lookup'
 
 ----------------------------------------------------------------
---                                                  ~ 2015.03.23
+--                                                  ~ 2015.04.05
 -- |
 -- Module      :  Data.Trie.ArrayMapped.Internal
 -- Copyright   :  Copyright (c) 2014--2015 wren gayle romano
@@ -509,7 +509,7 @@ mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
 mapBy f = \t0 ->
         case t0 of
         Accept v t -> mkTrie (f BS.empty v) (go BS.empty t)
-        Reject   t ->                        go BS.empty t
+        Reject   t -> Reject                (go BS.empty t)
     where
     go !_ Empty        = Empty
     go s0 (Arc s v t)  =
@@ -546,8 +546,8 @@ contextualMap' f = \t0 ->
     where
     go Empty            = Empty
     go (Arc    s v  t)  = (Arc s $! f v t) (go t)
-    go (Branch s vz tz) = Branch s (SA.rzipWith'_ f2 f1 tz vz) (fmap' go tz)
-        -- TODO: should that fmap be strict or not?
+    go (Branch s vz tz) = Branch s (SA.rzipWith'_ f2 f1 tz vz) (SA.map' go tz)
+        -- TODO: should that SA.map be strict or not?
     
     f1   v = f v Empty
     f2 t v = f v t
@@ -573,11 +573,12 @@ contextualFilterMap f = \t0 ->
 -- TODO: (?) use a large buffer for the bytestring and overwrite it in place, only copying it off for handing to @f@...? Benchmark it; also Builder stuff
 -- | A contextual variant of 'mapBy'. Again note that this is
 -- expensive since we must reconstruct the keys.
-contextualMapBy :: (ByteString -> a -> Trunk a -> Maybe b) -> Trie a -> Trie b
+contextualMapBy
+    :: (ByteString -> a -> Trunk a -> Maybe b) -> Trie a -> Trie b
 contextualMapBy f = \t0 ->
         case t0 of
         Accept v t -> mkTrie (f BS.empty v t) (go BS.empty t)
-        Reject   t ->                          go BS.empty t
+        Reject   t -> Reject                  (go BS.empty t)
     where
     go !_ Empty            = Empty
     go s0 (Arc    s v  t)  =
@@ -803,13 +804,16 @@ lookupBy_ accept reject = start
     go q (Branch s vz tz) =
         let (_,q',s') = breakMaximalPrefix q s in
         case BS.uncons q' of
-        Nothing          -> reject (Branch s' vz tz)
-        Just (w,ws)
-            | BS.null ws ->
-                maybe reject accept (SA.lookup' w vz)
-                    (maybe2trunk (SA.lookup' w tz))
-            | otherwise  ->
-                maybe (reject Empty) (go ws) (SA.lookup' w tz)
+        Nothing     -> reject (Branch s' vz tz)
+        Just (w,ws) ->
+            if BS.null s'
+            then
+                if BS.null ws
+                then maybe reject accept (SA.lookup' w vz)
+                        (maybe2trunk (SA.lookup' w tz))
+                else maybe (reject Empty) (go ws) (SA.lookup' w tz)
+            else reject Empty
+    
 
 
 -- TODO: would it be worth it to have a variant like 'lookupBy_' which takes the two continuations?
@@ -935,7 +939,7 @@ alterSubtrie_ accept reject = start
     go  q (Arc s v t) =
         let (p,q',s') = breakMaximalPrefix q s in
         case (BS.null q', BS.null s') of
-        (True,  True)  -> prependT_ p (accept v t)
+        (True,  True)  -> prependT_ p (accept v t) -- p == q == s
         (True,  False) -> prependT_ p (reject $ Arc s' v t) -- #1
         (False, True)  -> Arc s v (go q' t)
         (False, False) -> Branch p SA.empty $ SA.doubleton
@@ -944,20 +948,25 @@ alterSubtrie_ accept reject = start
     go  q (Branch s vz tz) =
         let (p,q',s') = breakMaximalPrefix q s in
         case BS.uncons q' of
-        Nothing          -> prependT_ p (reject $ Branch s' vz tz)
-        Just (w,ws)
-            | BS.null ws ->
-                error "alterSubtrie_@Branch@Just@null: unimplemented" {-
-                maybe reject accept (SA.lookup' w vz)
-                    (maybe2trunk (SA.lookup' w tz))
-                -}
-            | otherwise  -> prependT_ p $
-                case SA.lookup' w tz of
-                Nothing -> SA.insert w (prependT_ ws $ reject Empty) tz
-                Just t  -> 
-                 error "alterSubtrie_@Branch@Just@else: unimplemented" {-
-                 maybe (reject Empty) (go ws) (SA.lookup' w tz)
-                 -}
+        Nothing     -> prependT_ p (reject $ Branch s' vz tz)
+        Just (w,ws) ->
+            if BS.null s'
+            then
+                if BS.null ws
+                then
+                    case maybe reject accept (SA.lookup' w vz)
+                        (maybe2trunk (SA.lookup' w tz))
+                    of
+                    Accept v' t' ->
+                        Branch s (SA.insert w v' vz) (SA.insert w t' tz)
+                    Reject    t' ->
+                        Branch s (SA.remove w vz) (SA.insert w t' tz)
+                else prependT_ p $
+                    case SA.lookup' w tz of
+                    Nothing -> SA.insert w (prependT_ ws $ reject Empty) tz
+                    Just t' -> prependT_ p (go ws t')
+            else branch2 p s' (Reject $ Branch BS.empty vz tz)
+                           q' (reject Empty)
 
 
 
@@ -979,12 +988,12 @@ adjust f = start
 
     go !q Empty       = Empty
     go  q (Arc s v t) =
-        let (sh,q',s') = breakMaximalPrefix q s in
+        let (p,q',s') = breakMaximalPrefix q s in
         case (BS.null q', BS.null s') of
-        (True,  True)  -> prepend_ s  (Accept v t) -- q == s == sh
-        (True,  False) -> prepend_ sh (Reject (prepend_ s' t))
-        (False, True)  -> elimTrie __impossible (Arc s v) (go q' t)
-        (False, False) -> merge2 sh (Arc s' v t) (prepend q' (Reject Empty))
+        (True,  True)  -> prepend_ p (Accept v t) -- p == q == s
+        (True,  False) -> prepend_ p (Reject (prepend_ s' t))
+        (False, True)  -> Arc s v (go q' t)
+        (False, False) -> branch2 p s' (Accept v t) q' (Reject Empty)
     go  q (Branch s vz tz) =
         let (sh,q',s') = breakMaximalPrefix q s in
         error "adjust@Branch: unimplemented" -- TODO
@@ -1070,6 +1079,7 @@ minAssoc (Reject   t) = go BS.empty t
         
     __impossible = error
         "Data.Trie.ArrayMapped.Internal.minAssoc: the impossible happened"
+    (<|>) = error "minAssoc: unimplemented"
 
 
 maxAssoc :: Trie a -> Maybe (ByteString, a)

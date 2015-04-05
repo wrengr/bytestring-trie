@@ -3,6 +3,7 @@
     -Wall -fwarn-tabs -fno-warn-name-shadowing -fno-warn-unused-binds
     -fno-full-laziness -funbox-strict-fields
     #-}
+
 {-# LANGUAGE BangPatterns
            , CPP
            , ForeignFunctionInterface
@@ -11,8 +12,16 @@
            , UnboxedTuples
            #-}
 
+#if __GLASGOW_HASKELL__ >= 710
+{-# LANGUAGE RoleAnnotations #-}
+#endif
+
+-- TODO: cf <http://hackage.haskell.org/package/base-4.8.0.0/docs/src/GHC-Arr.html> for more implementation hacks
+
+-- TODO: for our purposes, should we reimplement everything using SmallArray# and SmallMutableArray# ? cf., ghc-prim-0.4.0.0
+
 ----------------------------------------------------------------
---                                                  ~ 2015.04.04
+--                                                  ~ 2015.04.05
 -- |
 -- Module      :  Data.Trie.ArrayMapped.SparseArray
 -- Copyright   :  Copyright (c) 2014--2015 wren gayle romano; 2010--2012 Johan Tibell
@@ -28,7 +37,7 @@ module Data.Trie.ArrayMapped.SparseArray
     ( Key, SparseArray()
     , null, length, member, lookup_, lookup', isSubarrayOf
     , empty, singleton, doubleton
-    , insert
+    , insert, remove
     , fromList -- fromAscList, fromDistinctAscList
     , toList, toListBy, keys, elems
     
@@ -112,19 +121,21 @@ import Data.Foldable hiding
     , length
 #endif
     )
--- import Data.Traversable
+import Data.Traversable               (Traversable(traverse))
 -- import Control.Applicative         (Applicative(..))
 #if __GLASGOW_HASKELL__ < 710
 import Control.Applicative            ((<$>))
 #endif
+import Control.Monad                  (replicateM)
 import Control.Monad.ST               -- hiding (runST)
 -- import Data.Trie.ArrayMapped.UnsafeST (runST)
 import GHC.ST                         (ST(..))
 import Control.DeepSeq                (NFData(rnf))
+import Data.Binary
 #if __GLASGOW_HASKELL__ < 710
 import Data.Monoid                    (Monoid(..))
-#endif
 import Data.Word
+#endif
 import Data.Bits                      ((.&.), (.|.), xor)
 -- The 'popCount' import requires base >= 4.5.0 or GHC >= 7.4
 -- On older compilers we can use "Data.Trie.ArrayMapped.PopCount" instead
@@ -139,7 +150,10 @@ import GHC.Exts
     , Word(W#), Int(I#), uncheckedShiftL#, not#, and#, neWord#
     , Array#, newArray#, readArray#, writeArray#, indexArray#, freezeArray#, unsafeFreezeArray#, MutableArray#
 #if __GLASGOW_HASKELL__ >= 702
-    , sizeofMutableArray#, copyMutableArray#, copyArray#
+    , sizeofMutableArray#, copyMutableArray#
+    -- TODO: Which version added these?
+    , copyArray#
+    , isTrue#, sameMutableArray#
 #endif
     )
 -- for c_ffs, used by bit2key, used in turn by viewSubsingleton
@@ -328,6 +342,8 @@ elem b p = (p .&. b /= 0)
 
 
 -- BUG: it looks like neWord# isn't actually branch-free. So this hack doesn't actually help anything...
+-- TODO: benchmark performance differences anyways
+-- TODO: see whether they generate the same code under GHC 7.10
 elem# :: OneBit -> Bitmap -> Index
 elem# (W# b) (W# p) = I# (neWord# (and# p b) 0##)
 {-# INLINE elem# #-}
@@ -496,6 +512,10 @@ copy !src !sidx !dst !didx n =
 
 data SparseArray a = SA !Bitmap !(Array# a)
 
+#if __GLASGOW_HASKELL__ >= 710
+type role SparseArray representational
+#endif
+
 
 -- | Create a 'SparseArray' by trimming a 'MutableArray#'.
 trim :: Bitmap -> MutableArray# s a -> ST s (SparseArray a)
@@ -605,7 +625,7 @@ lookup_ k (SA p xs) =
 
 -- TODO: is there any way we can convince GHC to treat this as an
 -- intro rule, thus allowing case-of-constructor to avoid constructing
--- the 'Maybe'?
+-- the 'Maybe'? If not, we should create an explicit CPSed version.
 --
 -- | Eagerly look up an element in an array. That is, we do all
 -- possible work before returning the data constructor for 'Maybe'.
@@ -630,7 +650,7 @@ insert !k x sa@(SA p xs)
             write xs' i x
             unsafeFreeze p xs'
     | otherwise =
-        let maxN = 1 + length sa in
+        let maxN = length sa + 1 in
         runST $
             new_ maxN $ \xs' -> do
             copy xs 0 xs' 0 i
@@ -641,12 +661,33 @@ insert !k x sa@(SA p xs)
     b = key2bit k
     i = bit2index p b
 
+
+-- | Create a copy of the array, removing a key. If the key is not
+-- present, then returns the same array.
+remove :: Key -> SparseArray a -> SparseArray a
+remove !k sa@(SA p xs)
+    | b `elem` p =
+        let maxN = length sa - 1 in
+        runST $
+            new_ maxN $ \xs' -> do
+            copy xs 0 xs' 0 i
+            copy xs (i+1) xs' i (maxN-i)
+            unsafeFreeze (p `xor` b) xs'
+    | otherwise = sa
+    where
+    b = key2bit k
+    i = bit2index p b
+
 ----------------------------------------------------------------
 data SubsingletonView a
     = IsEmpty
     | IsSingleton !Key a
     | IsNotSubsingleton
     deriving (Eq, Show)
+
+#if __GLASGOW_HASKELL__ >= 710
+type role SubsingletonView representational
+#endif
 
 viewSubsingleton :: SparseArray a -> SubsingletonView a
 viewSubsingleton xz@(SA p xs) =
@@ -669,6 +710,15 @@ data DynamicSA s a = DSA
     !Index               -- The next free index in the array
     !Index               -- The first invalid index == the size of the array
     !(MutableArray# s a) -- The array in progress
+
+#if __GLASGOW_HASKELL__ >= 710
+type role DynamicSA nominal representational
+#endif
+
+-- Just pointer equality on mutable arrays:
+instance Eq (DynamicSA s e) where
+    DSA _ _ _ _ xs == DSA _ _ _ _ ys =
+        isTrue# (sameMutableArray# xs ys)
 
 
 unsafeFreezeDSA :: DynamicSA s a -> ST s (SparseArray a)
@@ -848,19 +898,66 @@ elems xz = build (\cons nil -> foldr cons nil xz)
 ----------------------------------------------------------------
 -- Section: instances, maps, folds, set-theoretic ops, etc
 
+
 instance Show a => Show (SparseArray a) where
-    show = show . toList
+    showsPrec p sa =
+        showParen (p > 10)
+            $ showString "fromList "
+            . showsPrec 11 (toList sa)
+
+    -- show = show . toList
 
 
-{-
--- TODO: how do we get/put an Array# ?
+----------------------------------------------------------------
+-- TODO: cf @GHC.Arr.eqArray@
+instance Eq a => Eq (SparseArray a) where
+    SA p xs == SA p' xs' =
+        (p == p') && eqArray# xs xs' (popCount p) 0
+        where
+        eqArray# !xs !xs' !n !i
+            | i < n     =
+                if (xs ! i) == (xs' ! i)
+                then eqArray# xs xs' n (i+1)
+                else False
+            | otherwise = True
+
+
+----------------------------------------------------------------
+-- Inefficient, but implemented a la @GHC.Arr.cmpArray@
+instance Ord a => Ord (SparseArray a) where
+    compare sa sa'= compare (toList sa) (toList sa')
+
+
+----------------------------------------------------------------
+-- TODO: is there a more efficient way to get/put an Array# ?
 instance (Binary a) => Binary (SparseArray a) where
-    put (SA p xs) = do put p; put xs
+    put (SA p xs) = do
+        put p
+        putArray# xs (popCount p) 0
+      where
+        putArray# !xs !n !i
+            | i < n     = do index xs i put; putArray# xs n (i+1)
+            | otherwise = return ()
     
-    get = SA <$> get <*> get
--}
+    get = do
+        p <- get
+        fromElems p <$> replicateM (popCount p) get
 
 
+fromElems :: Bitmap -> [a] -> SparseArray a
+fromElems p xs =
+    let n = popCount p in
+    runST (new_ n $ \dst -> go p dst n 0 xs)
+    where
+    go !p !dst !_n !_i [] =
+        CHECK_EQ("fromElems", _i, _n)
+        unsafeFreeze p dst
+    go  p  dst  n  i (x:xs) =
+        CHECK_LT("fromElems", i, n)
+        do write dst i x; go p dst n (i+1) xs
+
+
+----------------------------------------------------------------
 instance (NFData a) => NFData (SparseArray a) where
     rnf = \(SA p xs) -> go xs (popCount p) 0
         where
@@ -869,6 +966,7 @@ instance (NFData a) => NFData (SparseArray a) where
             | otherwise = ()
 
 
+----------------------------------------------------------------
 -- BUG: using fmap and fmap' may result in allocating the @SA@ pairs in places where it's not necessary... Does the INLINE help?
 instance Functor SparseArray where
     fmap = map
@@ -916,12 +1014,16 @@ map' f =
     #-}
 
 
+----------------------------------------------------------------
 -- N.B., trying to force the closure to be generated before passing
 -- in the extra arguments via lambda does not work. GHC floats the
 -- closure down... presumably because the arities of these methods
 -- are already specified...
 --
 -- N.B., adding INLINE pragma prevents the worker/wrapper transform
+--
+-- The instance for @array:Data.Array.Array@ is in @base:Data.Foldable@
+-- TODO: compare our instance to that one
 instance Foldable SparseArray where
     fold      = foldr' mappend mempty
     
@@ -950,6 +1052,36 @@ instance Foldable SparseArray where
         go !xs !n !i z
             | i < n     = go xs n (i+1) $! f z (xs ! i)
             | otherwise = z
+
+    {-
+    -- TODO: which version of base added these?
+    foldl1 = foldl1Elems
+    foldr1 = foldr1Elems
+    toList = SA.toList
+    length = SA.length
+    null   = SA.null
+    
+        -- | A left fold over the elements with no starting value
+        {-# INLINABLE foldl1Elems #-}
+        foldl1Elems :: Ix i => (a -> a -> a) -> Array i a -> a
+        foldl1Elems f = \ arr@(Array _ _ n _) ->
+          let
+            go i | i == 0    = unsafeAt arr 0
+                 | otherwise = f (go (i-1)) (unsafeAt arr i)
+          in
+            if n == 0 then error "foldl1: empty Array" else go (n-1)
+        
+        -- | A right fold over the elements with no starting value
+        {-# INLINABLE foldr1Elems #-}
+        foldr1Elems :: Ix i => (a -> a -> a) -> Array i a -> a
+        foldr1Elems f = \ arr@(Array _ _ n _) ->
+          let
+            go i | i == n-1  = unsafeAt arr i
+                 | otherwise = f (unsafeAt arr i) (go (i + 1))
+          in
+            if n == 0 then error "foldr1: empty Array" else go 0
+    -}
+    
 
 
 -- BUG: can we improve the asymptotics without needing bit2key for incrementing k?
@@ -1019,15 +1151,12 @@ foldR f = \z0 (SA p xs) -> go xs (popCount p - 1) z0
         | otherwise     =  Left z
 
 
-{-
--- BUG: does this even make sense?
+----------------------------------------------------------------
+-- This implementation a la the one for @array:Data.Array.Array@ is in @base:Data.Traversable@
 instance Traversable SparseArray where
-    traverse f = foldrWithKey' cons_f (pure empty)
-        where
-        cons_f k x ys = insert k <$> f x <*> ys
+    traverse f sa@(SA p _) = fromElems p <$> traverse f (elems sa)
     
     -- TODO: can we optimize 'sequenceA' over the default?
--}
 
 
 -- we can optimize Traversable for ST since we know ST computations

@@ -28,6 +28,7 @@ module Data.Trie.ArrayMapped.SparseArray
     ( Key, SparseArray()
     , null, length, member, lookup_, lookup', isSubarrayOf
     , empty, singleton, doubleton
+    , insert
     , fromList -- fromAscList, fromDistinctAscList
     , toList, toListBy, keys, elems
     
@@ -138,7 +139,7 @@ import GHC.Exts
     , Word(W#), Int(I#), uncheckedShiftL#, not#, and#, neWord#
     , Array#, newArray#, readArray#, writeArray#, indexArray#, freezeArray#, unsafeFreezeArray#, MutableArray#
 #if __GLASGOW_HASKELL__ >= 702
-    , sizeofMutableArray#, copyMutableArray#
+    , sizeofMutableArray#, copyMutableArray#, copyArray#
 #endif
     )
 -- for c_ffs, used by bit2key, used in turn by viewSubsingleton
@@ -193,6 +194,7 @@ if not ((_lhs_) _op_ (_rhs_)) then __functionError (_func_) ("Check failed: _lhs
 #endif
 ----------------------------------------------------------------
 ----------------------------------------------------------------
+-- Section: Bit bashing
 
 -- | Indices into a 'SparseArray' or 'DynamicSA'.
 type Key    = Word8 -- Actually, should be a Word4 for our uses...
@@ -339,6 +341,7 @@ notElem b p = (p .&. b == 0)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
+-- Section: Wrappers for working with MutableArray# 
 
 -- We must box up the MutableArray# into something of kind * before
 -- we can return it. Rather than making an explicit box just to
@@ -387,27 +390,28 @@ write !xs !_i@(I# i) x =
 
 
 -- TODO: why was n not marked with a bang??
--- | Unsafely copy the elements of an array. Array bounds are not
+-- We say "some" to constrast against cloneMutableArray#
+-- | Unsafely copy some elements of an array. Array bounds are not
 -- checked.
-copy :: MutableArray# s e -> Index -> MutableArray# s e -> Index -> Index -> ST s ()
+copyMA :: MutableArray# s e -> Index -> MutableArray# s e -> Index -> Index -> ST s ()
 #if __GLASGOW_HASKELL__ >= 702
-{-# INLINE copy #-}
-copy !src !_sidx@(I# sidx) !dst !_didx@(I# didx) _n@(I# n) =
-    CHECK_GE("copy: sidx", _sidx, (0 :: Int))
-    CHECK_GE("copy: didx", _didx, (0 :: Int))
-    CHECK_GE("copy: n", _n, (0 :: Int))
-    CHECK_BOUNDS("copy: src", lengthMA src, _sidx + _n - 1)
-    CHECK_BOUNDS("copy: dst", lengthMA dst, _didx + _n - 1)
+{-# INLINE copyMA #-}
+copyMA !src !_sidx@(I# sidx) !dst !_didx@(I# didx) _n@(I# n) =
+    CHECK_GE("copyMA: sidx", _sidx, (0 :: Int))
+    CHECK_GE("copyMA: didx", _didx, (0 :: Int))
+    CHECK_GE("copyMA: n", _n, (0 :: Int))
+    CHECK_BOUNDS("copyMA: src", lengthMA src, _sidx + _n - 1)
+    CHECK_BOUNDS("copyMA: dst", lengthMA dst, _didx + _n - 1)
     ST $ \s ->
         case copyMutableArray# src sidx dst didx n s of
         s' -> (# s', () #)
 #else
-copy !src !sidx !dst !didx n =
-    CHECK_GE("copy: sidx", _sidx, (0 :: Int))
-    CHECK_GE("copy: didx", _didx, (0 :: Int))
-    CHECK_GE("copy: n", _n, (0 :: Int))
-    CHECK_BOUNDS("copy: src", lengthMA src, sidx + n - 1)
-    CHECK_BOUNDS("copy: dst", lengthMA dst, didx + n - 1)
+copyMA !src !sidx !dst !didx n =
+    CHECK_GE("copyMA: sidx", _sidx, (0 :: Int))
+    CHECK_GE("copyMA: didx", _didx, (0 :: Int))
+    CHECK_GE("copyMA: n", _n, (0 :: Int))
+    CHECK_BOUNDS("copyMA: src", lengthMA src, sidx + n - 1)
+    CHECK_BOUNDS("copyMA: dst", lengthMA dst, didx + n - 1)
     go sidx didx 0
     where
     go !i !j !c
@@ -436,6 +440,59 @@ shiftUpOne !xs !i !n =
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
+-- Section: Wrappers for working with Array#
+
+
+-- HACK: must use the prefix notation in the definition, otherwise
+-- it isn't recognized for some reason...
+(!) :: Array# a -> Index -> a
+(!) xs (I# i) = case indexArray# xs i of (# x #) -> x
+{-# INLINE (!) #-}
+
+
+-- | A CPS'ed variant of '(!)' for hoisting the array lookup out
+-- of a continuation. Mostly useful for avoiding thunks without
+-- forcing the array values.
+index :: Array# a -> Index -> (a -> r) -> r
+index xs (I# i) continue = case indexArray# xs i of (# x #) -> continue x
+{-# INLINE index #-}
+
+
+-- We say "some" to constrast against cloneMutableArray#
+-- | Unsafely copy some elements of an array. Array bounds are not
+-- checked.
+copy :: Array# e -> Index -> MutableArray# s e -> Index -> Index -> ST s ()
+#if __GLASGOW_HASKELL__ >= 702
+{-# INLINE copy #-}
+copy !src !_sidx@(I# sidx) !dst !_didx@(I# didx) _n@(I# n) =
+    CHECK_GE("copy: sidx", _sidx, (0 :: Int))
+    CHECK_GE("copy: didx", _didx, (0 :: Int))
+    CHECK_GE("copy: n", _n, (0 :: Int))
+    CHECK_BOUNDS("copy: src", length   src, _sidx + _n - 1)
+    CHECK_BOUNDS("copy: dst", lengthMA dst, _didx + _n - 1)
+    ST $ \s ->
+        case copyArray# src sidx dst didx n s of
+        s' -> (# s', () #)
+#else
+copy !src !sidx !dst !didx n =
+    CHECK_GE("copy: sidx", _sidx, (0 :: Int))
+    CHECK_GE("copy: didx", _didx, (0 :: Int))
+    CHECK_GE("copy: n", _n, (0 :: Int))
+    CHECK_BOUNDS("copy: src", length   src, sidx + n - 1)
+    CHECK_BOUNDS("copy: dst", lengthMA dst, didx + n - 1)
+    go sidx didx 0
+    where
+    go !i !j !c
+        | c < n     = do
+            index src i (write dst j)
+            go (i+1) (j+1) (c+1)
+        | otherwise = return ()
+#endif
+
+
+----------------------------------------------------------------
+----------------------------------------------------------------
+-- Section: Defining SparseArray
 
 data SparseArray a = SA !Bitmap !(Array# a)
 
@@ -486,6 +543,19 @@ empty =
 -}
 
 
+singleton :: Key -> a -> SparseArray a
+singleton !k x = runST (new 1 x $ unsafeFreeze (key2bit k))
+{-# INLINE singleton #-}
+
+
+doubleton :: Key -> a -> Key -> a -> SparseArray a
+doubleton !k x !l y = runST $
+    new 2 x $ \xs -> do
+    write xs (if k < l then 1 else 0) y
+    unsafeFreeze (key2bit k .|. key2bit l) xs
+{-# INLINE doubleton #-}
+
+
 -- TODO: would it be better to have an invariant that SAs are non-empty, and use Maybe when we 'trim', 'filter', etc?
 -- | /O(1)/. Is the array empty?
 null :: SparseArray a -> Bool
@@ -506,21 +576,6 @@ length (SA p _) = popCount p
 isSubarrayOf :: SparseArray a -> SparseArray b -> Bool
 isSubarrayOf (SA p _) (SA q _) = (p .&. q == p)
 {-# INLINE isSubarrayOf #-}
-
-
--- HACK: must use the prefix notation in the definition, otherwise
--- it isn't recognized for some reason...
-(!) :: Array# a -> Index -> a
-(!) xs (I# i) = case indexArray# xs i of (# x #) -> x
-{-# INLINE (!) #-}
-
-
--- | A CPS'ed variant of '(!)' for hoisting the array lookup out
--- of a continuation. Mostly useful for avoiding thunks without
--- forcing the array values.
-index :: Array# a -> Index -> (a -> r) -> r
-index xs (I# i) continue = case indexArray# xs i of (# x #) -> continue x
-{-# INLINE index #-}
 
 
 -- /O(1)/.
@@ -564,19 +619,29 @@ lookup' k (SA p xs) =
 {-# INLINE lookup' #-}
 
 
-singleton :: Key -> a -> SparseArray a
-singleton !k x = runST (new 1 x $ unsafeFreeze (key2bit k))
-{-# INLINE singleton #-}
+-- | Create a copy of the array, inserting (or overwriting) a new value.
+insert :: Key -> a -> SparseArray a -> SparseArray a
+insert !k x sa@(SA p xs)
+    | b `elem` p =
+        let maxN = length sa in
+        runST $
+            new_ maxN $ \xs' -> do
+            copy xs 0 xs' 0 maxN
+            write xs' i x
+            unsafeFreeze p xs'
+    | otherwise =
+        let maxN = 1 + length sa in
+        runST $
+            new_ maxN $ \xs' -> do
+            copy xs 0 xs' 0 i
+            write xs' i x
+            copy xs i xs' (i+1) (maxN-i)
+            unsafeFreeze (p .|. b) xs'
+    where
+    b = key2bit k
+    i = bit2index p b
 
-
-doubleton :: Key -> a -> Key -> a -> SparseArray a
-doubleton !k x !l y = runST $
-    new 2 x $ \xs -> do
-    write xs (if k < l then 1 else 0) y
-    unsafeFreeze (key2bit k .|. key2bit l) xs
-{-# INLINE doubleton #-}
-
-
+----------------------------------------------------------------
 data SubsingletonView a
     = IsEmpty
     | IsSingleton !Key a
@@ -591,6 +656,11 @@ viewSubsingleton xz@(SA p xs) =
     _ -> IsNotSubsingleton
 {-# INLINE viewSubsingleton #-}
 
+
+----------------------------------------------------------------
+----------------------------------------------------------------
+-- Section: Defining DynamicSA
+-- TODO: This isn't *really* used much; so inline/remove it?
 
 -- | A mutable variant of 'SparseArray', for internal use.
 data DynamicSA s a = DSA
@@ -631,14 +701,14 @@ insertDSA_ !k x dsa@(DSA p maxK n maxN xs) continue
             continue $! DSA p' maxK n' maxN xs
         (False, True) ->
             new_ maxN' $ \xs' -> do
-            copy xs 0 xs' 0 maxN
+            copyMA xs 0 xs' 0 maxN
             write xs' n x
             continue $! DSA p' k n' maxN' xs'
         (False, False) ->
             new_ maxN' $ \xs' -> do
-            copy xs 0 xs' 0 i
+            copyMA xs 0 xs' 0 i
             write xs' i x
-            copy xs i xs' (i+1) (maxN-i)
+            copyMA xs i xs' (i+1) (maxN-i)
             continue $! DSA p' maxK n' maxN' xs'
     where
     b     = key2bit k
@@ -776,6 +846,7 @@ elems xz = build (\cons nil -> foldr cons nil xz)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
+-- Section: instances, maps, folds, set-theoretic ops, etc
 
 instance Show a => Show (SparseArray a) where
     show = show . toList

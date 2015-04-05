@@ -546,7 +546,8 @@ contextualMap' f = \t0 ->
     where
     go Empty            = Empty
     go (Arc    s v  t)  = (Arc s $! f v t) (go t)
-    go (Branch s vz tz) = Branch s (SA.rzipWith'_ f2 f1 tz vz) (fmap go tz)
+    go (Branch s vz tz) = Branch s (SA.rzipWith'_ f2 f1 tz vz) (fmap' go tz)
+        -- TODO: should that fmap be strict or not?
     
     f1   v = f v Empty
     f2 t v = f v t
@@ -616,7 +617,7 @@ singleton s v
     | otherwise = Reject (Arc s v Empty) -- TODO: clone @s@ to trim it!
 
 
--- TODO: should we offer (\s -> maybe empty (singleton s)) ?
+-- TODO: should we offer @subsingleton s = maybe empty (singleton s)@ ?
 
 
 -- | /O(n)/, Get count of elements in trie.
@@ -913,7 +914,7 @@ alterSubtrie :: (Trie a -> Trie a) -> ByteString -> Trie a -> Trie a
 alterSubtrie f = alterSubtrie_ ((f .) . Accept) (f . Reject)
 {-# INLINE alterSubtrie #-}
 
-    
+
 alterSubtrie_
     :: (a -> Trunk a -> Trie a) -> (Trunk a -> Trie a)
     -> ByteString -> Trie a -> Trie a
@@ -926,7 +927,10 @@ alterSubtrie_ accept reject = start
         | BS.null q = reject t
         | otherwise = Reject (go q t)
 
-    -- [#1] N.B., since @q@ isn't null, by our invariant, therefore we can't have both @p@ and @q'@ be null. And since @q'@ is null, by the guard, therefore @p@ mustn't be; and therefore 'prependT_' is safe to call.
+    -- [#1] N.B., since @q@ isn't null, by our invariant, therefore
+    -- we can't have both @p@ and @q'@ be null. And since @q'@ is
+    -- null, by the guard, therefore @p@ mustn't be; and therefore
+    -- 'prependT_' is safe to call.
     go !q Empty       = prependT_ q (reject Empty)
     go  q (Arc s v t) =
         let (p,q',s') = breakMaximalPrefix q s in
@@ -939,16 +943,21 @@ alterSubtrie_ accept reject = start
                             (BSU.unsafeHead q') (prependT_ q' $ reject Empty)
     go  q (Branch s vz tz) =
         let (p,q',s') = breakMaximalPrefix q s in
-        error "alterSubtrie_@Branch: unimplemented" {-
         case BS.uncons q' of
-        Nothing          -> reject (Branch s' vz tz)
+        Nothing          -> prependT_ p (reject $ Branch s' vz tz)
         Just (w,ws)
             | BS.null ws ->
+                error "alterSubtrie_@Branch@Just@null: unimplemented" {-
                 maybe reject accept (SA.lookup' w vz)
                     (maybe2trunk (SA.lookup' w tz))
-            | otherwise  ->
-                maybe (reject Empty) (go ws) (SA.lookup' w tz)
-        -}
+                -}
+            | otherwise  -> prependT_ p $
+                case SA.lookup' w tz of
+                Nothing -> SA.insert w (prependT_ ws $ reject Empty) tz
+                Just t  -> 
+                 error "alterSubtrie_@Branch@Just@else: unimplemented" {-
+                 maybe (reject Empty) (go ws) (SA.lookup' w tz)
+                 -}
 
 
 

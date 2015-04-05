@@ -5,7 +5,7 @@
 --                                                  ~ 2014.05.29
 -- |
 -- Module      :  Data.Trie.ArrayMapped.Base
--- Copyright   :  Copyright (c) 2014 wren gayle romano
+-- Copyright   :  Copyright (c) 2014--2015 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  experimental

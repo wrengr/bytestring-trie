@@ -4,7 +4,7 @@
 --                                                  ~ 2014.10.08
 -- |
 -- Module      :  Data.Trie.BigEndianPatricia.Errors
--- Copyright   :  Copyright (c) 2008--2014 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2015 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  experimental

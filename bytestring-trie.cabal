@@ -42,7 +42,7 @@ Description:    An efficient finite map from (byte)strings to values.
 
 
 Tested-With:
-    GHC == 6.12.1, GHC == 7.6.1, GHC == 7.10.0.20150316
+    GHC == 7.8.3, GHC == 7.10.1
 Extra-source-files:
     AUTHORS, VERSION
 Source-Repository head
@@ -50,26 +50,10 @@ Source-Repository head
     Location: http://community.haskell.org/~wren/bytestring-trie
 
 ----------------------------------------------------------------
-Flag base4
-    Default:     True
-    Description: base-4.0 emits "Prelude deprecated" messages in
-                 order to get people to be explicit about which
-                 version of base they use.
-
-Flag useCinternal
-    Default:     False
-    Description: Use optimized C implementation for indexOfDifference.
-                 See notes in Data.Trie.ByteStringInternal.
-
-Flag applicativeInBase
-    Default:     True
-    Description: Applicative functors were added in base-2.0
-
-Flag bytestringInBase
-    Default:     False
-    Description: The bytestring library was included in base-2.0
-                 and base-2.1.1, but for base-1.0 and base-3.0 it
-                 was a separate package
+--Flag useCinternal
+--    Default:     False
+--    Description: Use optimized C implementation for indexOfDifference.
+--                 See notes in Data.Trie.ByteStringInternal.
 
 ----------------------------------------------------------------
 Library
@@ -85,42 +69,24 @@ Library
                    , Data.Trie.BigEndianPatricia.Errors
                    , Data.Trie.ArrayMapped.SparseArray
                    , Data.Trie.ArrayMapped.Errors
-                   -- Currently unused; needs benchmarking
+                   -- | Currently unused; needs benchmarking
                    , Data.Trie.ArrayMapped.UnsafeST
-                   -- Only used when @base@ is too old to have it
-                   , Data.Trie.ArrayMapped.PopCount
-                   -- Unneeded
-                   , Data.Trie.ArrayMapped.UnsafeShift
+                   -- | Was only for base < 4.5.0 aka GHC < 7.4
+                   -- Data.Trie.ArrayMapped.PopCount
+                   -- | Unused/Unnecessary
+                   -- Data.Trie.ArrayMapped.UnsafeShift
     Build-Depends:   binary
                    -- Actual min-version of deepseq is unknown
-                   , deepseq >= 1.3 && < 1.5
-                   , data-or >= 1.0 && < 1.1
+                   , deepseq    >= 1.3  && < 1.5
+                   , data-or    >= 1.0  && < 1.1
+                   -- Assume strict lower bounds to clean up the CPP
+                   , base       >= 4    && < 5
+                   , bytestring >= 0.10 && < 0.11
     
-    -- I think this is all that needs doing to get rid of the warnings?
-    -- BUG: looks like it's not enough
-    if flag(base4)
-        Build-Depends: base >= 4 && < 5
-    else
-        Build-Depends: base < 4
-        
-    if flag(bytestringInBase)
-        Build-Depends: base >= 2.0 && < 2.2
-    else
-        Build-Depends: base < 2.0 || >= 3, bytestring
-    
-    if flag(applicativeInBase)
-        Build-Depends: base >= 2.0
-        Cpp-Options: -DAPPLICATIVE_IN_BASE
-        -- BUG (Cabal 1.2 + Haddock): enable for Haddock, disable
-        -- for Hackage. Fixed in Cabal 1.6
-        --Ghc-Options: -DAPPLICATIVE_IN_BASE
-    else
-        Build-Depends: base < 2.0
-    
-    if flag(useCinternal)
-        C-Sources:     src/Data/Trie/ByteStringInternal/indexOfDifference.c
-        CC-Options:    -O3
-        Cpp-Options:   -D__USE_C_INTERNAL__
+--    if flag(useCinternal)
+--        C-Sources:     src/Data/Trie/ByteStringInternal/indexOfDifference.c
+--        CC-Options:    -O3
+--        Cpp-Options:   -D__USE_C_INTERNAL__
 -- Also need to add stuff to run Configure.hs, FWIW
 
 ----------------------------------------------------------------

@@ -4,7 +4,7 @@
 {-# LANGUAGE CPP, MagicHash #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.05
+--                                                  ~ 2015.04.04
 -- |
 -- Module      :  Data.Trie.BigEndianPatricia.BitTwiddle
 -- Copyright   :  Copyright (c) 2002 Daan Leijen
@@ -33,8 +33,6 @@ import Data.Bits
 
 #if __GLASGOW_HASKELL__ >= 503
 import GHC.Exts  ( Word(..), Int(..), shiftRL# )
-#elif __GLASGOW_HASKELL__
-import GlaExts   ( Word(..), Int(..), shiftRL# )
 #else
 import Data.Word (Word)
 #endif

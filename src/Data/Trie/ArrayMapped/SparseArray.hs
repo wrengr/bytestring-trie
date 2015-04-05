@@ -12,7 +12,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2015.03.23
+--                                                  ~ 2015.04.04
 -- |
 -- Module      :  Data.Trie.ArrayMapped.SparseArray
 -- Copyright   :  Copyright (c) 2014--2015 wren gayle romano; 2010--2012 Johan Tibell
@@ -42,7 +42,7 @@ module Data.Trie.ArrayMapped.SparseArray
     
     -- * Extra folding functions
     , foldL, foldR
-    -- foldrWithKey, foldrWithKey', foldlWithKey, foldlWithKey'
+    , foldrWithKey, foldrWithKey', foldlWithKey, foldlWithKey'
     
     -- * Extra traversal functions
     , sequenceST, traverseST
@@ -125,12 +125,9 @@ import Data.Monoid                    (Monoid(..))
 #endif
 import Data.Word
 import Data.Bits                      ((.&.), (.|.), xor)
-#if (MIN_VERSION_base(4,5,0))
--- TODO: Should we also/instead use (__GLASGOW_HASKELL__ >= 704) ??
+-- The 'popCount' import requires base >= 4.5.0 or GHC >= 7.4
+-- On older compilers we can use "Data.Trie.ArrayMapped.PopCount" instead
 import Data.Bits                      (popCount)
-#else
-import Data.Trie.ArrayMapped.PopCount (popCount)
-#endif
 import Data.Or                        (Or(..))
 
 -- GHC 7.7 exports toList/fromList from GHC.Exts
@@ -197,9 +194,11 @@ if not ((_lhs_) _op_ (_rhs_)) then __functionError (_func_) ("Check failed: _lhs
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
--- | Indices into a 'SparseArray' or 'DynamicSA'
+-- | Indices into a 'SparseArray' or 'DynamicSA'.
 type Key    = Word8 -- Actually, should be a Word4 for our uses...
-type Bitmap = Word  -- Actually, should be a Word16 == 2^Key == 2^(2^4)
+-- | A set of inhabited positions in a 'SparseArray' or 'DynamicSA'.
+type Bitmap = Word  -- Actually, should be a 2^Key == 2^(2^4) == Word16
+-- | A 'Bitmap' with exactly one set bit.
 type OneBit = Bitmap 
 -- | Indicies into the underlying 'Array#' or 'MutableArray#'.
 type Index  = Int 
@@ -253,13 +252,13 @@ maskGE p b = p .&. negate b
 {-# INLINE maskGE #-}
 
 
--- | /O(1)/. Get the first bit set in @p@.
+-- | /O(1)/. Get the first set bit in @p@.
 getFirstBit :: Bitmap -> OneBit
 getFirstBit p = p .&. negate p
 {-# INLINE getFirstBit #-}
 
 
--- | /O(1)/. Clear the first bit set in @p@ (without knowing what
+-- | /O(1)/. Clear the first set bit in @p@ (without knowing what
 -- it is beforehand). If you already know what it is, you can use
 -- 'xor' instead.
 clearFirstBit :: Bitmap -> OneBit
@@ -267,19 +266,19 @@ clearFirstBit p = p .&. (p-1)
 {-# INLINE clearFirstBit #-}
 
 
--- | /O(1)/. Get the second bit set in @p@.
+-- | /O(1)/. Get the second set bit in @p@.
 getSecondBit :: Bitmap -> OneBit
 getSecondBit p = getFirstBit (clearFirstBit p)
 {-# INLINE getSecondBit #-}
 
 
--- | /O(1)/. Get the next bit set in @p@; i.e., the first set bit after @b@.
+-- | /O(1)/. Get the next set bit in @p@; i.e., the first set bit after @b@.
 getNextBit :: Bitmap -> OneBit -> OneBit
 getNextBit p b = getFirstBit (p `maskGT` b)
 {-# INLINE getNextBit #-}
 
 
--- /O(1)/ assuming @fromIntegral :: Key -> Int@ is
+-- /O(1)/ if @fromIntegral :: Key -> Int@ is.
 key2bit :: Key -> OneBit
 -- key2bit = bit . fromIntegral
 key2bit k =
@@ -299,7 +298,7 @@ bit2index p b = popCount (p `maskLT` b)
 {-# INLINE bit2index #-}
 
 
--- Only /O(1)/ if (a) @fromIntegral :: Key -> Int@ is, and (b) 'popCount' is.
+-- /O(1)/ if both @fromIntegral :: Key -> Int@ and 'popCount' are.
 key2index :: Bitmap -> Key -> Index
 key2index p k = bit2index p (key2bit k)
 {-# INLINE key2index #-}
@@ -316,7 +315,7 @@ key2index p k = bit2index p (key2bit k)
 bit2key :: OneBit -> Key
 bit2key b = fromIntegral (c_ffs (fromIntegral b))
 {-# INLINE bit2key #-}
--- Return the position of the lowest set bit
+-- | Return the position of the lowest set bit
 foreign import ccall unsafe "strings.h ffs" c_ffs :: CInt -> CInt
 
 
@@ -530,10 +529,16 @@ member k (SA p _) = key2bit k `elem` p
 {-# INLINE member #-}
 
 
--- This version does as much work as possible without doing the
--- array lookup itself. Maybe helpful for reducing/delaying memory
--- reads, while still being as eager as possible?
 -- TODO: would we *ever* want to postpone computing @bit2index p b@ too??
+-- TODO: do we ever actually want/need this function?
+--
+-- | Lazily look up an element in an array. That is, the actual
+-- memory access associated with the array lookup is postponed until
+-- after returning the data constructor for 'Maybe'. This could be
+-- beneficial for delaying or reducing memory traffic; but it's not
+-- entirely clear whether we actually /need/ that anywhere. Other
+-- than the laziness of the array lookup itself, we perform as much
+-- work as possible before returning the 'Maybe' data constructor.
 lookup_ :: Key -> SparseArray a -> Maybe a
 lookup_ k (SA p xs) =
     let b = key2bit k in
@@ -543,9 +548,13 @@ lookup_ k (SA p xs) =
 {-# INLINE lookup_ #-}
 
 
--- This version forces the array lookup before returning
--- TODO: do we ever want the lazier version above, which postpones
--- the memory access at the expense of constructing a thunk?
+-- TODO: is there any way we can convince GHC to treat this as an
+-- intro rule, thus allowing case-of-constructor to avoid constructing
+-- the 'Maybe'?
+--
+-- | Eagerly look up an element in an array. That is, we do all
+-- possible work before returning the data constructor for 'Maybe'.
+-- Unlike 'lookup_', we avoid constructing any thunks here.
 lookup' :: Key -> SparseArray a -> Maybe a
 lookup' k (SA p xs) =
     let b = key2bit k in
@@ -583,6 +592,7 @@ viewSubsingleton xz@(SA p xs) =
 {-# INLINE viewSubsingleton #-}
 
 
+-- | A mutable variant of 'SparseArray', for internal use.
 data DynamicSA s a = DSA
     !Bitmap              -- The bitmap in progress
     !Key                 -- The maximum key seen so far == the highest set bit
@@ -793,25 +803,33 @@ instance Functor SparseArray where
     fmap = map
 
 
--- TODO: is there a class for map' yet?
-map, map' :: (a -> b) -> SparseArray a -> SparseArray b
-map  f = __map ($)  f
-map' f = __map ($!) f
--- HACK: to avoid repeating ourselves
-{-# INLINE __map #-}
-__map
-    :: (forall a b. (a -> b) -> a -> b)
-    -> (a -> b) -> SparseArray a -> SparseArray b
-__map ($?) f = 
+map :: (a -> b) -> SparseArray a -> SparseArray b
+map f = 
     \(SA p xs) ->
         let !n = popCount p in
         runST $
             new_ n $ \ys ->
             go p xs n ys 0
     where
-    -- TODO: should we use index instead of (!) ??
+    -- If @f@ ignores it's argument, then this performs extraneous memory lookups compared to using @f(xs!i)@ instead...
     go !p !xs !n !ys !i
-        | i < n     = do write ys i $? f (xs ! i); go p xs n ys (i+1)
+        | i < n     = do write ys i (index xs i f); go p xs n ys (i+1)
+        | otherwise = unsafeFreeze p ys
+
+
+-- TODO: is there a class for map' yet?
+map' :: (a -> b) -> SparseArray a -> SparseArray b
+map' f =
+    \(SA p xs) ->
+        let !n = popCount p in
+        runST $
+            new_ n $ \ys ->
+            go p xs n ys 0
+    where
+    -- TODO: benchmark vs hoisting the 'index' up over ST's (>>)
+    go !p !xs !n !ys !i
+        | i < n     = do index xs i (\x -> write ys i $! f x)
+                         go p xs n ys (i+1)
         | otherwise = unsafeFreeze p ys
 
 
@@ -862,13 +880,45 @@ instance Foldable SparseArray where
             | i < n     = go xs n (i+1) $! f z (xs ! i)
             | otherwise = z
 
-{-
--- TODO
-foldrWithKey
-foldrWithKey'
-foldlWithKey
-foldlWithKey'
--}
+
+-- BUG: can we improve the asymptotics without needing bit2key for incrementing k?
+-- TEST: foldrWithKey (\k v xs -> (k,v):xs) [] == toList
+foldrWithKey :: (Key -> a -> b -> b) -> b -> SparseArray a -> b
+foldrWithKey f z = \ (SA p xs) -> go xs 0 p 1 0
+    where
+    go !xs !i !p !b !k
+        | p == 0     = z
+        | b `elem` p = f k (xs ! i) $
+            go xs (i+1) (p `xor` b) (bsucc b) (k+1)
+        | otherwise  = go xs i p (bsucc b) (k+1)
+
+foldrWithKey' :: (Key -> a -> b -> b) -> b -> SparseArray a -> b
+foldrWithKey' f z = \ (SA p xs) -> go xs 0 p 1 0
+    where
+    go !xs !i !p !b !k
+        | p == 0     = z
+        | b `elem` p = f k (xs ! i) $!
+            go xs (i+1) (p `xor` b) (bsucc b) (k+1)
+        | otherwise  = go xs i p (bsucc b) (k+1)
+
+foldlWithKey :: (b -> Key -> a -> b) -> b -> SparseArray a -> b
+foldlWithKey f = \ !z0 (SA p xs) -> go xs 0 p 1 0 z0
+    where
+    go !xs !i !p !b !k z
+        | p == 0     = z
+        | b `elem` p = go xs (i+1) (p `xor` b) (bsucc b) (k+1) $
+            f z k (xs ! i)
+        | otherwise  = go xs i p (bsucc b) (k+1) z
+
+foldlWithKey' :: (b -> Key -> a -> b) -> b -> SparseArray a -> b
+foldlWithKey' f = \ !z0 (SA p xs) -> go xs 0 p 1 0 z0
+    where
+    go !xs !i !p !b !k !z
+        | p == 0     = z
+        | b `elem` p = go xs (i+1) (p `xor` b) (bsucc b) (k+1) $!
+            f z k (xs ! i)
+        | otherwise  = go xs i p (bsucc b) (k+1) z
+
 
 -- | Short-circuiting version of foldl'. N.B., this is not necessarily
 -- strict in the @b@ or @c@ values, but you can make it so by forcing
@@ -923,6 +973,7 @@ traverseST f = \ (SA p xs) ->
         new_ n $ \ys ->
         go p xs n ys 0
     where
+    -- TODO: use 'index' in lieu of (!)?
     go !p !xs !n !ys !i
         | i < n     = do write ys i =<< f (xs ! i); go p xs n ys (i+1)
         | otherwise = unsafeFreeze p ys
@@ -1267,6 +1318,7 @@ unionWith_, unionWith'_
 unionWith_  f g h = __unionWith ($)  f g h
 unionWith'_ f g h = __unionWith ($!) f g h
 -- HACK: to avoid repeating ourselves
+-- TODO: inline this so we can play around with using 'index' in lieu of (!) as we did for map/map'?
 {-# INLINE __unionWith #-}
 __unionWith
     :: (forall a b. (a -> b) -> a -> b)
@@ -1395,6 +1447,7 @@ intersectionWith, intersectionWith'
 intersectionWith  f = __intersectionWith ($)  f
 intersectionWith' f = __intersectionWith ($!) f
 -- HACK: to avoid repeating ourselves
+-- TODO: inline this so we can play around with using 'index' in lieu of (!) as we did for map/map'?
 {-# INLINE __intersectionWith #-}
 __intersectionWith
     :: (forall a b. (a -> b) -> a -> b)

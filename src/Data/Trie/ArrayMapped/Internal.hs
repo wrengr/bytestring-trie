@@ -6,6 +6,8 @@
 
 {-# LANGUAGE CPP, BangPatterns #-}
 
+-- TODO: benchmark using SA.lookup_ instead of SA.lookup'
+
 ----------------------------------------------------------------
 --                                                  ~ 2015.03.23
 -- |
@@ -71,10 +73,11 @@ import Data.Typeable       (Typeable(..))
 import Control.DeepSeq     (NFData(rnf))
 
 import Data.Monoid         (Monoid(..))
-import Control.Monad       (liftM, liftM3, liftM4)
-import Control.Monad       (ap)
+import Control.Monad       (ap, liftM, liftM3, liftM4)
+#if __GLASGOW_HASKELL__ < 710
 import Control.Applicative (Applicative(..), (<$>))
-import Data.Foldable       (Foldable(..))
+#endif
+import Data.Foldable       (Foldable(foldMap,foldl'))
 import Data.Traversable    (Traversable(traverse))
 
 
@@ -348,7 +351,11 @@ fmap' f = \t0 ->
     where
     go Empty            = Empty
     go (Arc    s v  t)  = (Arc s $! f v) (go t)
-    go (Branch s vz tz) = Branch s (f <$!> vz) (go <$?> tz)
+    go (Branch s vz tz) = Branch s (f <$!> vz) (go <$!> tz)
+    
+    (<$!>) = SA.map'
+    -- TODO: should the recursive calls in go@Branch be strict?
+    -- N.B., the recursive call for go@Arc is implicitly strict
     
 
 -- TODO: newtype Keys = K Trie  ; instance Foldable Keys
@@ -539,7 +546,7 @@ contextualMap' f = \t0 ->
     where
     go Empty            = Empty
     go (Arc    s v  t)  = (Arc s $! f v t) (go t)
-    go (Branch s vz tz) = Branch s (SA.rzipWith_' f2 f1 tz vz) (fmap go tz)
+    go (Branch s vz tz) = Branch s (SA.rzipWith'_ f2 f1 tz vz) (fmap go tz)
     
     f1   v = f v Empty
     f2 t v = f v t
@@ -798,10 +805,10 @@ lookupBy_ accept reject = start
         Nothing          -> reject (Branch s' vz tz)
         Just (w,ws)
             | BS.null ws ->
-                maybe reject accept (SA.lookup w vz)
-                    (maybe2trunk (SA.lookup w tz))
+                maybe reject accept (SA.lookup' w vz)
+                    (maybe2trunk (SA.lookup' w tz))
             | otherwise  ->
-                maybe (reject Empty) (go ws) (SA.lookup w tz)
+                maybe (reject Empty) (go ws) (SA.lookup' w tz)
 
 
 -- TODO: would it be worth it to have a variant like 'lookupBy_' which takes the two continuations?
@@ -839,12 +846,12 @@ match_ = flip start
         Nothing     -> Nothing
         Just (w,ws) ->
             let n' = n + BS.length p + 1 in n' `seq`
-            case (BS.null ws, SA.lookup w tz) of
+            case (BS.null ws, SA.lookup' w tz) of
             (False, Just t) -> 
-                case SA.lookup w vz of
+                case SA.lookup' w vz of
                 Nothing -> goNothing   n' ws t
                 Just v  -> goJust n' v n' ws t
-            _           -> (,) n' <$> SA.lookup w vz
+            _           -> (,) n' <$> SA.lookup' w vz
 
     goJust !n0 v0 !_ !_ Empty       = Just (n0,v0)
     goJust  n0 v0 n  q  (Arc s v t) =
@@ -862,13 +869,13 @@ match_ = flip start
         Nothing     -> Just (n0,v0)
         Just (w,ws) ->
             let n' = n + BS.length p + 1 in n' `seq`
-            case (BS.null ws, SA.lookup w tz) of
+            case (BS.null ws, SA.lookup' w tz) of
             (False, Just t) -> 
-                case SA.lookup w vz of
+                case SA.lookup' w vz of
                 Nothing -> goJust n0 v0 n' ws t
                 Just v  -> goJust n' v  n' ws t
             _ ->
-                case SA.lookup w vz of
+                case SA.lookup' w vz of
                 Nothing -> Just (n0,v0)
                 Just v  -> Just (n',v)
 
@@ -937,10 +944,10 @@ alterSubtrie_ accept reject = start
         Nothing          -> reject (Branch s' vz tz)
         Just (w,ws)
             | BS.null ws ->
-                maybe reject accept (SA.lookup w vz)
-                    (maybe2trunk (SA.lookup w tz))
+                maybe reject accept (SA.lookup' w vz)
+                    (maybe2trunk (SA.lookup' w tz))
             | otherwise  ->
-                maybe (reject Empty) (go ws) (SA.lookup w tz)
+                maybe (reject Empty) (go ws) (SA.lookup' w tz)
         -}
 
 

@@ -64,16 +64,14 @@ import Data.Trie.ByteStringInternal
 import Data.Trie.BigEndianPatricia.BitTwiddle
 
 import Data.Binary
-
 import Data.Monoid         (Monoid(..))
-import Control.Monad       (liftM, liftM3, liftM4)
-#ifdef APPLICATIVE_IN_BASE
-import Control.Monad       (ap)
+import Control.Monad       (ap, liftM, liftM3, liftM4)
+#if __GLASGOW_HASKELL__ < 710
 import Control.Applicative (Applicative(..), (<$>))
+#endif
 -- Don't use (..); to hide the import of 'null' on GHC 7.10
 import Data.Foldable       (Foldable(foldMap))
 import Data.Traversable    (Traversable(traverse))
-#endif
 
 #ifdef __GLASGOW_HASKELL__
 import GHC.Exts (build)
@@ -234,7 +232,6 @@ instance Functor Trie where
         go (Branch p m l r)   = Branch p m (go l) (go r)
 
 
-#ifdef APPLICATIVE_IN_BASE
 instance Foldable Trie where
     -- If our definition of foldr is so much faster than the Endo
     -- default, then maybe we should remove this and use the default
@@ -277,7 +274,7 @@ instance Traversable Trie where
 instance Applicative Trie where
     pure  = return
     (<*>) = ap
-#endif
+
 
 -- Does this even make sense? It's not nondeterminism like lists
 -- and sets. If no keys were prefixes of other keys it'd make sense

@@ -34,7 +34,7 @@ module Data.Trie.ArrayMapped.Internal
     , empty, null, singleton, size
     
     -- * Conversion and folding functions
-    , foldrWithKey, foldrWithKey', toListBy
+    , foldrWithKey, foldrWithKey', assocsBy
     
     -- * Query functions
     , lookupBy_, submap
@@ -260,7 +260,7 @@ trie2trunk = elimTrie (flip const) id
 instance (Show a) => Show (Trie a) where
     showsPrec p t =
         showParen (p > 10)
-            $ ("fromList "++) . shows (toListBy (,) t)
+            $ ("fromList "++) . shows (assocsBy (,) t)
 
 
 {-
@@ -677,23 +677,23 @@ foldrWithKey' f = flip (start BS.empty)
 --
 -- | Convert a trie into a list using a function. Resulting values
 -- are in key-sorted order.
-toListBy :: (ByteString -> a -> b) -> Trie a -> [b]
+assocsBy :: (ByteString -> a -> b) -> Trie a -> [b]
 #if !defined(__GLASGOW_HASKELL__)
 -- TODO: should probably inline foldrWithKey
 -- TODO: compare performance of that vs both this and the GHC version
-toListBy f t = foldrWithKey (((:) .) . f) [] t
+assocsBy f t = foldrWithKey (((:) .) . f) [] t
 #else
 -- Written with 'build' to enable the build\/foldr fusion rules.
-toListBy f t = build (toListByFB f t)
-{-# INLINE toListBy #-}
+assocsBy f t = build (assocsByFB f t)
+{-# INLINE assocsBy #-}
 
 -- TODO: should probably have a specialized version for strictness,
 -- and a rule to rewrite generic lazy version into it. As per
 -- Data.ByteString.unpack and the comments there about strictness
 -- and fusion.
-toListByFB :: (ByteString -> a -> b) -> Trie a -> (b -> c -> c) -> c -> c
-toListByFB f t cons nil = foldrWithKey ((cons .) . f) nil t
-{-# INLINE [0] toListByFB #-}
+assocsByFB :: (ByteString -> a -> b) -> Trie a -> (b -> c -> c) -> c -> c
+assocsByFB f t cons nil = foldrWithKey ((cons .) . f) nil t
+{-# INLINE [0] assocsByFB #-}
 #endif
 
 
@@ -963,10 +963,12 @@ alterSubtrie_ accept reject = start
                         Branch s (SA.insert w v' vz) (SA.insert w t' tz)
                     Reject    t' ->
                         Branch s (SA.remove w vz) (SA.insert w t' tz)
-                else prependT_ p $
+                else
                     case SA.lookup' w tz of
-                    Nothing -> SA.insert w (prependT_ ws $ reject Empty) tz
-                    Just t' -> go ws t'
+                    Nothing -> prependT_ p
+                        . error "alterSubtrie_: unimplemented"
+                        $ SA.insert w (prependT_ ws $ reject Empty) tz
+                    Just t' -> prepend_ p (go ws t')
             else branch2 p s' (Reject $ Branch BS.empty vz tz)
                            q' (reject Empty)
 
@@ -1072,7 +1074,7 @@ minAssoc (Reject   t) = go BS.empty t
     go !_ Empty            = Nothing
     go s0 (Arc    s v  t)  = Just (BS.append s0 s, v)
     go s0 (Branch s vz tz) =
-        case SA.toList vz of
+        case SA.assocs vz of
         (k,v) : _ -> Just (appendSnoc s0 s k, v)
         []        ->
             -- N.B., this should only force mb if the recursion fails

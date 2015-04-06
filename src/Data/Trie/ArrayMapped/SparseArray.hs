@@ -10,6 +10,7 @@
            , MagicHash
            , Rank2Types
            , UnboxedTuples
+           , Trustworthy
            #-}
 
 #if __GLASGOW_HASKELL__ >= 710
@@ -30,7 +31,12 @@
 -- Stability   :  experimental
 -- Portability :  GHC only
 --
---
+-- For the asymptotic performance numbers: /O(FI)/ is the asymptotic
+-- performance of @fromIntegral :: Key -> Int@, which is almost
+-- surely /O(1)/; /O(PC)/ is the asymptotic performance of @'popCount'
+-- :: Word -> Int@, which may be /O(1)/ but may also be /O(n)/; and
+-- /O(BK)/ is the asymptotic performance of 'bit2key' which is
+-- currently the same as POSIX's @ffs(3)@.
 ----------------------------------------------------------------
 
 module Data.Trie.ArrayMapped.SparseArray
@@ -46,7 +52,8 @@ module Data.Trie.ArrayMapped.SparseArray
     , insert, remove
     -- ** Conversion to\/from lists
     , fromList -- fromAscList, fromDistinctAscList
-    , toList, toListBy, keys, elems
+    -- Can't use the name toList because of conflict with Foldable
+    , assocs, assocsBy, keys, elems
     
     -- * Views
     , SubsingletonView(..), viewSubsingleton
@@ -125,7 +132,9 @@ import Prelude hiding
 #endif
     )
 
-import Data.Foldable hiding
+import qualified Data.Foldable as F
+{-
+    hiding
     ( elem
     , notElem
     , toList
@@ -134,6 +143,7 @@ import Data.Foldable hiding
     , length
 #endif
     )
+-}
 import Data.Traversable               (Traversable(traverse))
 -- import Control.Applicative         (Applicative(..))
 #if __GLASGOW_HASKELL__ < 710
@@ -307,7 +317,7 @@ getNextBit p b = getFirstBit (p `maskGT` b)
 {-# INLINE getNextBit #-}
 
 
--- /O(1)/ if @fromIntegral :: Key -> Int@ is.
+-- | /O(FI)/.
 key2bit :: Key -> OneBit
 -- key2bit = bit . fromIntegral
 key2bit k =
@@ -321,13 +331,13 @@ key2bit k =
 -- TODO: we might want to inline the appropriate definition of popCount in order to avoid indirection... Not sure why it isn't resolved already; apparently the primop doesn't have architecture support for me?
 -- N.B., there are also popCount primops for only looking at the lower 8, 16, or 32 bits of a Word#
 -- > popCount (W# x#) = I# (word2Int# (popCnt# x#))
--- Only /O(1)/ if 'popCount' is.
+-- | /O(PC)/.
 bit2index :: Bitmap -> OneBit -> Index
 bit2index p b = popCount (p `maskLT` b)
 {-# INLINE bit2index #-}
 
 
--- /O(1)/ if both @fromIntegral :: Key -> Int@ and 'popCount' are.
+-- | /O(FI + PC)/.
 key2index :: Bitmap -> Key -> Index
 key2index p k = bit2index p (key2bit k)
 {-# INLINE key2index #-}
@@ -341,6 +351,7 @@ key2index p k = bit2index p (key2bit k)
 -- TODO: can we use GCC's __builtin_ffs in lieu of POSIX's ffs(3)?
 -- TODO: add a new GHC primop for this...?
 -}
+-- | /O(BK)/.
 bit2key :: OneBit -> Key
 bit2key b = fromIntegral (c_ffs (fromIntegral b))
 {-# INLINE bit2key #-}
@@ -370,7 +381,7 @@ notElem b p = (p .&. b == 0)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
--- Section: Wrappers for working with MutableArray# 
+-- Section: Wrappers for working with MutableArray#
 
 -- We must box up the MutableArray# into something of kind * before
 -- we can return it. Rather than making an explicit box just to
@@ -523,6 +534,7 @@ copy !src !sidx !dst !didx n =
 ----------------------------------------------------------------
 -- Section: Defining SparseArray
 
+-- | A sparse array, mapping 'Key's to values.
 data SparseArray a = SA !Bitmap !(Array# a)
 
 #if __GLASGOW_HASKELL__ >= 710
@@ -564,6 +576,7 @@ unsafeFreezeOrTrim False = trim
 ----------------------------------------------------------------
 
 -- TODO: is there a better implementation of length-0 arrays?
+-- | /O(1)/. The empty array.
 empty :: SparseArray a
 empty = runST (new_ 0 $ unsafeFreeze 0)
 {-
@@ -575,12 +588,13 @@ empty =
             (# s2, xs2 #) -> (# s2, SA 0 xs2 #)
 -}
 
-
+-- | /O(1)/. An array mapping a single key to a value.
 singleton :: Key -> a -> SparseArray a
 singleton !k x = runST (new 1 x $ unsafeFreeze (key2bit k))
 {-# INLINE singleton #-}
 
 
+-- | /O(1)/. An array mapping two keys to values.
 doubleton :: Key -> a -> Key -> a -> SparseArray a
 doubleton !k x !l y = runST $
     new 2 x $ \xs -> do
@@ -592,17 +606,27 @@ doubleton !k x !l y = runST $
 -- TODO: would it be better to have an invariant that SAs are non-empty, and use Maybe when we 'trim', 'filter', etc?
 -- | /O(1)/. Is the array empty?
 null :: SparseArray a -> Bool
-null (SA 0 _) = True
-null _        = False
+null = __null
 {-# INLINE null #-}
+
+-- HACK: to avoid cyclic definition in the Foldable instance
+__null :: SparseArray a -> Bool
+__null (SA 0 _) = True
+__null _        = False
+{-# INLINE __null #-}
 -- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
--- Only /O(1)/ if 'popCount' is.
--- | Get the number of elements in the array.
+-- | /O(PC)/. Get the number of elements in the array.
 length :: SparseArray a -> Int
-length (SA p _) = popCount p
+length = __length
 {-# INLINE length #-}
+
+-- HACK: to avoid cyclic definition in the Foldable instance
+__length :: SparseArray a -> Int
+__length (SA p _) = popCount p
+{-# INLINE __length #-}
+-- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
 -- | /O(1)/. Are the first array's keys a subset of second's?
@@ -611,7 +635,7 @@ isSubarrayOf (SA p _) (SA q _) = (p .&. q == p)
 {-# INLINE isSubarrayOf #-}
 
 
--- /O(1)/.
+-- | /O(1)/. Is the key associated with some value?
 member :: Key -> SparseArray a -> Bool
 member k (SA p _) = key2bit k `elem` p
 {-# INLINE member #-}
@@ -620,9 +644,10 @@ member k (SA p _) = key2bit k `elem` p
 -- TODO: would we *ever* want to postpone computing @bit2index p b@ too??
 -- TODO: do we ever actually want/need this function?
 --
--- | Lazily look up an element in an array. That is, the actual
--- memory access associated with the array lookup is postponed until
--- after returning the data constructor for 'Maybe'. This could be
+-- | /O(FI + PC)/.
+-- Lazily look up an element in an array. That is, the actual memory
+-- access associated with the array lookup is postponed until after
+-- returning the data constructor for 'Maybe'. This could be
 -- beneficial for delaying or reducing memory traffic; but it's not
 -- entirely clear whether we actually /need/ that anywhere. Other
 -- than the laziness of the array lookup itself, we perform as much
@@ -640,7 +665,8 @@ lookup_ k (SA p xs) =
 -- intro rule, thus allowing case-of-constructor to avoid constructing
 -- the 'Maybe'? If not, we should create an explicit CPSed version.
 --
--- | Eagerly look up an element in an array. That is, we do all
+-- | /O(FI + PC)/.
+-- Eagerly look up an element in an array. That is, we do all
 -- possible work before returning the data constructor for 'Maybe'.
 -- Unlike 'lookup_', we avoid constructing any thunks here.
 lookup' :: Key -> SparseArray a -> Maybe a
@@ -652,7 +678,8 @@ lookup' k (SA p xs) =
 {-# INLINE lookup' #-}
 
 
--- | Create a copy of the array, inserting (or overwriting) a new value.
+-- | /O(n)/. Create a copy of the array, inserting (or overwriting)
+-- a new value.
 insert :: Key -> a -> SparseArray a -> SparseArray a
 insert !k x sa@(SA p xs)
     | b `elem` p =
@@ -675,8 +702,8 @@ insert !k x sa@(SA p xs)
     i = bit2index p b
 
 
--- | Create a copy of the array, removing a key. If the key is not
--- present, then returns the same array.
+-- | /O(n)/. Create a copy of the array, removing a key. If the key
+-- is not present, then returns the same array.
 remove :: Key -> SparseArray a -> SparseArray a
 remove !k sa@(SA p xs)
     | b `elem` p =
@@ -702,6 +729,7 @@ data SubsingletonView a
 type role SubsingletonView representational
 #endif
 
+-- | /O(PC+BK)/.
 viewSubsingleton :: SparseArray a -> SubsingletonView a
 viewSubsingleton xz@(SA p xs) =
     case length xz of
@@ -838,51 +866,51 @@ fromAscList_  n ((!k,x):kxs) = ...
 -}
 
 
-toList :: SparseArray a -> [(Key,a)]
-toList = toListBy (,)
-{-# INLINE toList #-}
+assocs :: SparseArray a -> [(Key,a)]
+assocs = assocsBy (,)
+{-# INLINE assocs #-}
 
 
-toListBy :: (Key -> a -> b) -> SparseArray a -> [b]
-toListBy f xz = build (\cons nil -> toListByFB ((cons .) . f) nil xz)
-{-# INLINE toListBy #-}
+assocsBy :: (Key -> a -> b) -> SparseArray a -> [b]
+assocsBy f xz = build (\cons nil -> assocsByFB ((cons .) . f) nil xz)
+{-# INLINE assocsBy #-}
 
 -- BUG: can we improve the asymptotics without needing bit2key for incrementing k?
 -- TODO: (?) given b0, k += popCount (not 1 `maskLE` getNextBit b0 `maskGT` b0)
-toListByFB :: (Key -> a -> c -> c) -> c -> SparseArray a -> c
-toListByFB cons_f nil = \(SA p xs) -> go xs 0 p 1 0
+assocsByFB :: (Key -> a -> c -> c) -> c -> SparseArray a -> c
+assocsByFB cons_f nil = \(SA p xs) -> go xs 0 p 1 0
     where
     go !xs !i !p !b !k
         | p == 0     = nil
         | b `elem` p = cons_f k (xs ! i) $
             go xs (i+1) (p `xor` b) (bsucc b) (k+1)
         | otherwise  = go xs i p (bsucc b) (k+1)
-{-# INLINE [0] toListByFB #-}
+{-# INLINE [0] assocsByFB #-}
 
 {-
 -- this is silly...
 {-# RULES
--- These rules are more robust, but only apply before inlining toListBy
-"toListBy const"
-        toListBy (\k _ -> k) = keys
-"toListBy (flip const)"
-        toListBy (\_ x -> x) = elems
--- These rules are very fragile, which is why we (should) wait to inline toListBy
-"toListByFB const {eta}"
+-- These rules are more robust, but only apply before inlining assocsBy
+"assocsBy const"
+        assocsBy (\k _ -> k) = keys
+"assocsBy (flip const)"
+        assocsBy (\_ x -> x) = elems
+-- These rules are very fragile, which is why we (should) wait to inline assocsBy
+"assocsByFB const {eta}"
     forall cons.
-        toListByFB (\k _ ks -> cons k ks) = keysFB cons
-"toListByFB const"
+        assocsByFB (\k _ ks -> cons k ks) = keysFB cons
+"assocsByFB const"
     forall cons.
-        toListByFB (\k _ -> cons k) = keysFB cons
-"toListByFB (flip const) {eta2}"
+        assocsByFB (\k _ -> cons k) = keysFB cons
+"assocsByFB (flip const) {eta2}"
     forall cons.
-        toListByFB (\_ v vs -> cons v vs) = foldr cons
-"toListByFB (flip const) {eta1}"
+        assocsByFB (\_ v vs -> cons v vs) = foldr cons
+"assocsByFB (flip const) {eta1}"
     forall cons.
-        toListByFB (\_ v -> cons v) = foldr cons
-"toListByFB (flip const)"
+        assocsByFB (\_ v -> cons v) = foldr cons
+"assocsByFB (flip const)"
     forall cons.
-        toListByFB (\_ -> cons) = foldr cons
+        assocsByFB (\_ -> cons) = foldr cons
     #-}
 -}
 
@@ -903,7 +931,7 @@ keysFB cons nil = \(SA p _) -> go p 1 1
 
 
 elems :: SparseArray a -> [a]
-elems xz = build (\cons nil -> foldr cons nil xz)
+elems xz = build (\cons nil -> F.foldr cons nil xz)
 {-# INLINE elems #-}
 
 
@@ -916,9 +944,9 @@ instance Show a => Show (SparseArray a) where
     showsPrec p sa =
         showParen (p > 10)
             $ showString "fromList "
-            . showsPrec 11 (toList sa)
+            . showsPrec 11 (assocs sa)
 
-    -- show = show . toList
+    -- show = show . assocs
 
 
 ----------------------------------------------------------------
@@ -938,7 +966,7 @@ instance Eq a => Eq (SparseArray a) where
 ----------------------------------------------------------------
 -- Inefficient, but implemented a la @GHC.Arr.cmpArray@
 instance Ord a => Ord (SparseArray a) where
-    compare sa sa'= compare (toList sa) (toList sa')
+    compare sa sa'= compare (assocs sa) (assocs sa')
 
 
 ----------------------------------------------------------------
@@ -1070,9 +1098,9 @@ mapWithKey' f =
 -- The instance for @array:Data.Array.Array@ is in @base:Data.Foldable@
 -- TODO: compare our instance to that one
 instance Foldable SparseArray where
-    fold      = foldr' mappend mempty
+    fold      = F.foldr' mappend mempty
     
-    foldMap f = foldr' (mappend . f) mempty
+    foldMap f = F.foldr' (mappend . f) mempty
     
     foldr f z = \ (SA p xs) -> go xs (popCount p) 0
         where
@@ -1080,11 +1108,13 @@ instance Foldable SparseArray where
             | i < n     = f (xs ! i) (go xs n (i+1))
             | otherwise = z
     
+#if (MIN_VERSION_base(4,6,0))
     foldr' f = \ !z0 (SA p xs) -> go xs (popCount p - 1) z0
         where
         go !xs !n z
             | n >= 0    = go xs (n-1) $! f (xs ! n) z
             | otherwise = z
+#endif
     
     foldl f z = \ (SA p xs) -> go xs (popCount p - 1)
         where
@@ -1092,19 +1122,18 @@ instance Foldable SparseArray where
             | n >= 0    = f (go xs (n-1)) (xs ! n)
             | otherwise = z
     
+#if (MIN_VERSION_base(4,6,0))
     foldl' f = \ !z0 (SA p xs) -> go xs (popCount p) 0 z0
         where
         go !xs !n !i z
             | i < n     = go xs n (i+1) $! f z (xs ! i)
             | otherwise = z
+#endif
 
     {-
-    -- TODO: which version of base added these?
+    -- as far back as MIN_VERSION_base(4,0,0)) at least
     foldl1 = foldl1Elems
     foldr1 = foldr1Elems
-    toList = SA.toList
-    length = SA.length
-    null   = SA.null
     
         -- | A left fold over the elements with no starting value
         {-# INLINABLE foldl1Elems #-}
@@ -1126,11 +1155,27 @@ instance Foldable SparseArray where
           in
             if n == 0 then error "foldr1: empty Array" else go 0
     -}
+
+-- aka GHC >= 7.10
+#if (MIN_VERSION_base(4,8,0))
+    toList = elems    -- this is identical to the default implementation
+    length = __length -- HACK: to avoid cyclic definition
+    null   = __null   -- HACK: to avoid cyclic definition
+    
+    {- TODO
+    elem :: Eq a => a -> t a -> Bool
+    -- N.B., the default implementations for these use the (#.) hack to avoid efficiency issues with eta; cf., <http://hackage.haskell.org/package/base-4.8.0.0/docs/src/Data-Foldable.html>
+    maximum :: Ord a => t a -> a
+    minimum :: Ord a => t a -> a
+    sum :: Num a => t a -> a
+    product :: Num a => t a -> a
+    -}
+#endif
     
 
 
 -- BUG: can we improve the asymptotics without needing bit2key for incrementing k?
--- TEST: foldrWithKey (\k v xs -> (k,v):xs) [] == toList
+-- TEST: foldrWithKey (\k v xs -> (k,v):xs) [] == assocs
 foldrWithKey :: (Key -> a -> b -> b) -> b -> SparseArray a -> b
 foldrWithKey f z = \ (SA p xs) -> go xs 0 p 1 0
     where
@@ -1519,7 +1564,6 @@ partitionMapWithKey f (SA p xs) =
 -- All these functions assume (xz `isSubarrayOf` yz) and operate
 -- accordingly. If that's not the case, then they work as if operating
 -- on the subarray of xz such that it is the case
-
 
 
 rzipWith_, rzipWith'_

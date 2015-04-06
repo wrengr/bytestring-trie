@@ -34,25 +34,38 @@
 ----------------------------------------------------------------
 
 module Data.Trie.ArrayMapped.SparseArray
-    ( Key, SparseArray()
-    , null, length, member, lookup_, lookup', isSubarrayOf
+    (
+    -- * Sparse arrays
+      Key, SparseArray()
+    -- ** Constructors
     , empty, singleton, doubleton
+    -- ** Predicates
+    , null, length, member, isSubarrayOf
+    -- ** Single-element operations
+    , lookup_, lookup'
     , insert, remove
+    -- ** Conversion to\/from lists
     , fromList -- fromAscList, fromDistinctAscList
     , toList, toListBy, keys, elems
     
     -- * Views
     , SubsingletonView(..), viewSubsingleton
     
-    -- * Extra mapping functions
+    -- * Map-like functions
+    -- ** Mapping
     , map, map'
-    , filter, partition
-    -- filterWithKey, partitionWithKey, mapEitherWithKey
-    , filterMap, partitionMap
+    , mapWithKey, mapWithKey'
+    -- ** Filtering
+    , filter,    filterWithKey
+    , filterMap, filterMapWithKey -- aka mapMaybe{,WithKey}
+    -- ** Partitioning
+    , partition,    partitionWithKey
+    , partitionMap, partitionMapWithKey -- aka mapEither{,WithKey}
     
     -- * Extra folding functions
     , foldL, foldR
-    , foldrWithKey, foldrWithKey', foldlWithKey, foldlWithKey'
+    , foldrWithKey, foldrWithKey'
+    , foldlWithKey, foldlWithKey'
     
     -- * Extra traversal functions
     , sequenceST, traverseST
@@ -60,9 +73,9 @@ module Data.Trie.ArrayMapped.SparseArray
     -- * Set-theoretic operations
     -- ** Right-biased zipping functions
     , rzip, rzipWith, rzipWith_
-    -- rzipWithKey, rzipWithKey_
     , rzipWith', rzipWith'_
-    -- rzipWithKey', rzipWithKey'_
+    , rzipWithKey, rzipWithKey_
+    , rzipWithKey', rzipWithKey'_
     , rzipFilter, rzipFilter_
     
     -- ** TODO: left-biased zipping functions
@@ -1014,6 +1027,38 @@ map' f =
     #-}
 
 
+-- TODO: how expensive is using bit2key? can we avoid/amortize that cost?
+-- TODO: benchmark alongside map and map'
+mapWithKey :: (Key -> a -> b) -> SparseArray a -> SparseArray b
+mapWithKey f = 
+    \(SA p xs) ->
+        let !n = popCount p in
+        runST $
+            new_ n $ \ys ->
+            go p xs n ys 0 (getFirstBit p)
+    where
+    go !p !xs !n !ys !i !b
+        | i < n     = do
+            write ys i (index xs i (f (bit2key b)))
+            go p xs n ys (i+1) (getNextBit p b)
+        | otherwise = unsafeFreeze p ys
+
+
+mapWithKey' :: (Key -> a -> b) -> SparseArray a -> SparseArray b
+mapWithKey' f = 
+    \(SA p xs) ->
+        let !n = popCount p in
+        runST $
+            new_ n $ \ys ->
+            go p xs n ys 0 (getFirstBit p)
+    where
+    go !p !xs !n !ys !i !b
+        | i < n     = do
+            index xs i (\x -> write ys i $! f (bit2key b) x)
+            go p xs n ys (i+1) (getNextBit p b)
+        | otherwise = unsafeFreeze p ys
+
+
 ----------------------------------------------------------------
 -- N.B., trying to force the closure to be generated before passing
 -- in the extra arguments via lambda does not work. GHC floats the
@@ -1236,6 +1281,25 @@ filterMap f (SA p xs) =
             filterMap (\x -> case g x of {Just y -> Just $! f y; _ -> Nothing}) xs
     #-}
 
+-- | Apply a function to all values, potentially removing them.
+filterMapWithKey :: (Key -> a -> Maybe b) -> SparseArray a -> SparseArray b
+filterMapWithKey f (SA p xs) =
+    let !n = popCount p in
+    runST $
+        new_ n $ \ys ->
+        let go !i !bi !j !q
+                | i >= n    =
+                    unsafeFreezeOrTrim (i == j {- aka: p == q -}) q ys
+                | otherwise =
+                    case f (bit2key bi) (xs ! i) of
+                    Just y  -> do
+                        write ys j y
+                        go (i+1) (getNextBit p bi) (j+1) (q .|. bi)
+                    Nothing ->
+                        go (i+1) (getNextBit p bi) j q
+            --
+        in go 0 (getFirstBit p) 0 0
+
 
 
 -- TODO: float @go@ out instead of closing over stuff?
@@ -1295,6 +1359,26 @@ filter f xz@(SA p xs) =
         filter f (filterMap g xs) =
             filterMap (\x -> case g x of { my@(Just y) | f y -> my; _ -> Nothing }) xs
     #-}
+    
+filterWithKey :: (Key -> a -> Bool) -> SparseArray a -> SparseArray a
+filterWithKey f xz@(SA p xs) =
+    let !n = popCount p in
+    runST $
+        new_ n $ \ys ->
+        let go !i !bi !j !q
+                | i >= n    =
+                    if i == j {- aka: p == q -}
+                    then return xz
+                    else trim q ys
+                | f (bit2key bi) x = do
+                    write ys j x
+                    go (i+1) (getNextBit p bi) (j+1) (q .|. bi)
+                | otherwise =
+                    go (i+1) (getNextBit p bi) j q
+                where
+                x = xs ! i
+            --
+        in go 0 (getFirstBit p) 0 0
 
 
 -- TODO: float @go@ out instead of closing over stuff?
@@ -1335,6 +1419,34 @@ partition f xz@(SA p xs) =
 
 -- TODO: the more worthwhile interaction rules
     #-}
+
+partitionWithKey
+    :: (Key -> a -> Bool) -> SparseArray a -> (SparseArray a, SparseArray a)
+partitionWithKey f xz@(SA p xs) =
+    let !n = popCount p in
+    runST $
+        new_ n $ \ys ->
+        new_ n $ \zs ->
+        let go !i !bi !j !q !k !r
+                | i >= n    =
+                    if i == j {- aka: p == q; aka: r == 0 -}
+                    then return (xz, empty)
+                    else
+                        if i == k {- aka: p == r; aka q == 0 -}
+                        then return (empty, xz)
+                        else do
+                            yz <- trim q ys
+                            zz <- trim r zs
+                            return (yz, zz)
+                | f (bit2key bi) x = do
+                    write ys j x
+                    go (i+1) (getNextBit p bi) (j+1) (q .|. bi) k r
+                | otherwise = do
+                    write zs k x
+                    go (i+1) (getNextBit p bi) j q (k+1) (r .|. bi)
+                where x = xs ! i
+            --
+        in go 0 (getFirstBit p) 0 0 0 0
 
 
 -- AKA: mapEither
@@ -1377,6 +1489,30 @@ partitionMap f (SA p xs) =
 
 -- TODO: the more worthwhile interaction rules
     #-}
+
+partitionMapWithKey
+    :: (Key -> a -> Either b c)
+    -> SparseArray a -> (SparseArray b, SparseArray c)
+partitionMapWithKey f (SA p xs) =
+    let !n = popCount p in
+    runST $
+        new_ n $ \ys ->
+        new_ n $ \zs ->
+        let go !i !bi !j !q !k !r
+                | i >= n = do
+                    yz <- trim q ys
+                    zz <- trim r zs
+                    return (yz, zz)
+                | otherwise =
+                    case f (bit2key bi) (xs ! i) of
+                    Left  y -> do
+                        write ys j y
+                        go (i+1) (getNextBit p bi) (j+1) (q .|. bi) k r
+                    Right z -> do
+                        write zs k z
+                        go (i+1) (getNextBit p bi) j q (k+1) (r .|. bi)
+            --
+        in go 0 (getFirstBit p) 0 0 0 0
 
 
 ----------------------------------------------------------------
@@ -1431,6 +1567,50 @@ rzipWith f = rzipWith_ (f . Just) (f Nothing)
 
 rzip :: SparseArray a -> SparseArray b -> SparseArray (Maybe a, b)
 rzip = rzipWith (,)
+
+
+rzipWithKey_, rzipWithKey'_
+    :: (Key -> a -> b -> c) -> (Key -> b -> c)
+    -> SparseArray a -> SparseArray b -> SparseArray c
+rzipWithKey_  f g = __rzipWithKey ($)  f g
+rzipWithKey'_ f g = __rzipWithKey ($!) f g
+-- HACK: to avoid repeating ourselves
+{-# INLINE __rzipWithKey #-}
+__rzipWithKey
+    :: (forall a b. (a -> b) -> a -> b)
+    -> (Key -> a -> b -> c) -> (Key -> b -> c)
+    -> SparseArray a -> SparseArray b -> SparseArray c
+-- TODO: float @go@ out instead of closing over stuff?
+-- TODO: how expensive is it to use bit2key; can we avoid/amortize that?
+__rzipWithKey ($?) f g =
+    \ (SA p xs) (SA q ys) ->
+        let !n = popCount q in
+        runST $
+            new_ n $ \zs ->
+            let go !i !b !j
+                    | j >= n     = unsafeFreeze q zs
+                    | b `elem` p = do
+                        write zs j $? f (bit2key b) (xs ! i) (ys ! j)
+                        go (i+1) (getNextBit q b) (j+1)
+                    | otherwise  = do
+                        write zs j $? g (bit2key b) (ys ! j)
+                        go i     (getNextBit q b) (j+1)
+                --
+            in go 0 (getFirstBit q) 0
+
+
+rzipWithKey'
+    :: (Key -> Maybe a -> b -> c)
+    -> SparseArray a -> SparseArray b -> SparseArray c
+rzipWithKey' f = rzipWithKey'_ (\k -> f k . Just) (\k -> f k Nothing)
+{-# INLINE rzipWithKey' #-}
+
+
+rzipWithKey
+    :: (Key -> Maybe a -> b -> c)
+    -> SparseArray a -> SparseArray b -> SparseArray c
+rzipWithKey f = rzipWithKey_ (\k -> f k . Just) (\k -> f k Nothing)
+{-# INLINE rzipWithKey #-}
 
 
 -- TODO: float @go@ out instead of closing over stuff?

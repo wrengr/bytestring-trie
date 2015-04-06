@@ -585,9 +585,11 @@ contextualMapBy f = \t0 ->
         let !s' = BS.append s0 s in
         arc s (f s' v t) (go s' t)
     go s0 (Branch s vz tz) =
+        error "contextualMapBy: unimplemented" {-
         let !s' = BS.append s0 s in
         branch s (SA.rzipFilter_ (f2 s') (f1 s') vz tz)
             (SA.filterMap (trunk2maybe . go s') tz)
+        -}
     
     f1 s0   v = f s0 v Empty
     f2 s0 t v = f s0 v t
@@ -964,7 +966,7 @@ alterSubtrie_ accept reject = start
                 else prependT_ p $
                     case SA.lookup' w tz of
                     Nothing -> SA.insert w (prependT_ ws $ reject Empty) tz
-                    Just t' -> prependT_ p (go ws t')
+                    Just t' -> go ws t'
             else branch2 p s' (Reject $ Branch BS.empty vz tz)
                            q' (reject Empty)
 

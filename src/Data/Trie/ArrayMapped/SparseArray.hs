@@ -11,8 +11,15 @@
            , MagicHash
            , Rank2Types
            , UnboxedTuples
-           , Trustworthy
            #-}
+
+#if __GLASGOW_HASKELL__ >= 701
+#    ifdef __CHECK_ASSERTIONS__
+{-# LANGUAGE Trustworthy #-}
+#    else
+{-# LANGUAGE Unsafe #-}
+#    endif
+#endif
 
 #if __GLASGOW_HASKELL__ >= 710
 {-# LANGUAGE RoleAnnotations #-}
@@ -34,7 +41,7 @@
 -- unlikely to matter. Notably, "GHC.Arr" doesn't use CONLIKE anywhere...
 
 ----------------------------------------------------------------
---                                                  ~ 2015.04.05
+--                                                  ~ 2015.04.08
 -- |
 -- Module      :  Data.Trie.ArrayMapped.SparseArray
 -- Copyright   :  Copyright (c) 2014--2015 wren gayle romano; 2010--2012 Johan Tibell
@@ -211,9 +218,9 @@ import GHC.Exts
     , Array#, newArray#, readArray#, writeArray#, indexArray#, freezeArray#, unsafeFreezeArray#, MutableArray#
 -- GHC 7.2.1 <== base-4.4.0.0
 #if (MIN_VERSION_base(4,4,0))
-#  ifdef __CHECK_ASSERTIONS__
+#    ifdef __CHECK_ASSERTIONS__
     , sizeofMutableArray#
-#  endif
+#    endif
     -- When were these added? They're available since at least ghc-prim-0.3.1.0...
     , copyMutableArray#
     , copyArray#
@@ -228,7 +235,9 @@ import Data.Coerce (coerce)
 import GHC.Exts    ((==#))
 #endif
 -- for c_ffs, used by bit2key, used in turn by viewSubsingleton
-import Foreign.C (CInt(..))
+import Foreign.C        (CInt(..))
+-- used to determine whether 'Word' is 32- or 64-bit (or whatever)
+import Foreign.Storable (sizeOf)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
@@ -286,6 +295,17 @@ type Key    = Word8 -- Actually, should be a Word4 for our uses...
 
 -- | A set of inhabited positions in a 'SparseArray' or 'DynamicSA'.
 type Bitmap = Word  -- Actually, should be a 2^Key == 2^(2^4) == Word16
+    -- N.B., a Word32/Word64 bitmap works for at most Word5/Word6 keys!
+
+-- | The largest key we can /safely/ store values for.
+maxKey :: Key
+maxKey = fromIntegral ((sizeOf (undefined :: Bitmap))*8 - 1)
+
+#ifdef __CHECK_ASSERTIONS__
+#    define CHECK_KEY(_func_,_key_) CHECK_LT(_func_,_key_,maxKey)
+#else
+#    define CHECK_KEY(_func_,_key_)
+#endif
 
 -- | A 'Bitmap' with exactly one set bit.
 type OneBit = Bitmap 
@@ -462,12 +482,12 @@ new_ n = new n __undefinedElem
 -- are disabled.
 lengthMA :: MutableArray# s a -> Int
 -- GHC 7.2.1 <== base-4.4.0.0
-#  if (MIN_VERSION_base(4,4,0))
+#    if (MIN_VERSION_base(4,4,0))
 lengthMA xs = I# (sizeofMutableArray# xs)
 {-# INLINE lengthMA #-}
-#  else
+#    else
 -- TODO
-#  endif
+#    endif
 #endif
 
 
@@ -653,16 +673,21 @@ empty =
 
 -- | /O(1)/. An array containing a single key\/value pair.
 singleton :: Key -> a -> SparseArray a
-singleton !k x = runST (new 1 x $ unsafeFreeze (key2bit k))
+singleton !k x =
+    CHECK_KEY("singleton", k)
+    runST (new 1 x $ unsafeFreeze (key2bit k))
 {-# INLINE singleton #-}
 
 
 -- | /O(1)/. An array containing two key\/value pairs.
 doubleton :: Key -> a -> Key -> a -> SparseArray a
-doubleton !k x !l y = runST $
-    new 2 x $ \xs -> do
-    write xs (if k < l then 1 else 0) y
-    unsafeFreeze (key2bit k .|. key2bit l) xs
+doubleton !k x !l y =
+    CHECK_KEY("doubleton", k)
+    CHECK_KEY("doubleton", l)
+    runST $
+        new 2 x $ \xs -> do
+        write xs (if k < l then 1 else 0) y
+        unsafeFreeze (key2bit k .|. key2bit l) xs
 {-# INLINE doubleton #-}
 
 
@@ -722,6 +747,7 @@ notMember k (SA p _) = key2bit k `notElem` p
 -- work as possible before returning the 'Maybe' data constructor.
 lazyLookup :: Key -> SparseArray a -> Maybe a
 lazyLookup k (SA p xs) =
+    CHECK_KEY("lazyLookup", k)
     let b = key2bit k in
     if  b `elem` p
     then let i = bit2index p b in i `seq` Just (xs ! i)
@@ -745,6 +771,7 @@ lazyLookup k (SA p xs) =
 -- force that work (without forcing the array element itself!).
 lookup :: Key -> SparseArray a -> Maybe a
 lookup k (SA p xs) =
+    CHECK_KEY("lookup", k)
     let b = key2bit k in
     if  b `elem` p
     then index xs (bit2index p b) Just
@@ -755,15 +782,20 @@ lookup k (SA p xs) =
 -- | /O(n)/. Create a copy of the array, inserting (or overwriting)
 -- a new value.
 insert :: Key -> a -> SparseArray a -> SparseArray a
-insert !k x sa@(SA p xs)
-    | b `elem` p =
+insert !k x sa@(SA p xs) =
+    CHECK_KEY("lookup", k)
+    let b = key2bit k
+        i = bit2index p b
+    in
+    if b `elem` p
+    then
         let maxN = length sa in
         runST $
             new_ maxN $ \xs' -> do
             copy xs 0 xs' 0 maxN
             write xs' i x
             unsafeFreeze p xs'
-    | otherwise =
+    else
         let maxN = length sa + 1 in
         runST $
             new_ maxN $ \xs' -> do
@@ -771,26 +803,26 @@ insert !k x sa@(SA p xs)
             write xs' i x
             copy xs i xs' (i+1) (maxN-i)
             unsafeFreeze (p .|. b) xs'
-    where
-    b = key2bit k
-    i = bit2index p b
 
 
 -- | /O(n)/. Create a copy of the array, removing a key. If the key
 -- is not present, then returns the same array.
 delete :: Key -> SparseArray a -> SparseArray a
-delete !k sa@(SA p xs)
-    | b `elem` p =
+delete !k sa@(SA p xs) =
+    CHECK_KEY("delete", k)
+    let b = key2bit k
+        i = bit2index p b
+    in
+    if b `elem` p
+    then
         let maxN = length sa - 1 in
         runST $
             new_ maxN $ \xs' -> do
             copy xs 0 xs' 0 i
             copy xs (i+1) xs' i (maxN-i)
             unsafeFreeze (p `xor` b) xs'
-    | otherwise = sa
-    where
-    b = key2bit k
-    i = bit2index p b
+    else sa
+    
 
 ----------------------------------------------------------------
 data SubsingletonView a
@@ -855,11 +887,20 @@ insertDSA k v dsa = insertDSA_ k v dsa return
 -- really do that we must INLINE as well.
 insertDSA_ :: Key -> a -> DynamicSA s a -> (DynamicSA s a -> ST s r) -> ST s r
 {-# INLINE insertDSA_ #-}
-insertDSA_ !k x dsa@(DSA p maxK n maxN xs) continue
-    | b `elem` p = do
+insertDSA_ !k x dsa@(DSA p maxK n maxN xs) continue =
+    CHECK_KEY("insertDSA_", k)
+    let b     = key2bit k
+        i     = bit2index p b
+        p'    = p .|. b
+        n'    = n + 1
+        maxN' = 2*maxN
+        -- TODO: maxN' gets let-bound for sharing; we might want to add a pragma hinting that it can be duplicated relatively cheaply (or maybe the gcc/llvm backends can figure that out?)
+    in
+    if b `elem` p
+    then do
         write xs i x
         continue dsa
-    | otherwise =
+    else
         case (n < maxN, k > maxK) of
         (True, True) -> do
             write xs n x
@@ -880,13 +921,6 @@ insertDSA_ !k x dsa@(DSA p maxK n maxN xs) continue
             write xs' i x
             copyMA xs i xs' (i+1) (maxN-i)
             continue $! DSA p' maxK n' maxN' xs'
-    where
-    b     = key2bit k
-    i     = bit2index p b
-    p'    = p .|. b
-    n'    = n + 1
-    maxN' = 2*maxN
-    -- TODO: maxN' gets let-bound for sharing; we might want to add a pragma hinting that it can be duplicated relatively cheaply (or maybe the gcc/llvm backends can figure that out?)
 
 
 -- Since we know the effective size limit for our use cases is
@@ -904,10 +938,12 @@ fromList = fromList_ 16
 
 fromList_ :: Int -> [(Key,a)] -> SparseArray a
 fromList_ !_ []           = empty
-fromList_  n ((!k,x):kxs) = runST $
-    new n x $ \xs -> do
-    write xs 1 x
-    go kxs $! DSA (key2bit k) k 1 n xs
+fromList_  n ((!k,x):kxs) =
+    CHECK_KEY("fromList_", k)
+    runST $
+        new n x $ \xs -> do
+        write xs 1 x
+        go kxs $! DSA (key2bit k) k 1 n xs
     where
     -- We must use the CPS version of insertDSA in order to unpack the DSA.
     go []           dsa = unsafeFreezeDSA dsa

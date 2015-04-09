@@ -6,7 +6,7 @@
 
 {-# LANGUAGE CPP, BangPatterns #-}
 
--- TODO: benchmark using SA.lookup_ instead of SA.lookup'
+-- TODO: benchmark using SA.lazyLookup instead of SA.lookup
 
 ----------------------------------------------------------------
 --                                                  ~ 2015.04.05
@@ -811,9 +811,9 @@ lookupBy_ accept reject = start
             if BS.null s'
             then
                 if BS.null ws
-                then maybe reject accept (SA.lookup' w vz)
-                        (maybe2trunk (SA.lookup' w tz))
-                else maybe (reject Empty) (go ws) (SA.lookup' w tz)
+                then maybe reject accept (SA.lookup w vz)
+                        (maybe2trunk (SA.lookup w tz))
+                else maybe (reject Empty) (go ws) (SA.lookup w tz)
             else reject Empty
     
 
@@ -853,12 +853,12 @@ match_ = flip start
         Nothing     -> Nothing
         Just (w,ws) ->
             let n' = n + BS.length p + 1 in n' `seq`
-            case (BS.null ws, SA.lookup' w tz) of
+            case (BS.null ws, SA.lookup w tz) of
             (False, Just t) -> 
-                case SA.lookup' w vz of
+                case SA.lookup w vz of
                 Nothing -> goNothing   n' ws t
                 Just v  -> goJust n' v n' ws t
-            _           -> (,) n' <$> SA.lookup' w vz
+            _           -> (,) n' <$> SA.lookup w vz
 
     goJust !n0 v0 !_ !_ Empty       = Just (n0,v0)
     goJust  n0 v0 n  q  (Arc s v t) =
@@ -876,13 +876,13 @@ match_ = flip start
         Nothing     -> Just (n0,v0)
         Just (w,ws) ->
             let n' = n + BS.length p + 1 in n' `seq`
-            case (BS.null ws, SA.lookup' w tz) of
+            case (BS.null ws, SA.lookup w tz) of
             (False, Just t) -> 
-                case SA.lookup' w vz of
+                case SA.lookup w vz of
                 Nothing -> goJust n0 v0 n' ws t
                 Just v  -> goJust n' v  n' ws t
             _ ->
-                case SA.lookup' w vz of
+                case SA.lookup w vz of
                 Nothing -> Just (n0,v0)
                 Just v  -> Just (n',v)
 
@@ -956,15 +956,15 @@ alterSubtrie_ accept reject = start
             then
                 if BS.null ws
                 then
-                    case maybe reject accept (SA.lookup' w vz)
-                        (maybe2trunk (SA.lookup' w tz))
+                    case maybe reject accept (SA.lookup w vz)
+                        (maybe2trunk (SA.lookup w tz))
                     of
                     Accept v' t' ->
                         Branch s (SA.insert w v' vz) (SA.insert w t' tz)
                     Reject    t' ->
-                        Branch s (SA.remove w vz) (SA.insert w t' tz)
+                        Branch s (SA.delete w vz) (SA.insert w t' tz)
                 else
-                    case SA.lookup' w tz of
+                    case SA.lookup w tz of
                     Nothing -> prependT_ p
                         . error "alterSubtrie_: unimplemented"
                         $ SA.insert w (prependT_ ws $ reject Empty) tz

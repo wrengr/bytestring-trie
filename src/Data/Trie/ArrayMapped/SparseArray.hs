@@ -1,7 +1,8 @@
 -- The -fno-full-laziness required by Data.Trie.ArrayMapped.UnsafeST
 {-# OPTIONS_GHC
     -Wall -fwarn-tabs -fno-warn-name-shadowing -fno-warn-unused-binds
-    -fno-full-laziness -funbox-strict-fields
+    -fno-full-laziness
+    -funbox-strict-fields
     #-}
 
 {-# LANGUAGE BangPatterns
@@ -20,6 +21,17 @@
 -- TODO: cf <http://hackage.haskell.org/package/base-4.8.0.0/docs/src/GHC-Arr.html> for more implementation hacks
 
 -- TODO: for our purposes, should we reimplement everything using SmallArray# and SmallMutableArray# ? cf., ghc-prim-0.4.0.0
+
+
+-- Re inlining stuff, see
+-- <https://mail.haskell.org/pipermail/glasgow-haskell-users/2011-June/020472.html>
+-- <http://stackoverflow.com/questions/9709823/is-there-any-reason-not-to-use-the-inlinable-pragma-for-a-function>
+--
+-- Also note that CONLIKE only enables permission to duplicate when
+-- doing so would allow a rule to fire. So even though we have a
+-- bunch of cheap functions (especially bit-bashing functions) we'd
+-- be fine with duplicating, labelling them as CONLIKE is extremely
+-- unlikely to matter. Notably, "GHC.Arr" doesn't use CONLIKE anywhere...
 
 ----------------------------------------------------------------
 --                                                  ~ 2015.04.05
@@ -43,15 +55,25 @@ module Data.Trie.ArrayMapped.SparseArray
     (
     -- * Sparse arrays
       Key, SparseArray()
-    -- ** Constructors
+    
+    -- ** Construction
     , empty, singleton, doubleton
-    -- ** Predicates
-    , null, length, member, isSubarrayOf
+    
+    -- ** Predicates and Queries
+    , null, length, member, notMember, isSubarrayOf
+    -- isSubmapOf, isSubmapOfBy
+    -- isProperSubarrayOf, isProperSubmapOf, isProperSubmapOfBy
+    
     -- ** Single-element operations
-    , lookup_, lookup'
-    , insert, remove
+    , lookup, insert, delete
+    -- insertWith, insertWithKey, insertLookup, insertLookupWithKey
+    -- adjust, adjustWithKey
+    -- update, updateWithKey, updateLookupWithKey
+    -- alter
+    
     -- ** Conversion to\/from lists
-    , fromList -- fromAscList, fromDistinctAscList
+    , fromList -- fromListWith, fromListWithKey
+    -- fromAscList, fromAscListWith, fromAscListWithKey, fromDistinctAscList
     -- Can't use the name toList because of conflict with Foldable
     , assocs, assocsBy, keys, elems
     
@@ -62,9 +84,14 @@ module Data.Trie.ArrayMapped.SparseArray
     -- ** Mapping
     , map, map'
     , mapWithKey, mapWithKey'
+    -- mapAccumL, mapAccumR, mapAccumLWithKey, mapAccumRWithKey
+    
+    -- TODO: mapKeys*/ixmap* stuff? slicing and marginalizing?
+    
     -- ** Filtering
     , filter,    filterWithKey
     , filterMap, filterMapWithKey -- aka mapMaybe{,WithKey}
+    
     -- ** Partitioning
     , partition,    partitionWithKey
     , partitionMap, partitionMapWithKey -- aka mapEither{,WithKey}
@@ -76,9 +103,14 @@ module Data.Trie.ArrayMapped.SparseArray
     
     -- * Extra traversal functions
     , sequenceST, traverseST
+    -- traverseWithKey
     
     -- * Set-theoretic operations
     -- ** Right-biased zipping functions
+    -- | These functions iterate over the keys\/elements of @rs@,
+    -- only picking out those elements of @ls@ which correspond.
+    -- Thus, only when @(ls \``isSubarrayOf`\` rs)@ do we end up
+    -- enumerating every element of @ls@.
     , rzip, rzipWith, rzipWith_
     , rzipWith', rzipWith'_
     , rzipWithKey, rzipWithKey_
@@ -99,7 +131,7 @@ module Data.Trie.ArrayMapped.SparseArray
     -- unionWithKey', unionWithKey'_
     , unionFilterWith, unionFilterWith_
     -- unionFilterWithKey_
-    -- unionsWith_
+    -- unionsL, unionsR, unionsWith, unionsWith_
     
     -- ** Intersection-like operators
     , intersectionL, intersectionR, intersectionWith -- intersectionWithKey
@@ -109,6 +141,7 @@ module Data.Trie.ArrayMapped.SparseArray
     
     -- ** Difference-like operators
     , differenceL, differenceR
+    -- differenceWith, differenceWithKey
     -- symdiff, symdiffWith, symdiffWith_
     
     ----
@@ -173,10 +206,12 @@ import GHC.Exts
     , Word(W#), Int(I#), uncheckedShiftL#, not#, and#, neWord#
     , Array#, newArray#, readArray#, writeArray#, indexArray#, freezeArray#, unsafeFreezeArray#, MutableArray#
 #if __GLASGOW_HASKELL__ >= 702
-    , sizeofMutableArray#, copyMutableArray#
+#  ifdef __CHECK_ASSERTIONS__
+    , sizeofMutableArray#
+#  endif
+    , copyMutableArray#
     -- TODO: Which version added these?
-    , copyArray#
-    , isTrue#, sameMutableArray#
+    , copyArray#, isTrue#, sameMutableArray#
 #endif
     )
 -- for c_ffs, used by bit2key, used in turn by viewSubsingleton
@@ -191,11 +226,11 @@ __thisModule = "Data.Trie.ArrayMapped.SparseArray"
 
 __moduleError :: String -> a
 __moduleError s = error (__thisModule ++ ": " ++ s)
-{-# INLINE __moduleError #-}
+{-# NOINLINE __moduleError #-}
 
 __functionError :: String -> String -> a
 __functionError fun s = error (__thisModule ++ "." ++ fun ++ ": " ++ s)
-{-# INLINE __functionError #-}
+{-# NOINLINE __functionError #-}
 
 __undefinedElem :: a
 __undefinedElem = __moduleError "Undefined element"
@@ -203,10 +238,10 @@ __undefinedElem = __moduleError "Undefined element"
 
 __impossible :: String -> a
 __impossible fun = __functionError fun "the impossible happened"
-{-# INLINE __impossible #-}
+{-# NOINLINE __impossible #-}
 
 
-#if defined(ASSERTS)
+#ifdef __CHECK_ASSERTIONS__
 -- This fugly hack is brought by GHC's apparent reluctance to deal
 -- with MagicHash and UnboxedTuples when inferring types. Eek!
 #    define CHECK_BOUNDS(_func_,_len_,_k_) \
@@ -235,10 +270,13 @@ if not ((_lhs_) _op_ (_rhs_)) then __functionError (_func_) ("Check failed: _lhs
 
 -- | Indices into a 'SparseArray' or 'DynamicSA'.
 type Key    = Word8 -- Actually, should be a Word4 for our uses...
+
 -- | A set of inhabited positions in a 'SparseArray' or 'DynamicSA'.
 type Bitmap = Word  -- Actually, should be a 2^Key == 2^(2^4) == Word16
+
 -- | A 'Bitmap' with exactly one set bit.
 type OneBit = Bitmap 
+
 -- | Indicies into the underlying 'Array#' or 'MutableArray#'.
 type Index  = Int 
     -- HACK: actually, this should be Int#, but that causes code ugliness
@@ -250,7 +288,6 @@ type Index  = Int
 bsucc :: OneBit -> OneBit
 bsucc (W# b) = W# (b `uncheckedShiftL#` 1#)
 {-# INLINE bsucc #-}
--- TODO: use INLINEABLE instead, in order to allow duplication?
 -- TODO: use Data.Trie.ArrayMapped.UnsafeShift.unsafeShiftL instead?
 
 
@@ -324,7 +361,6 @@ key2bit k =
     case fromIntegral k of
     I# i -> W# (1## `uncheckedShiftL#` i)
 {-# INLINE key2bit #-}
--- TODO: use INLINEABLE instead, in order to allow duplication?
 -- TODO: use Data.Trie.ArrayMapped.UnsafeShift.unsafeShiftL instead?
 
 
@@ -355,6 +391,7 @@ key2index p k = bit2index p (key2bit k)
 bit2key :: OneBit -> Key
 bit2key b = fromIntegral (c_ffs (fromIntegral b))
 {-# INLINE bit2key #-}
+
 -- | Return the position of the lowest set bit
 foreign import ccall unsafe "strings.h ffs" c_ffs :: CInt -> CInt
 
@@ -383,11 +420,12 @@ notElem b p = (p .&. b == 0)
 ----------------------------------------------------------------
 -- Section: Wrappers for working with MutableArray#
 
--- We must box up the MutableArray# into something of kind * before
--- we can return it. Rather than making an explicit box just to
--- unwrap it, we use CPS to achieve the same effect with more
--- efficient Core code. We need to inline it in order to really do
--- the right thing with the CPS form
+-- | Allocate a new mutable array, initializing it with the given
+-- element. We must box up the @MutableArray#@ into something of
+-- kind @*@ before we can return it. Rather than making an explicit
+-- box just to unwrap it, we use CPS to achieve the same effect
+-- with more efficient Core code. We need to inline it in order to
+-- really do the right thing with the CPS form
 new :: Int -> a -> (MutableArray# s a -> ST s r) -> ST s r
 new _n@(I# n) x continue =
     CHECK_GT("new", _n, (0 :: Int))
@@ -399,16 +437,23 @@ new _n@(I# n) x continue =
 {-# INLINE new #-}
 
 
+-- | Allocate a new mutable array, filling it with undefined elements.
 new_ :: Int -> (MutableArray# s a -> ST s r) -> ST s r
 new_ n = new n __undefinedElem
 {-# INLINE new_ #-}
 
 
-#if __GLASGOW_HASKELL__ >= 702
+#ifdef __CHECK_ASSERTIONS__
+-- | Return the length of a mutable array, for runtime bounds
+-- checking when assertions are enabled. Never used if assertions
+-- are disabled.
 lengthMA :: MutableArray# s a -> Int
+#  if __GLASGOW_HASKELL__ >= 702
 lengthMA xs = I# (sizeofMutableArray# xs)
 {-# INLINE lengthMA #-}
--- TODO: use INLINEABLE instead, in order to allow duplication?
+#  else
+-- TODO
+#  endif
 #endif
 
 
@@ -468,7 +513,7 @@ shiftUpOne :: MutableArray# s e -> Index -> Index -> ST s ()
 shiftUpOne !xs !i !n = 
     CHECK_GE("shiftUpOne: i", i, (0 :: Int))
     CHECK_GE("shiftUpOne: n", n, (0 :: Int))
-    CHECK_BOUNDS("shiftUpOne: ", lengthMA src, i + n) -- TODO: (subtract 1) ??
+    CHECK_BOUNDS("shiftUpOne: ", lengthMA src, i + n) -- TODO/BUG: (subtract 1) ??
     go xs i (i + n)
     where
     go !xs !i !n
@@ -484,7 +529,7 @@ shiftUpOne !xs !i !n =
 
 
 -- HACK: must use the prefix notation in the definition, otherwise
--- it isn't recognized for some reason...
+-- it isn't recognized for some reason to do with -XMagicHash...
 (!) :: Array# a -> Index -> a
 (!) xs (I# i) = case indexArray# xs i of (# x #) -> x
 {-# INLINE (!) #-}
@@ -547,7 +592,7 @@ trim :: Bitmap -> MutableArray# s a -> ST s (SparseArray a)
 trim !p !xs =
     case popCount p of
     _n@(I# n) ->
-        -- Optimally it should be LT, but LE is safe.
+        -- Optimally it should be LT, but only LE is required for safety.
         CHECK_LE("trim", _n, lengthMA xs)
         ST $ \s ->
             case freezeArray# xs 0# n s of
@@ -558,7 +603,7 @@ trim !p !xs =
 -- | Create a 'SparseArray' by freezing a 'MutableArray#' in place.
 unsafeFreeze :: Bitmap -> MutableArray# s a -> ST s (SparseArray a)
 unsafeFreeze !p !xs =
-    -- Optimally it should be EQ, but LE is safe.
+    -- Optimally it should be EQ, but only LE is required for safety.
     CHECK_LE("unsafeFreeze", popCount p, lengthMA xs)
     ST $ \s ->
         case unsafeFreezeArray# xs s of
@@ -566,6 +611,7 @@ unsafeFreeze !p !xs =
 {-# INLINE unsafeFreeze #-}
 
 
+-- | Dynamically choose to freeze or trim based on a boolean test.
 unsafeFreezeOrTrim
     :: Bool -> Bitmap -> MutableArray# s a -> ST s (SparseArray a)
 unsafeFreezeOrTrim True  = unsafeFreeze
@@ -588,13 +634,14 @@ empty =
             (# s2, xs2 #) -> (# s2, SA 0 xs2 #)
 -}
 
--- | /O(1)/. An array mapping a single key to a value.
+
+-- | /O(1)/. An array containing a single key\/value pair.
 singleton :: Key -> a -> SparseArray a
 singleton !k x = runST (new 1 x $ unsafeFreeze (key2bit k))
 {-# INLINE singleton #-}
 
 
--- | /O(1)/. An array mapping two keys to values.
+-- | /O(1)/. An array containing two key\/value pairs.
 doubleton :: Key -> a -> Key -> a -> SparseArray a
 doubleton !k x !l y = runST $
     new 2 x $ \xs -> do
@@ -614,7 +661,6 @@ __null :: SparseArray a -> Bool
 __null (SA 0 _) = True
 __null _        = False
 {-# INLINE __null #-}
--- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
 -- | /O(PC)/. Get the number of elements in the array.
@@ -626,7 +672,6 @@ length = __length
 __length :: SparseArray a -> Int
 __length (SA p _) = popCount p
 {-# INLINE __length #-}
--- TODO: use INLINEABLE instead, in order to allow duplication?
 
 
 -- | /O(1)/. Are the first array's keys a subset of second's?
@@ -635,12 +680,19 @@ isSubarrayOf (SA p _) (SA q _) = (p .&. q == p)
 {-# INLINE isSubarrayOf #-}
 
 
--- | /O(1)/. Is the key associated with some value?
+-- | /O(1)/. Is the key bound to some value?
 member :: Key -> SparseArray a -> Bool
 member k (SA p _) = key2bit k `elem` p
 {-# INLINE member #-}
 
 
+-- | /O(1)/. Is the key unbound?
+notMember :: Key -> SparseArray a -> Bool
+notMember k (SA p _) = key2bit k `notElem` p
+{-# INLINE notMember #-}
+
+
+{-
 -- TODO: would we *ever* want to postpone computing @bit2index p b@ too??
 -- TODO: do we ever actually want/need this function?
 --
@@ -652,30 +704,36 @@ member k (SA p _) = key2bit k `elem` p
 -- entirely clear whether we actually /need/ that anywhere. Other
 -- than the laziness of the array lookup itself, we perform as much
 -- work as possible before returning the 'Maybe' data constructor.
-lookup_ :: Key -> SparseArray a -> Maybe a
-lookup_ k (SA p xs) =
+lazyLookup :: Key -> SparseArray a -> Maybe a
+lazyLookup k (SA p xs) =
     let b = key2bit k in
     if  b `elem` p
     then let i = bit2index p b in i `seq` Just (xs ! i)
     else Nothing
-{-# INLINE lookup_ #-}
+{-# INLINE lazyLookup #-}
+-}
 
 
--- TODO: is there any way we can convince GHC to treat this as an
--- intro rule, thus allowing case-of-constructor to avoid constructing
--- the 'Maybe'? If not, we should create an explicit CPSed version.
+-- TODO: is there any way we can convince GHC to (guaranteedly)
+-- treat this as an intro rule, thus forcing case-of-constructor
+-- to avoid constructing the 'Maybe'? If not, we should create an
+-- explicit CPSed version. Until then, hopefully the inline hammer
+-- is strong enough to ensure we get the case-of-constructor...
+--
+-- Unlike 'lazyLookup', we avoid constructing any thunks here.
 --
 -- | /O(FI + PC)/.
--- Eagerly look up an element in an array. That is, we do all
--- possible work before returning the data constructor for 'Maybe'.
--- Unlike 'lookup_', we avoid constructing any thunks here.
-lookup' :: Key -> SparseArray a -> Maybe a
-lookup' k (SA p xs) =
+-- Look up an element in an array. This function is eager; i.e.,
+-- we do all possible work before returning the data constructor
+-- for 'Maybe'; thus, by forcing the 'Maybe' constructor, you can
+-- force that work (without forcing the array element itself!).
+lookup :: Key -> SparseArray a -> Maybe a
+lookup k (SA p xs) =
     let b = key2bit k in
     if  b `elem` p
     then index xs (bit2index p b) Just
     else Nothing
-{-# INLINE lookup' #-}
+{-# INLINE lookup #-}
 
 
 -- | /O(n)/. Create a copy of the array, inserting (or overwriting)
@@ -704,8 +762,8 @@ insert !k x sa@(SA p xs)
 
 -- | /O(n)/. Create a copy of the array, removing a key. If the key
 -- is not present, then returns the same array.
-remove :: Key -> SparseArray a -> SparseArray a
-remove !k sa@(SA p xs)
+delete :: Key -> SparseArray a -> SparseArray a
+delete !k sa@(SA p xs)
     | b `elem` p =
         let maxN = length sa - 1 in
         runST $
@@ -1043,6 +1101,7 @@ map' f =
         | otherwise = unsafeFreeze p ys
 
 
+-- TODO: switch to a non-recursive definition of map/map' so that we can inline it; sf., "GHC.Arr".
 -- The inline pragma is to avoid warnings about the rules possibly
 -- not firing
 {-# NOINLINE [1] map  #-}
@@ -1052,6 +1111,12 @@ map' f =
 "map' . map"   forall f g xs.  map' f (map  g xs) = map' (\x -> f (g x)) xs
 "map . map'"   forall f g xs.  map  f (map' g xs) = map  (\x -> f $! g x) xs
 "map' . map'"  forall f g xs.  map' f (map' g xs) = map' (\x -> f $! g x) xs
+
+-- See Breitner, Eisenberg, Peyton Jones, and Weirich, "Safe Zero-cost
+-- Coercions for Haskell", section 6.5:
+--   http://research.microsoft.com/en-us/um/people/simonpj/papers/ext-f/coercible.pdf
+"map/coerce"   map  coerce = coerce
+"map'/coerce"  map' coerce = coerce
     #-}
 
 
@@ -1097,11 +1162,18 @@ mapWithKey' f =
 --
 -- The instance for @array:Data.Array.Array@ is in @base:Data.Foldable@
 -- TODO: compare our instance to that one
+--
+-- We make all the recursive functions INLINABLE in order to take
+-- advantage of the fancy auto-specialization stuff it does. This
+-- is following the pattern of "GHC.Arr".
 instance Foldable SparseArray where
+    {-# INLINE fold #-}
     fold      = F.foldr' mappend mempty
     
+    {-# INLINE foldMap #-}
     foldMap f = F.foldr' (mappend . f) mempty
     
+    {-# INLINABLE foldr #-}
     foldr f z = \ (SA p xs) -> go xs (popCount p) 0
         where
         go !xs !n !i
@@ -1109,6 +1181,7 @@ instance Foldable SparseArray where
             | otherwise = z
     
 #if (MIN_VERSION_base(4,6,0))
+    {-# INLINABLE foldr' #-}
     foldr' f = \ !z0 (SA p xs) -> go xs (popCount p - 1) z0
         where
         go !xs !n z
@@ -1116,6 +1189,7 @@ instance Foldable SparseArray where
             | otherwise = z
 #endif
     
+    {-# INLINABLE foldl #-}
     foldl f z = \ (SA p xs) -> go xs (popCount p - 1)
         where
         go !xs !n
@@ -1123,6 +1197,7 @@ instance Foldable SparseArray where
             | otherwise = z
     
 #if (MIN_VERSION_base(4,6,0))
+    {-# INLINABLE foldl' #-}
     foldl' f = \ !z0 (SA p xs) -> go xs (popCount p) 0 z0
         where
         go !xs !n !i z
@@ -1158,8 +1233,11 @@ instance Foldable SparseArray where
 
 -- aka GHC >= 7.10
 #if (MIN_VERSION_base(4,8,0))
+    {-# INLINE toList #-}
     toList = elems    -- this is identical to the default implementation
+    {-# INLINE length #-}
     length = __length -- HACK: to avoid cyclic definition
+    {-# INLINE null #-}
     null   = __null   -- HACK: to avoid cyclic definition
     
     {- TODO
@@ -1184,6 +1262,8 @@ foldrWithKey f z = \ (SA p xs) -> go xs 0 p 1 0
         | b `elem` p = f k (xs ! i) $
             go xs (i+1) (p `xor` b) (bsucc b) (k+1)
         | otherwise  = go xs i p (bsucc b) (k+1)
+{-# INLINABLE foldrWithKey #-}
+
 
 foldrWithKey' :: (Key -> a -> b -> b) -> b -> SparseArray a -> b
 foldrWithKey' f z = \ (SA p xs) -> go xs 0 p 1 0
@@ -1193,6 +1273,8 @@ foldrWithKey' f z = \ (SA p xs) -> go xs 0 p 1 0
         | b `elem` p = f k (xs ! i) $!
             go xs (i+1) (p `xor` b) (bsucc b) (k+1)
         | otherwise  = go xs i p (bsucc b) (k+1)
+{-# INLINABLE foldrWithKey' #-}
+
 
 foldlWithKey :: (b -> Key -> a -> b) -> b -> SparseArray a -> b
 foldlWithKey f = \ !z0 (SA p xs) -> go xs 0 p 1 0 z0
@@ -1202,6 +1284,8 @@ foldlWithKey f = \ !z0 (SA p xs) -> go xs 0 p 1 0 z0
         | b `elem` p = go xs (i+1) (p `xor` b) (bsucc b) (k+1) $
             f z k (xs ! i)
         | otherwise  = go xs i p (bsucc b) (k+1) z
+{-# INLINABLE foldlWithKey #-}
+
 
 foldlWithKey' :: (b -> Key -> a -> b) -> b -> SparseArray a -> b
 foldlWithKey' f = \ !z0 (SA p xs) -> go xs 0 p 1 0 z0
@@ -1211,6 +1295,7 @@ foldlWithKey' f = \ !z0 (SA p xs) -> go xs 0 p 1 0 z0
         | b `elem` p = go xs (i+1) (p `xor` b) (bsucc b) (k+1) $!
             f z k (xs ! i)
         | otherwise  = go xs i p (bsucc b) (k+1) z
+{-# INLINABLE foldlWithKey' #-}
 
 
 -- | Short-circuiting version of foldl'. N.B., this is not necessarily
@@ -1225,6 +1310,7 @@ foldL f = \z0 (SA p xs) -> go xs (popCount p) 0 z0
             Left  z'    -> go xs n (i+1) z'
             r@(Right _) -> r
         | otherwise     =  Left z
+{-# INLINABLE foldL #-}
 
 
 -- | Short-circuiting version of foldr'. N.B., this is not necessarily
@@ -1239,6 +1325,7 @@ foldR f = \z0 (SA p xs) -> go xs (popCount p - 1) z0
             Left  z'    -> go xs (n-1) z'
             r@(Right _) -> r
         | otherwise     =  Left z
+{-# INLINABLE foldR #-}
 
 
 ----------------------------------------------------------------
@@ -1293,6 +1380,7 @@ filterMap f (SA p xs) =
                         go (i+1) (getNextBit p bi) j q
             --
         in go 0 (getFirstBit p) 0 0
+{-# INLINABLE filterMap #-}
 
 -- The inline pragma is to avoid warnings about the rules possibly
 -- not firing
@@ -1344,6 +1432,7 @@ filterMapWithKey f (SA p xs) =
                         go (i+1) (getNextBit p bi) j q
             --
         in go 0 (getFirstBit p) 0 0
+{-# INLINABLE filterMapWithKey #-}
 
 
 
@@ -1366,6 +1455,7 @@ filter f xz@(SA p xs) =
                 where x = xs ! i
             --
         in go 0 (getFirstBit p) 0 0
+{-# INLINABLE filter #-}
 
 -- The inline pragma is to avoid warnings about the rules possibly
 -- not firing
@@ -1424,6 +1514,7 @@ filterWithKey f xz@(SA p xs) =
                 x = xs ! i
             --
         in go 0 (getFirstBit p) 0 0
+{-# INLINABLE filterWithKey #-}
 
 
 -- TODO: float @go@ out instead of closing over stuff?
@@ -1453,6 +1544,7 @@ partition f xz@(SA p xs) =
                 where x = xs ! i
             --
         in go 0 (getFirstBit p) 0 0 0 0
+{-# INLINABLE partition #-}
 
 -- The inline pragma is to avoid warnings about the rules possibly
 -- not firing
@@ -1492,6 +1584,7 @@ partitionWithKey f xz@(SA p xs) =
                 where x = xs ! i
             --
         in go 0 (getFirstBit p) 0 0 0 0
+{-# INLINABLE partitionWithKey #-}
 
 
 -- AKA: mapEither
@@ -1517,6 +1610,7 @@ partitionMap f (SA p xs) =
                         go (i+1) (getNextBit p bi) j q (k+1) (r .|. bi)
             --
         in go 0 (getFirstBit p) 0 0 0 0
+{-# INLINABLE partitionMap #-}
 
 -- The inline pragma is to avoid warnings about the rules possibly
 -- not firing
@@ -1558,6 +1652,7 @@ partitionMapWithKey f (SA p xs) =
                         go (i+1) (getNextBit p bi) j q (k+1) (r .|. bi)
             --
         in go 0 (getFirstBit p) 0 0 0 0
+{-# INLINABLE partitionMapWithKey #-}
 
 
 ----------------------------------------------------------------
@@ -1684,6 +1779,7 @@ rzipFilter_ f g (SA p xs) (SA q ys) =
                         go i (getNextBit q b) (j+1) k r
             --
         in go 0 (getFirstBit q) 0 0 0
+{-# INLINABLE rzipFilter_ #-}
 
 
 rzipFilter
@@ -1720,6 +1816,7 @@ unionL (SA p xs) (SA q ys) =
 -- | Right-biased union.
 unionR :: SparseArray a -> SparseArray a -> SparseArray a
 unionR = flip unionL
+{-# INLINE unionR #-}
 
 
 unionWith
@@ -1816,6 +1913,7 @@ unionFilterWith_ f g h (SA p xs) (SA q ys) =
                     (False, False) -> __impossible "unionFilterWith_"
             --
         in go r0 (getFirstBit r0) 0 0 0 0
+{-# INLINABLE unionFilterWith_ #-}
 
 
 {-
@@ -1863,6 +1961,7 @@ intersectionL =
 -- | Right-biased intersection.
 intersectionR :: SparseArray a -> SparseArray b -> SparseArray b
 intersectionR = flip intersectionL
+{-# INLINE intersectionR #-}
 
 
 intersectionWith, intersectionWith'
@@ -1921,6 +2020,7 @@ differenceL = \(SA p xs) (SA q _) ->
 differenceR
     :: SparseArray a -> SparseArray b -> SparseArray b
 differenceR = flip differenceL
+{-# INLINE differenceR #-}
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

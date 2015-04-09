@@ -55,6 +55,11 @@ Source-Repository head
 --    Description: Use optimized C implementation for indexOfDifference.
 --                 See notes in Data.Trie.ByteStringInternal.
 
+Flag checkAssertions
+    Default:     False
+    Description: Insert runtime checks in to ensure our invariants
+                 are satisfied in Data.Trie.ArrayMapped.SparseArray.
+
 ----------------------------------------------------------------
 Library
     Hs-Source-Dirs:  src
@@ -83,6 +88,9 @@ Library
                    , base       >= 4    && < 5
                    , bytestring >= 0.10 && < 0.11
     
+    if flag(checkAssertions)
+        Cpp-Options:   -D__CHECK_ASSERTIONS__
+
 --    if flag(useCinternal)
 --        C-Sources:     src/Data/Trie/ByteStringInternal/indexOfDifference.c
 --        CC-Options:    -O3

@@ -59,6 +59,12 @@ module Data.Trie.ArrayMapped.SparseArray
     -- ** Construction
     , empty, singleton, doubleton
     
+    -- ** Conversion to\/from lists
+    , fromList -- fromListWith, fromListWithKey
+    -- fromAscList, fromAscListWith, fromAscListWithKey, fromDistinctAscList
+    -- Can't use the name toList because of conflict with Foldable
+    , assocs, assocsBy, keys, elems
+    
     -- ** Predicates and Queries
     , null, length, member, notMember, isSubarrayOf
     -- isSubmapOf, isSubmapOfBy
@@ -70,12 +76,6 @@ module Data.Trie.ArrayMapped.SparseArray
     -- adjust, adjustWithKey
     -- update, updateWithKey, updateLookupWithKey
     -- alter
-    
-    -- ** Conversion to\/from lists
-    , fromList -- fromListWith, fromListWithKey
-    -- fromAscList, fromAscListWith, fromAscListWithKey, fromDistinctAscList
-    -- Can't use the name toList because of conflict with Foldable
-    , assocs, assocsBy, keys, elems
     
     -- * Views
     , SubsingletonView(..), viewSubsingleton
@@ -160,7 +160,8 @@ import Prelude hiding
     , read
     , elem
     , notElem
-#if __GLASGOW_HASKELL__ >= 710
+-- GHC 7.10.1 <== base-4.8.0.0
+#if (MIN_VERSION_base(4,8,0))
     , traverse
 #endif
     )
@@ -171,7 +172,8 @@ import qualified Data.Foldable as F
     ( elem
     , notElem
     , toList
-#if __GLASGOW_HASKELL__ >= 710
+-- GHC 7.10.1 <== base-4.8.0.0
+#if (MIN_VERSION_base(4,8,0))
     , null
     , length
 #endif
@@ -179,7 +181,8 @@ import qualified Data.Foldable as F
 -}
 import Data.Traversable               (Traversable(traverse))
 -- import Control.Applicative         (Applicative(..))
-#if __GLASGOW_HASKELL__ < 710
+-- GHC 7.10.1 <== base-4.8.0.0
+#if !(MIN_VERSION_base(4,8,0))
 import Control.Applicative            ((<$>))
 #endif
 import Control.Monad                  (replicateM)
@@ -188,7 +191,8 @@ import Control.Monad.ST               -- hiding (runST)
 import GHC.ST                         (ST(..))
 import Control.DeepSeq                (NFData(rnf))
 import Data.Binary
-#if __GLASGOW_HASKELL__ < 710
+-- GHC 7.10.1 <== base-4.8.0.0
+#if !(MIN_VERSION_base(4,8,0))
 import Data.Monoid                    (Monoid(..))
 import Data.Word
 #endif
@@ -205,15 +209,24 @@ import GHC.Exts
     ( build
     , Word(W#), Int(I#), uncheckedShiftL#, not#, and#, neWord#
     , Array#, newArray#, readArray#, writeArray#, indexArray#, freezeArray#, unsafeFreezeArray#, MutableArray#
-#if __GLASGOW_HASKELL__ >= 702
+-- GHC 7.2.1 <== base-4.4.0.0
+#if (MIN_VERSION_base(4,4,0))
 #  ifdef __CHECK_ASSERTIONS__
     , sizeofMutableArray#
 #  endif
+    -- When were these added? They're available since at least ghc-prim-0.3.1.0...
     , copyMutableArray#
-    -- TODO: Which version added these?
-    , copyArray#, isTrue#, sameMutableArray#
+    , copyArray#
+    , sameMutableArray#
 #endif
     )
+-- GHC 7.8.1 <== base-4.7.0.0
+#if (MIN_VERSION_base(4,7,0))
+import GHC.Exts    (isTrue#)
+import Data.Coerce (coerce)
+#else
+import GHC.Exts    ((==#))
+#endif
 -- for c_ffs, used by bit2key, used in turn by viewSubsingleton
 import Foreign.C (CInt(..))
 
@@ -448,7 +461,8 @@ new_ n = new n __undefinedElem
 -- checking when assertions are enabled. Never used if assertions
 -- are disabled.
 lengthMA :: MutableArray# s a -> Int
-#  if __GLASGOW_HASKELL__ >= 702
+-- GHC 7.2.1 <== base-4.4.0.0
+#  if (MIN_VERSION_base(4,4,0))
 lengthMA xs = I# (sizeofMutableArray# xs)
 {-# INLINE lengthMA #-}
 #  else
@@ -479,7 +493,8 @@ write !xs !_i@(I# i) x =
 -- | Unsafely copy some elements of an array. Array bounds are not
 -- checked.
 copyMA :: MutableArray# s e -> Index -> MutableArray# s e -> Index -> Index -> ST s ()
-#if __GLASGOW_HASKELL__ >= 702
+-- GHC 7.2.1 <== base-4.4.0.0
+#if (MIN_VERSION_base(4,4,0))
 {-# INLINE copyMA #-}
 copyMA !src !_sidx@(I# sidx) !dst !_didx@(I# didx) _n@(I# n) =
     CHECK_GE("copyMA: sidx", _sidx, (0 :: Int))
@@ -547,7 +562,8 @@ index xs (I# i) continue = case indexArray# xs i of (# x #) -> continue x
 -- | Unsafely copy some elements of an array. Array bounds are not
 -- checked.
 copy :: Array# e -> Index -> MutableArray# s e -> Index -> Index -> ST s ()
-#if __GLASGOW_HASKELL__ >= 702
+-- GHC 7.2.1 <== base-4.4.0.0
+#if (MIN_VERSION_base(4,4,0))
 {-# INLINE copy #-}
 copy !src !_sidx@(I# sidx) !dst !_didx@(I# didx) _n@(I# n) =
     CHECK_GE("copy: sidx", _sidx, (0 :: Int))
@@ -722,10 +738,10 @@ lazyLookup k (SA p xs) =
 --
 -- Unlike 'lazyLookup', we avoid constructing any thunks here.
 --
--- | /O(FI + PC)/.
--- Look up an element in an array. This function is eager; i.e.,
--- we do all possible work before returning the data constructor
--- for 'Maybe'; thus, by forcing the 'Maybe' constructor, you can
+-- | /O(FI + PC)/. Look up an element in an array.
+--
+-- This function does all possible work before returning the data
+-- constructor for 'Maybe'; thus, by forcing the 'Maybe', you can
 -- force that work (without forcing the array element itself!).
 lookup :: Key -> SparseArray a -> Maybe a
 lookup k (SA p xs) =
@@ -817,7 +833,12 @@ type role DynamicSA nominal representational
 -- Just pointer equality on mutable arrays:
 instance Eq (DynamicSA s e) where
     DSA _ _ _ _ xs == DSA _ _ _ _ ys =
+-- GHC 7.8.1 <== base-4.7.0.0
+#if (MIN_VERSION_base(4,7,0))
         isTrue# (sameMutableArray# xs ys)
+#else
+        1# ==# sameMutableArray# xs ys
+#endif
 
 
 unsafeFreezeDSA :: DynamicSA s a -> ST s (SparseArray a)
@@ -1112,11 +1133,14 @@ map' f =
 "map . map'"   forall f g xs.  map  f (map' g xs) = map  (\x -> f $! g x) xs
 "map' . map'"  forall f g xs.  map' f (map' g xs) = map' (\x -> f $! g x) xs
 
+-- GHC 7.8.1 <== base-4.7.0.0
+#if (MIN_VERSION_base(4,7,0))
 -- See Breitner, Eisenberg, Peyton Jones, and Weirich, "Safe Zero-cost
 -- Coercions for Haskell", section 6.5:
 --   http://research.microsoft.com/en-us/um/people/simonpj/papers/ext-f/coercible.pdf
 "map/coerce"   map  coerce = coerce
 "map'/coerce"  map' coerce = coerce
+#endif
     #-}
 
 
@@ -1179,7 +1203,8 @@ instance Foldable SparseArray where
         go !xs !n !i
             | i < n     = f (xs ! i) (go xs n (i+1))
             | otherwise = z
-    
+
+-- GHC 7.6.1 <== base-4.6.0.0
 #if (MIN_VERSION_base(4,6,0))
     {-# INLINABLE foldr' #-}
     foldr' f = \ !z0 (SA p xs) -> go xs (popCount p - 1) z0
@@ -1195,7 +1220,8 @@ instance Foldable SparseArray where
         go !xs !n
             | n >= 0    = f (go xs (n-1)) (xs ! n)
             | otherwise = z
-    
+
+-- GHC 7.6.1 <== base-4.6.0.0
 #if (MIN_VERSION_base(4,6,0))
     {-# INLINABLE foldl' #-}
     foldl' f = \ !z0 (SA p xs) -> go xs (popCount p) 0 z0
@@ -1231,7 +1257,7 @@ instance Foldable SparseArray where
             if n == 0 then error "foldr1: empty Array" else go 0
     -}
 
--- aka GHC >= 7.10
+-- GHC 7.10.1 <== base-4.8.0.0
 #if (MIN_VERSION_base(4,8,0))
     {-# INLINE toList #-}
     toList = elems    -- this is identical to the default implementation
@@ -1380,10 +1406,9 @@ filterMap f (SA p xs) =
                         go (i+1) (getNextBit p bi) j q
             --
         in go 0 (getFirstBit p) 0 0
-{-# INLINABLE filterMap #-}
 
--- The inline pragma is to avoid warnings about the rules possibly
--- not firing
+-- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to 
+-- avoid warnings about the rules possibly not firing...
 {-# NOINLINE [1] filterMap #-}
 {-# RULES
 -- These ones are probably useless...
@@ -1455,10 +1480,9 @@ filter f xz@(SA p xs) =
                 where x = xs ! i
             --
         in go 0 (getFirstBit p) 0 0
-{-# INLINABLE filter #-}
 
--- The inline pragma is to avoid warnings about the rules possibly
--- not firing
+-- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to 
+-- avoid warnings about the rules possibly not firing...
 {-# NOINLINE [1] filter #-}
 {-# RULES
 -- These ones are probably useless...
@@ -1544,10 +1568,9 @@ partition f xz@(SA p xs) =
                 where x = xs ! i
             --
         in go 0 (getFirstBit p) 0 0 0 0
-{-# INLINABLE partition #-}
 
--- The inline pragma is to avoid warnings about the rules possibly
--- not firing
+-- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to 
+-- avoid warnings about the rules possibly not firing...
 {-# NOINLINE [1] partition #-}
 {-# RULES
 -- These ones are probably useless...
@@ -1610,10 +1633,9 @@ partitionMap f (SA p xs) =
                         go (i+1) (getNextBit p bi) j q (k+1) (r .|. bi)
             --
         in go 0 (getFirstBit p) 0 0 0 0
-{-# INLINABLE partitionMap #-}
 
--- The inline pragma is to avoid warnings about the rules possibly
--- not firing
+-- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to 
+-- avoid warnings about the rules possibly not firing...
 {-# NOINLINE [1] partitionMap #-}
 {-# RULES
 -- These ones are probably useless...
@@ -1939,7 +1961,8 @@ unionFilterWithKey_
 -}
 
 ----------------------------------------------------------------
--- | Left-biased intersection.
+-- | For each of the keys in the intersection, retain the elements
+-- of the left array.
 intersectionL :: SparseArray a -> SparseArray b -> SparseArray a
 intersectionL =
     \(SA p xs) (SA q _) ->
@@ -1958,12 +1981,15 @@ intersectionL =
             go n p xs r zs (getNextBit r b) (k+1)
 
 
--- | Right-biased intersection.
+-- | For each of the keys in the intersection, retain the elements
+-- of the right array.
 intersectionR :: SparseArray a -> SparseArray b -> SparseArray b
 intersectionR = flip intersectionL
 {-# INLINE intersectionR #-}
 
 
+-- | For each of the keys in the intersection, construct an element
+-- by combining the elements of the two arrays.
 intersectionWith, intersectionWith'
     :: (a -> b -> c)
     -> SparseArray a -> SparseArray b -> SparseArray c
@@ -1999,6 +2025,8 @@ intersectionWithKey
 ----------------------------------------------------------------
     -- differenceL, differenceR, symdiff, symdiffWith, symdiffWith_
 
+-- | Remove the elements of the left array whose keys are bound in
+-- the right array.
 differenceL
     :: SparseArray a -> SparseArray b -> SparseArray a
 differenceL = \(SA p xs) (SA q _) ->
@@ -2017,6 +2045,8 @@ differenceL = \(SA p xs) (SA q _) ->
                 go p xs r zs n (k+1) (getNextBit r b)
 
 
+-- | Remove the elements of the right array whose keys are bound
+-- in the left array.
 differenceR
     :: SparseArray a -> SparseArray b -> SparseArray b
 differenceR = flip differenceL

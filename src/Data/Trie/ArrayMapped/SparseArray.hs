@@ -41,7 +41,7 @@
 -- unlikely to matter. Notably, "GHC.Arr" doesn't use CONLIKE anywhere...
 
 ----------------------------------------------------------------
---                                                  ~ 2015.04.08
+--                                                  ~ 2015.04.09
 -- |
 -- Module      :  Data.Trie.ArrayMapped.SparseArray
 -- Copyright   :  Copyright (c) 2014--2015 wren gayle romano; 2010--2012 Johan Tibell
@@ -78,9 +78,12 @@ module Data.Trie.ArrayMapped.SparseArray
     -- isProperSubarrayOf, isProperSubmapOf, isProperSubmapOfBy
     
     -- ** Single-element operations
-    , lookup, insert, delete
+    , lookup
+    , insert, insert'
+    , delete
     -- insertWith, insertWithKey, insertLookup, insertLookupWithKey
-    -- adjust, adjustWithKey
+    , adjust, adjust' -- adjustWithKey, adjustWithKey'
+    , adjustK, adjustK'
     -- update, updateWithKey, updateLookupWithKey
     -- alter
     
@@ -114,10 +117,7 @@ module Data.Trie.ArrayMapped.SparseArray
     
     -- * Set-theoretic operations
     -- ** Right-biased zipping functions
-    -- | These functions iterate over the keys\/elements of @rs@,
-    -- only picking out those elements of @ls@ which correspond.
-    -- Thus, only when @(ls \``isSubarrayOf`\` rs)@ do we end up
-    -- enumerating every element of @ls@.
+    -- $rzip
     , rzip, rzipWith, rzipWith_
     , rzipWith', rzipWith'_
     , rzipWithKey, rzipWithKey_
@@ -732,7 +732,7 @@ notMember :: Key -> SparseArray a -> Bool
 notMember k (SA p _) = key2bit k `notElem` p
 {-# INLINE notMember #-}
 
-
+----------------------------------------------------------------
 {-
 -- TODO: would we *ever* want to postpone computing @bit2index p b@ too??
 -- TODO: do we ever actually want/need this function?
@@ -779,11 +779,18 @@ lookup k (SA p xs) =
 {-# INLINE lookup #-}
 
 
--- | /O(n)/. Create a copy of the array, inserting (or overwriting)
--- a new value.
+-- | /O(n)/. A variant of 'insert' which forces the value before
+-- inserting it.
+insert' :: Key -> a -> SparseArray a -> SparseArray a
+insert' !k !x = insert k x
+{-# INLINE insert' #-}
+
+
+-- | /O(n)/. Create a copy of the array, storing the given value
+-- at the key (replacing the old value, if any).
 insert :: Key -> a -> SparseArray a -> SparseArray a
 insert !k x sa@(SA p xs) =
-    CHECK_KEY("lookup", k)
+    CHECK_KEY("insert", k)
     let b = key2bit k
         i = bit2index p b
     in
@@ -805,19 +812,105 @@ insert !k x sa@(SA p xs) =
             unsafeFreeze (p .|. b) xs'
 
 
+-- | /O(n)/. Apply a function to the element at a given key. If
+-- there is no such element, then returns the original array.
+adjust :: (a -> a) -> Key -> SparseArray a -> SparseArray a
+-- adjust f k sa = adjustK f k sa sa id
+adjust f !k sa@(SA p xs) =
+    CHECK_KEY("adjust", k)
+    let b = key2bit k in
+    if b `elem` p
+    then
+        let maxN = length sa in
+        runST $
+            new_ maxN $ \xs' -> do
+            copy  xs 0 xs' 0 maxN
+            let i = bit2index p b
+            index xs  i $ \x -> do
+            write xs' i (f x)
+            unsafeFreeze p xs'
+    else sa
+
+
+-- | /O(n)/. A variant of 'adjust' which forces the result of the
+-- function.
+adjust' :: (a -> a) -> Key -> SparseArray a -> SparseArray a
+-- adjust' f k sa = adjustK' f k sa sa id
+adjust' f !k sa@(SA p xs) =
+    CHECK_KEY("adjust'", k)
+    let b = key2bit k in
+    if b `elem` p
+    then
+        let maxN = length sa in
+        runST $
+            new_ maxN $ \xs' -> do
+            copy  xs 0 xs' 0 maxN
+            let i = bit2index p b
+            index xs  i $ \x -> do
+            write xs' i $! f x
+            unsafeFreeze p xs'
+    else sa
+
+
+-- | A CPSed version of 'adjust' which will call one of the two
+-- continuations depending on whether the array is changed or
+-- unchanged.
+adjustK
+    :: (a -> a) -> Key -> SparseArray a
+    -> b -> (SparseArray a -> b) -> b
+adjustK f !k sa@(SA p xs) unchanged changed =
+    CHECK_KEY("adjustK", k)
+    let b = key2bit k in
+    if b `elem` p
+    then
+        let maxN = length sa
+            sa'  = runST $
+                new_ maxN $ \xs' -> do
+                copy  xs 0 xs' 0 maxN
+                let i = bit2index p b
+                index xs  i $ \x -> do
+                write xs' i (f x)
+                unsafeFreeze p xs'
+        in changed sa'
+    else unchanged
+{-# INLINE adjustK #-}
+
+-- | A CPSed version of 'adjust'' which will call one of the two
+-- continuations depending on whether the array is changed or
+-- unchanged.
+adjustK'
+    :: (a -> a) -> Key -> SparseArray a
+    -> b -> (SparseArray a -> b) -> b
+adjustK' f !k sa@(SA p xs) unchanged changed =
+    CHECK_KEY("adjustK'", k)
+    let b = key2bit k in
+    if b `elem` p
+    then
+        let maxN = length sa
+            sa'  = runST $
+                new_ maxN $ \xs' -> do
+                copy  xs 0 xs' 0 maxN
+                let i = bit2index p b
+                index xs  i $ \x -> do
+                write xs' i $! f x
+                unsafeFreeze p xs'
+        in changed sa'
+    else unchanged
+{-# INLINE adjustK' #-}
+
+
 -- | /O(n)/. Create a copy of the array, removing a key. If the key
 -- is not present, then returns the same array.
 delete :: Key -> SparseArray a -> SparseArray a
 delete !k sa@(SA p xs) =
     CHECK_KEY("delete", k)
-    let b = key2bit k
-        i = bit2index p b
-    in
+    let b = key2bit k in
     if b `elem` p
     then
         let maxN = length sa - 1 in
         runST $
             new_ maxN $ \xs' -> do
+            let i = bit2index p b
             copy xs 0 xs' 0 i
             copy xs (i+1) xs' i (maxN-i)
             unsafeFreeze (p `xor` b) xs'
@@ -1714,9 +1807,11 @@ partitionMapWithKey f (SA p xs) =
 
 
 ----------------------------------------------------------------
--- All these functions assume (xz `isSubarrayOf` yz) and operate
--- accordingly. If that's not the case, then they work as if operating
--- on the subarray of xz such that it is the case
+-- $rzip
+-- These functions iterate over the keys\/elements of @rs@,
+-- only picking out those elements of @ls@ which correspond.
+-- Thus, only when @(ls \``isSubarrayOf`\` rs)@ do we end up
+-- enumerating every element of @ls@.
 
 
 rzipWith_, rzipWith'_

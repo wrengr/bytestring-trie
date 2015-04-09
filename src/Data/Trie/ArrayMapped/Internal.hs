@@ -9,7 +9,7 @@
 -- TODO: benchmark using SA.lazyLookup instead of SA.lookup
 
 ----------------------------------------------------------------
---                                                  ~ 2015.04.05
+--                                                  ~ 2015.04.09
 -- |
 -- Module      :  Data.Trie.ArrayMapped.Internal
 -- Copyright   :  Copyright (c) 2014--2015 wren gayle romano
@@ -40,7 +40,8 @@ module Data.Trie.ArrayMapped.Internal
     , lookupBy_, submap
     
     -- * Single-value modification
-    , alterBy, alterBy_, adjustBy
+    , alter, alterBy, alterBy_
+    , adjust, adjust'
     
     -- * Combining tries
     , mergeBy
@@ -624,7 +625,7 @@ singleton s v
 
 
 -- | /O(n)/, Get count of elements in trie.
-size  :: Trie a -> Int
+size :: Trie a -> Int
 size = \t0 ->
         case t0 of
         Accept _ t -> go 1 t
@@ -711,7 +712,7 @@ assocsByFB f t cons nil = foldrWithKey ((cons .) . f) nil t
             lookupBy_ ((k .) . accept) (k . reject) s t
     -}
 
-
+-- TODO: move this to "Data.Trie.ArrayMapped.Base"
 -- | Does a string have a value in the trie?
 --
 -- > member = (isJust .) . lookup
@@ -727,6 +728,7 @@ member = lookupBy_ (\_ _ -> True) (const False)
     -}
 
 
+-- TODO: move this to "Data.Trie.ArrayMapped.Base"
 -- | Return the value associated with a string, if it exists.
 --
 -- > lookup = lookupBy const
@@ -772,6 +774,7 @@ subtrie = lookupBy_ Accept Reject
     -}
 
 
+-- TODO: move this to "Data.Trie.ArrayMapped.Base"
 -- | Generic function to find a value (if it exists) and the subtrie
 -- rooted at the prefix. If you're going to do case analysis on the
 -- 'Maybe' in order to decide what to do next, then you should use
@@ -827,8 +830,8 @@ lookupBy_ accept reject = start
 -- This function may not have the most useful return type. For a
 -- version that returns the prefix itself as well as the remaining
 -- string, see @match@ in "Data.Trie.ArrayMapped.Base".
-match_ :: Trie a -> ByteString -> Maybe (Int, a)
-match_ = flip start
+match_ :: ByteString -> Trie a -> Maybe (Int, a)
+match_ = start
     where
     start q (Accept v t)
         | BS.null q = Just (0,v)
@@ -916,15 +919,120 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
 -- Single-value modification functions (recurse and clone spine)
 ---------------------------------------------------------------}
 
-alterSubtrie :: (Trie a -> Trie a) -> ByteString -> Trie a -> Trie a
-alterSubtrie f = alterSubtrie_ ((f .) . Accept) (f . Reject)
-{-# INLINE alterSubtrie #-}
+-- TODO: try to retain/recover structure sharing when we change nothing?
+--
+-- | Alter the value associated with a given key. If the key is not
+-- present, then the trie is returned unaltered. See 'alter' if
+-- you are interested in inserting new keys or deleting old keys.
+-- Because this function does not need to worry about changing the
+-- trie structure, it is somewhat faster than 'alter'.
+adjust :: (a -> a) -> ByteString -> Trie a -> Trie a
+adjust f = start
+    where
+    start q (Accept v t)
+        | BS.null q = Accept (f v) t
+        | otherwise = Accept v (go q t)
+    start q t0@(Reject t)
+        | BS.null q = t0
+        | otherwise = Reject (go q t)
+
+    go !q t0@Empty       = t0
+    go  q t0@(Arc s v t) =
+        let (p,q',s') = breakMaximalPrefix q s in
+        case (BS.null q', BS.null s') of
+        (True,  True)  -> Arc s (f v) t -- p == q == s
+        (True,  False) -> t0
+        (False, True)  -> Arc s v (go q' t)
+        (False, False) -> t0
+    go  q t0@(Branch s vz tz) =
+        let (p,q',s') = breakMaximalPrefix q s in
+        case BS.uncons q' of
+        Nothing     -> t0
+        Just (w,ws) ->
+            if BS.null s'
+            then
+                if BS.null ws
+                then SA.adjustK f w vz t0 (\vz' -> Branch s vz' tz)
+                    {-
+                    case SA.lookup w vz of
+                    Nothing -> t0
+                    Just v  -> Branch s (SA.insert w (f v) vz) tz
+                    -}
+                else SA.adjustK' (go ws) w tz t0 (Branch s vz)
+                    {-
+                    case SA.lookup w tz of
+                    Nothing -> t0
+                    Just t  -> Branch s vz (SA.insert' w (go ws t) tz)
+                    -}
+            else t0
 
 
-alterSubtrie_
+-- | A strict variant of 'adjust'.
+adjust' :: (a -> a) -> ByteString -> Trie a -> Trie a
+adjust' f = start
+    where
+    start q (Accept v t)
+        | BS.null q = Accept (f v) t
+        | otherwise = Accept v (go q t)
+    start q t0@(Reject t)
+        | BS.null q = t0
+        | otherwise = Reject (go q t)
+
+    go !q t0@Empty       = t0
+    go  q t0@(Arc s v t) =
+        let (p,q',s') = breakMaximalPrefix q s in
+        case (BS.null q', BS.null s') of
+        (True,  True)  -> Arc s (f v) t -- p == q == s
+        (True,  False) -> t0
+        (False, True)  -> Arc s v (go q' t)
+        (False, False) -> t0
+    go  q t0@(Branch s vz tz) =
+        let (p,q',s') = breakMaximalPrefix q s in
+        case BS.uncons q' of
+        Nothing     -> t0
+        Just (w,ws) ->
+            if BS.null s'
+            then
+                if BS.null ws
+                then SA.adjustK' f w vz t0 (\vz' -> Branch s vz' tz)
+                else SA.adjustK' (go ws) w tz t0 (Branch s vz)
+            else t0
+
+
+----------------------------------------------------------------
+-- TODO: We should CPS on Empty to avoid cloning spine if no change.
+-- Difficulties arise with the calls to 'branch' and 'arc'. Will
+-- have to create a continuation chain, so no savings on memory
+-- allocation; but would have savings on held memory, if they're
+-- still holding the old one...
+
+
+-- | Generic function to alter a trie by one element. If the query
+-- string has a value, then we pass @Just@ that value to the function;
+-- otherwise we pass @Nothing@. If the function returns @Just@ some
+-- value, then the query string will have that value in the result;
+-- otherwise, the query will be bound to @Nothing@.
+alter :: (Maybe a -> Maybe a) -> ByteString -> Trie a -> Trie a
+alter f =
+    alterBy_
+        (\v t -> mkTrie (f (Just v)) t)
+        (\  t -> mkTrie (f Nothing)  t)
+{-# INLINE alter #-}
+
+
+-- | A variant of 'alter' which also allows modifying the sub-trie.
+alterBy :: (Trie a -> Trie a) -> ByteString -> Trie a -> Trie a
+alterBy f =
+    alterBy_
+        (\v t -> f (Accept v t))
+        (\  t -> f (Reject   t))
+{-# INLINE alterBy #-}
+
+
+alterBy_
     :: (a -> Trunk a -> Trie a) -> (Trunk a -> Trie a)
     -> ByteString -> Trie a -> Trie a
-alterSubtrie_ accept reject = start
+alterBy_ accept reject = start
     where
     start q (Accept v t)
         | BS.null q = accept v t
@@ -966,75 +1074,17 @@ alterSubtrie_ accept reject = start
                 else
                     case SA.lookup w tz of
                     Nothing -> prependT_ p
-                        . error "alterSubtrie_: unimplemented"
-                        $ SA.insert w (prependT_ ws $ reject Empty) tz
+                        . error "alterBy_: unimplemented"
+                        $ SA.insert' w (prependT_ ws $ reject Empty) tz
                     Just t' -> prepend_ p (go ws t')
             else branch2 p s' (Reject $ Branch BS.empty vz tz)
                            q' (reject Empty)
 
 
-
-adjustWithKey :: (ByteString -> a -> a) -> ByteString -> Trie a -> Trie a
-adjustWithKey f s = adjust (f s) s
-
-
--- | Alter the value associated with a given key. If the key is not
--- present, then the trie is returned unaltered. See 'alterBy' if
--- you are interested in inserting new keys or deleting old keys.
--- Because this function does not need to worry about changing the
--- trie structure, it is somewhat faster than 'alterBy'.
-adjust :: (a -> a) -> ByteString -> Trie a -> Trie a
-adjust f = start
-    where
-    start q t
-        | BS.null q = elimTrie (Accept . f) (const t) t
-        | otherwise = go q (trie2trunk t)
-
-    go !q Empty       = Empty
-    go  q (Arc s v t) =
-        let (p,q',s') = breakMaximalPrefix q s in
-        case (BS.null q', BS.null s') of
-        (True,  True)  -> prepend_ p (Accept v t) -- p == q == s
-        (True,  False) -> prepend_ p (Reject (prepend_ s' t))
-        (False, True)  -> Arc s v (go q' t)
-        (False, False) -> branch2 p s' (Accept v t) q' (Reject Empty)
-    go  q (Branch s vz tz) =
-        let (sh,q',s') = breakMaximalPrefix q s in
-        error "adjust@Branch: unimplemented" -- TODO
-
-
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 ----------------------------------------------------------------
-
--- TODO: We should CPS on Empty to avoid cloning spine if no change.
--- Difficulties arise with the calls to 'branch' and 'arc'. Will
--- have to create a continuation chain, so no savings on memory
--- allocation; but would have savings on held memory, if they're
--- still holding the old one...
---
--- | Generic function to alter a trie by one element with a function
--- to resolve conflicts (or non-conflicts).
-alterBy :: (ByteString -> a -> Maybe a -> Maybe a)
-         -> ByteString -> a -> Trie a -> Trie a
-alterBy f = alterBy_ (\k v mv t -> mkTrie (f k v mv) t)
-
-
--- | A variant of 'alterBy' which also allows modifying the sub-trie. 
-alterBy_ :: (ByteString -> a -> Trie a -> Trie a)
-         -> ByteString -> a -> Trie a -> Trie a
-alterBy_ = error "alterBy_: unimplemented" -- TODO
-
-
--- | Alter the value associated with a given key. If the key is not
--- present, then the trie is returned unaltered. See 'alterBy' if
--- you are interested in inserting new keys or deleting old keys.
--- Because this function does not need to worry about changing the
--- trie structure, it is somewhat faster than 'alterBy'.
-adjustBy :: (ByteString -> a -> a -> a)
-         -> ByteString -> a -> Trie a -> Trie a
-adjustBy = error "adjustBy: unimplemented" -- TODO
 
 
 {---------------------------------------------------------------

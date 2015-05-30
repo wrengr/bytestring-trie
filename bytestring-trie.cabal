@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren gayle romano <wren@community.haskell.org>   ~ 2015.03.23
+-- wren gayle romano <wren@community.haskell.org>   ~ 2015.05.30
 ----------------------------------------------------------------
 
 -- By and large Cabal >=1.2 is fine; but >= 1.6 gives tested-with:
@@ -8,7 +8,7 @@ Cabal-Version:  >= 1.6
 Build-Type:     Simple
 
 Name:           bytestring-trie
-Version:        0.3.0.2
+Version:        0.3.0.3
 Stability:      experimental
 Homepage:       http://code.haskell.org/~wren/
 Author:         wren gayle romano
@@ -44,7 +44,7 @@ Description:    An efficient finite map from (byte)strings to values.
 Tested-With:
     GHC == 7.8.3, GHC == 7.10.1
 Extra-source-files:
-    AUTHORS, VERSION
+    AUTHORS, CHANGELOG
 Source-Repository head
     Type:     darcs
     Location: http://community.haskell.org/~wren/bytestring-trie

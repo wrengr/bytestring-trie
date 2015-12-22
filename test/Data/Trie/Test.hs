@@ -21,6 +21,7 @@
 module Data.Trie.Test (packC2W, main) where
 
 import qualified Data.Trie                as T
+import qualified Data.Trie.Internal       as TI
 import qualified Data.Trie.Convenience    as TC
 import qualified Data.ByteString          as S
 import qualified Data.ByteString.Internal as S (c2w, w2c)
@@ -70,6 +71,7 @@ main  = do
     checkQuick 500  (prop_submap2       :: Str -> T.Trie Int -> Bool)
     checkQuick 500  (prop_submap3       :: Str -> T.Trie Int -> Bool)
     checkQuick 500  (prop_toList        :: T.Trie Int -> Bool)
+    checkQuick 500  (prop_isect         :: T.Trie Int -> T.Trie Int -> Bool)
     checkQuick 500  (prop_fromList_takes_first :: [(Str, Int)] -> Bool)
     checkQuick 500  (prop_fromListR_takes_first :: [(Str, Int)] -> Bool)
     checkQuick 500  (prop_fromListL_takes_first :: [(Str, Int)] -> Bool)
@@ -329,6 +331,10 @@ prop_submap3 :: (Eq a) => Str -> T.Trie a -> Bool
 prop_submap3 (Str k) t =
     (\q -> T.lookup q t' == T.lookup q t) `all` T.keys t'
     where t' = T.submap k t
+
+prop_isect :: (Eq a) => T.Trie a -> T.Trie a -> Bool
+prop_isect t0 t1 =
+  TI.intersectBy (\a _ -> Just a) t0 t1 == TC.disunion (T.unionL t0 t1) (TC.disunion t0 t1)
 
 -- | Keys are ordered when converting to a list
 prop_toList :: T.Trie a -> Bool

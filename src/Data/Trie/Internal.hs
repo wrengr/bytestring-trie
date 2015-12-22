@@ -44,7 +44,7 @@ module Data.Trie.Internal
     , alterBy, alterBy_, adjustBy
 
     -- * Combining tries
-    , mergeBy
+    , mergeBy, intersectBy
 
     -- * Mapping functions
     , mapBy
@@ -1049,6 +1049,93 @@ mergeMaybe _ Nothing      Nothing  = Nothing
 mergeMaybe _ Nothing mv1@(Just _)  = mv1
 mergeMaybe _ mv0@(Just _) Nothing  = mv0
 mergeMaybe f (Just v0)   (Just v1) = f v0 v1
+
+intersectBy :: (a -> a -> Maybe a) -> Trie a -> Trie a -> Trie a
+intersectBy f = intersectBy'
+    where
+    -- | Deals with epsilon entries, before recursing into @go@
+    intersectBy'
+        t0_@(Arc k0 mv0 t0)
+        t1_@(Arc k1 mv1 t1)
+        | S.null k0 && S.null k1 =  arc k0 (intersectMaybe f mv0 mv1) (go t0 t1)
+        | S.null k0              =  arc k0 mv0 (go t0 t1_)
+        |              S.null k1 =  arc k1 mv1 (go t1 t0_)
+    intersectBy'
+        (Arc k0 mv0@(Just _) t0)
+        t1_@(Branch _ _ _ _)
+        | S.null k0              =  arc k0 mv0 (go t0 t1_)
+    intersectBy'
+        t0_@(Branch _ _ _ _)
+        (Arc k1 mv1@(Just _) t1)
+        | S.null k1              =  arc k1 mv1 (go t1 t0_)
+    intersectBy' t0_ t1_         =  go t0_ t1_
+
+
+    -- | The main recursion
+    go Empty _    =  Empty
+    go _    Empty =  Empty
+
+    -- mergeBy had /O(n+m)/ for this part where /n/ and /m/ are sizes of the branchings
+    go  t0@(Branch p0 m0 l0 r0)
+        t1@(Branch p1 m1 l1 r1)
+        | shorter m0 m1  =  union0
+        | shorter m1 m0  =  union1
+        | p0 == p1       =  branch p0 m0 (go l0 l1) (go r0 r1)
+        | otherwise      =  Empty
+        where
+        union0  | nomatch p1 p0 m0  = Empty
+                | zero p1 m0        = branch p0 m0 (go l0 t1) Empty
+                | otherwise         = branch p0 m0 Empty (go r0 t1)
+
+        union1  | nomatch p0 p1 m1  = Empty
+                | zero p0 m1        = branch p1 m1 (go t0 l1) Empty
+                | otherwise         = branch p1 m1 Empty (go t0 r1)
+
+    go t0_@(Arc k0 mv0 t0)
+       t1_@(Arc k1 mv1 t1)
+        | m' == 0 =
+            let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
+            if S.null pre
+            then error "intersectBy: no mask, but no prefix string"
+            else let {-# INLINE arcIntersect #-}
+                     arcIntersect mv' t1' t2' = arc pre mv' (go t1' t2')
+                    in case (S.null k0', S.null k1') of
+                        (True, True)  -> arcIntersect (intersectMaybe f mv0 mv1) t0 t1
+                        (True, False) -> arcIntersect Nothing t0 (Arc k1' mv1 t1)
+                        (False,True)  -> arcIntersect Nothing (Arc k0' mv0 t0) t1
+                        (False,False) -> arcIntersect Nothing (Arc k0' mv0 t0) (Arc k1' mv1 t1)
+        where
+        p0 = getPrefix t0_
+        p1 = getPrefix t1_
+        m' = branchMask p0 p1
+
+    go t0_@(Arc _ _ _)
+       t1_@(Branch _p1 m1 l r)
+        | nomatch p0 p1 m1 = Empty
+        | zero p0 m1       = branch p1 m1 (go t0_ l) Empty
+        | otherwise        = branch p1 m1 Empty (go t0_ r)
+        where
+        p0 = getPrefix t0_
+        p1 = getPrefix t1_
+
+    go t0_@(Branch _p0 m0 l r)
+       t1_@(Arc _ _ _)
+        | nomatch p1 p0 m0 = Empty
+        | zero p1 m0       = branch p0 m0 (go l t1_) Empty
+        | otherwise        = branch p0 m0 Empty (go r t1_)
+        where
+        p0 = getPrefix t0_
+        p1 = getPrefix t1_
+
+    go _ _ =  Empty
+
+
+intersectMaybe :: (a -> a -> Maybe a) -> Maybe a -> Maybe a -> Maybe a
+{-# INLINE intersectMaybe #-}
+intersectMaybe f (Just v0)   (Just v1) = f v0 v1
+intersectMaybe _ _            _        = Nothing
+
+
 
 
 {-----------------------------------------------------------

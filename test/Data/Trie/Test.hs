@@ -7,10 +7,10 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2011.02.12
+--                                                  ~ 2016.04.10
 -- |
 -- Module      :  Data.Trie.Test
--- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2016 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  provisional
@@ -33,10 +33,8 @@ import qualified Test.SmallCheck.Series as SC
 -- import qualified Test.LazySmallCheck as LSC
 -- import qualified Test.SparseCheck    as PC
 
-import Data.Monoid
-import Control.Monad (liftM)
-import Data.List     (nubBy, sortBy)
-import Data.Ord      (comparing)
+import Data.List (nubBy, sortBy)
+import Data.Ord  (comparing)
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
@@ -84,10 +82,10 @@ main  = do
     putStrLn "smallcheck @ ():" -- Beware the exponential!
     checkSmall 3 (prop_insert        :: Str -> () -> T.Trie () -> Bool)
     checkSmall 7 (prop_singleton     :: Str -> () -> Bool)
-    checkSmall 3 (prop_size_insert   :: Str -> () -> T.Trie () -> SC.Property)
-    checkSmall 3 (prop_size_delete   :: Str -> () -> T.Trie () -> SC.Property)
-    checkSmall 3 (prop_insert_delete :: Str -> () -> T.Trie () -> SC.Property)
-    checkSmall 3 (prop_delete_lookup :: Str -> T.Trie () -> SC.Property)
+    checkSmall 3 (prop_size_insert   :: Str -> () -> T.Trie () -> SC.Property IO)
+    checkSmall 3 (prop_size_delete   :: Str -> () -> T.Trie () -> SC.Property IO)
+    checkSmall 3 (prop_insert_delete :: Str -> () -> T.Trie () -> SC.Property IO)
+    checkSmall 3 (prop_delete_lookup :: Str -> T.Trie () -> SC.Property IO)
     checkSmall 3 (prop_submap1       :: Str -> T.Trie () -> Bool)
     checkSmall 3 (prop_submap2       :: Str -> T.Trie () -> Bool)
     -- checkSmall 3 (prop_submap3 :: Str -> T.Trie () -> Bool)
@@ -117,7 +115,7 @@ main  = do
 #   if MIN_VERSION_QuickCheck(2,5,0)
             -- Failures-per-success before giving up.
             -- TODO: needs tweaking.
-            , QC.maxDiscardRatio = 1000 `max` 10*n
+            , QC.maxDiscardRatio = 10
 #   else
             -- Total failures before giving up.
             , QC.maxDiscard = 1000 `max` 10*n
@@ -237,27 +235,22 @@ instance (QC.Arbitrary a) => QC.Arbitrary (T.Trie a) where
     -- coarbitrary -- used in QCv1, separated in QCv2
 
 ----------------------------------------------------------------
-{-
-N.B., in smallcheck-0.6.2 we have @class Serial (a :: *)@ as a single class,
-whereas in smallcheck-1.0.0 et seq we have @class Monad m => Serial (m::*->*) (a::*)@ and similarly for 'CoSerial'. This is part of why the versins are radically incompatible and so we require the newest smallcheck.
--}
-
 instance (Monad m) => SC.Serial m Letter where
-    series d = take (d+1) $ map Letter letters
+    series = SC.generate $ \d -> take (d+1) $ map Letter letters
 
 instance (Monad m) => SC.CoSerial m Letter where
-    coseries rs d = do
-        f <- SC.coseries rs d
+    coseries rs = do
+        f <- SC.coseries rs
         return $ \c -> f (fromEnum (unLetter c) - fromEnum 'a')
 
 instance (Monad m) => SC.Serial m Str where
-    series d =
-        liftM (Str . packC2W . map unLetter) (SC.series d :: [[Letter]])
+    series = (Str . packC2W . map unLetter) <$> SC.series
 
 instance (Monad m) => SC.CoSerial m Str where
-    coseries rs d = do
-        y <- SC.alts0 rs d
-        f <- SC.alts2 rs d
+    coseries rs = do
+        rs' <- SC.fixDepth rs
+        y   <- SC.alts0 rs'
+        f   <- SC.alts2 rs'
         return $ \(Str xs) ->
             if S.null xs
             then y

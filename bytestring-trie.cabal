@@ -105,6 +105,7 @@ Test-Suite test-all
     Type:           exitcode-stdio-1.0
     -- HACK: main-is must *not* have ./test/ like it does for executables!
     Main-Is:        Data/Trie/Test.hs
+    GHC-Options:    -main-is Data.Trie.Test.main
     Build-Depends:   bytestring-trie >= 0.3.0.3
                    , binary
                    -- Actual min-version of deepseq is unknown

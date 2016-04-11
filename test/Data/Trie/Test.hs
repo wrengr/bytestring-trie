@@ -20,14 +20,16 @@
 ----------------------------------------------------------------
 module Data.Trie.Test (packC2W, main) where
 
-import qualified Data.Trie                as T
-import qualified Data.Trie.Convenience    as TC
+import qualified Data.Trie.BigEndianPatricia.Base as T
+import qualified Data.Trie.BigEndianPatricia.Convenience as TC
 import qualified Data.ByteString          as S
 import qualified Data.ByteString.Internal as S (c2w, w2c)
 
 import qualified Test.HUnit          as HU
 import qualified Test.QuickCheck     as QC
 import qualified Test.SmallCheck     as SC
+-- TODO: CPP protect based on the version of smallcheck
+import qualified Test.SmallCheck.Series as SC
 -- import qualified Test.LazySmallCheck as LSC
 -- import qualified Test.SparseCheck    as PC
 
@@ -112,7 +114,14 @@ main  = do
         QC.quickCheckWith (QC.stdArgs
             { QC.maxSize    = n
             , QC.maxSuccess = n
+#   if MIN_VERSION_QuickCheck(2,5,0)
+            -- Failures-per-success before giving up.
+            -- TODO: needs tweaking.
+            , QC.maxDiscardRatio = 1000 `max` 10*n
+#   else
+            -- Total failures before giving up.
             , QC.maxDiscard = 1000 `max` 10*n
+#   endif
             })
 #endif
     checkSmall d f = SC.smallCheck d f >> putStrLn ""
@@ -228,38 +237,46 @@ instance (QC.Arbitrary a) => QC.Arbitrary (T.Trie a) where
     -- coarbitrary -- used in QCv1, separated in QCv2
 
 ----------------------------------------------------------------
--- cf <http://www.cs.york.ac.uk/fp/darcs/smallcheck/README>
--- type Series a = Int -> [a]
+{-
+N.B., in smallcheck-0.6.2 we have @class Serial (a :: *)@ as a single class,
+whereas in smallcheck-1.0.0 et seq we have @class Monad m => Serial (m::*->*) (a::*)@ and similarly for 'CoSerial'. This is part of why the versins are radically incompatible and so we require the newest smallcheck.
+-}
 
-instance SC.Serial Letter where
-    series      d = take (d+1) $ map Letter letters
-    coseries rs d = do f <- SC.coseries rs d
-                       return $ \c -> f (fromEnum (unLetter c) - fromEnum 'a')
-    
-instance SC.Serial Str where
-    series      d = liftM (Str . packC2W . map unLetter)
-                          (SC.series d :: [[Letter]])
-    
-    coseries rs d = do y <- SC.alts0 rs d
-                       f <- SC.alts2 rs d
-                       return $ \(Str xs) ->
-                           if S.null xs
-                           then y
-                           else f (Letter . S.w2c $ S.head xs)
-                                  (Str $ S.tail xs)
+instance (Monad m) => SC.Serial m Letter where
+    series d = take (d+1) $ map Letter letters
+
+instance (Monad m) => SC.CoSerial m Letter where
+    coseries rs d = do
+        f <- SC.coseries rs d
+        return $ \c -> f (fromEnum (unLetter c) - fromEnum 'a')
+
+instance (Monad m) => SC.Serial m Str where
+    series d =
+        liftM (Str . packC2W . map unLetter) (SC.series d :: [[Letter]])
+
+instance (Monad m) => SC.CoSerial m Str where
+    coseries rs d = do
+        y <- SC.alts0 rs d
+        f <- SC.alts2 rs d
+        return $ \(Str xs) ->
+            if S.null xs
+            then y
+            else f (Letter . S.w2c $ S.head xs) (Str $ S.tail xs)
 
 -- TODO: This instance really needs some work. The smart constructures ensure only valid values are generated, but there are redundancies and inefficiencies.
-instance (Monoid a, SC.Serial a) => SC.Serial (T.Trie a) where
+instance (Monoid a, SC.Serial m a) => SC.Serial m (T.Trie a) where
     series =      SC.cons0 T.empty
            SC.\/  SC.cons3 arcHACK
            SC.\/  SC.cons2 mappend
-           where
-           arcHACK (Str k) Nothing  t = T.singleton k () >> t
-           arcHACK (Str k) (Just v) t = T.singleton k v
-                                         >>= T.unionR t . T.singleton S.empty
-    
-    -- coseries :: Series b -> Series (Trie a -> b)
+        where
+        arcHACK (Str k) Nothing  t = T.singleton k () >> t
+        arcHACK (Str k) (Just v) t =
+            T.singleton k v >>= T.unionR t . T.singleton S.empty
+
+{-
+instance (Monoid a, SC.CoSerial m a) => SC.CoSerial m (T.Trie a) where
     coseries = error "coseries@Trie: not implemented"
+-}
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
@@ -281,7 +298,7 @@ class CheckGuard a b where
 instance (QC.Testable a) => CheckGuard a QC.Property where
     (==>) = (QC.==>)
 
-instance (SC.Testable a) => CheckGuard a SC.Property where
+instance (SC.Testable m a) => CheckGuard a (SC.Property m) where
     (==>) = (SC.==>)
 
 prop_size_insert :: (Eq a, CheckGuard Bool b) => Str -> a -> T.Trie a -> b

@@ -1,10 +1,12 @@
 ----------------------------------------------------------------
--- wren gayle romano <wren@community.haskell.org>   ~ 2015.05.30
+-- wren gayle romano <wren@community.haskell.org>   ~ 2016.04.10
 ----------------------------------------------------------------
 
--- By and large Cabal >=1.2 is fine; but >= 1.6 gives tested-with:
--- and source-repository:.
-Cabal-Version:  >= 1.6
+-- By and large Cabal >=1.2 is fine; but
+-- * >=1.6 gives tested-with: and source-repository:
+-- * >=1.8 allows executables to build-depends: on the library
+-- * >=1.9.2 allows Test-Suite
+Cabal-Version:  >= 1.9.2
 Build-Type:     Simple
 
 Name:           bytestring-trie
@@ -13,38 +15,29 @@ Stability:      experimental
 Homepage:       http://code.haskell.org/~wren/
 Author:         wren gayle romano
 Maintainer:     wren@community.haskell.org
-Copyright:      Copyright (c) 2008--2015 wren gayle romano
+Copyright:      Copyright (c) 2008--2016 wren gayle romano
 License:        BSD3
 License-File:   LICENSE
 
 Category:       Data, Data Structures
 Synopsis:       An efficient finite map from (byte)strings to values.
 Description:    An efficient finite map from (byte)strings to values.
-                .
-                The implementation is based on big-endian patricia
-                trees, like "Data.IntMap". We first trie on the
-                elements of "Data.ByteString" and then trie on the
-                big-endian bit representation of those elements.
-                Patricia trees have efficient algorithms for union
-                and other merging operations, but they're also quick
-                for lookups and insertions.
-                .
-                If you are only interested in being able to associate
-                strings to values, then you may prefer the @hashmap@
-                package which is faster for those only needing a
-                map-like structure. This package is intended for
-                those who need the extra capabilities that a trie-like
-                structure can offer (e.g., structure sharing to
-                reduce memory costs for highly redundant keys,
-                taking the submap of all keys with a given prefix,
-                contextual mapping, extracting the minimum and
-                maximum keys, etc.)
+    .
+    The implementation is based on big-endian patricia trees, like "Data.IntMap". We first trie on the elements of "Data.ByteString" and then trie on the big-endian bit representation of those elements. Patricia trees have efficient algorithms for union and other merging operations, but they're also quick for lookups and insertions.
+    .
+    If you are only interested in being able to associate strings to values, then you may prefer the @hashmap@ package which is faster for those only needing a map-like structure. This package is intended for those who need the extra capabilities that a trie-like structure can offer (e.g., structure sharing to reduce memory costs for highly redundant keys, taking the submap of all keys with a given prefix, contextual mapping, extracting the minimum and maximum keys, etc.)
 
-
-Tested-With:
-    GHC == 7.8.3, GHC == 7.10.1
 Extra-source-files:
-    AUTHORS, CHANGELOG
+    AUTHORS, README.md, CHANGELOG
+
+-- Cf., <https://travis-ci.org/wrengr/bytestring-lexing>
+Tested-With:
+    GHC ==7.4.1, GHC ==7.4.2,
+    GHC ==7.6.1, GHC ==7.6.2, GHC ==7.6.3,
+    GHC ==7.8.1, GHC ==7.8.2, GHC ==7.8.3, GHC ==7.8.4,
+    GHC ==7.10.1, GHC ==7.10.2
+    
+----------------------------------------------------------------
 Source-Repository head
     Type:     darcs
     Location: http://community.haskell.org/~wren/bytestring-trie
@@ -96,6 +89,39 @@ Library
 --        CC-Options:    -O3
 --        Cpp-Options:   -D__USE_C_INTERNAL__
 -- Also need to add stuff to run Configure.hs, FWIW
+
+----------------------------------------------------------------
+-- <https://www.haskell.org/cabal/users-guide/developing-packages.html#test-suites>
+-- You can either:
+-- (1) have type:exitcode-stdio-1.0 & main-is:
+--     where main-is exports `main::IO()` as usual. Or,
+-- (2) have type:detailed-0.9 & test-module:
+--     where test-module exports tests::IO[Distribution.TestSuite.Test]
+--     and you have Build-Depends: Cabal >= 1.9.2
+--
+-- Rather than using Cabal's built-in detailed-0.9 framework, we could use the test-framework* family of packages with exitcode-stdio-1.0. cf., <http://hackage.haskell.org/package/Decimal-0.4.2/src/Decimal.cabal> Or the tasty* family of packages with exitcode-stdio-1.0. Notice that test-framework-smallcheck is deprecated in favor of tasty-smallcheck. Both have more dependencies than Cabal, so will be harder to install on legacy systems; but then we wouldn't have to maintain our own code to glue into Cabal's detailed-0.9. Note that the oldest Tasty requires base>=4.5 whereas the oldest test-framework seems to have no lower bound on base.
+Test-Suite test-all
+    Hs-Source-Dirs: test
+    Type:           exitcode-stdio-1.0
+    -- HACK: main-is must *not* have ./test/ like it does for executables!
+    Main-Is:        Data/Trie/Test.hs
+    Build-Depends:   bytestring-trie >= 0.3.0.3
+                   , binary
+                   -- Actual min-version of deepseq is unknown
+                   , deepseq    >= 1.3  && < 1.5
+                   , data-or    >= 1.0  && < 1.1
+                   -- Assume strict lower bounds to clean up the CPP
+                   , base       >= 4    && < 5
+                   , bytestring >= 0.10 && < 0.11
+                   -- tasty             >= 0.10.1.2 && < 0.11
+                   -- tasty-smallcheck  >= 0.8.0.1  && < 0.9
+                   -- tasty-quickcheck  >= 0.8.3.2  && < 0.9
+                   -- Actual min-version of HUnit is unknown
+                   , HUnit             >= 1.3.1.1  && < 1.3.2
+                   , QuickCheck        >= 2.4.1    && < 2.9
+                   -- smallcheck(1,0,0) is the one that broke Serial and CoSerial classes apart.
+                   , smallcheck        >= 1.1.1    && < 1.2
+                   , lazysmallcheck    >= 0.6      && < 0.7
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

@@ -20,8 +20,8 @@
 ----------------------------------------------------------------
 module Data.Trie.Test (packC2W, main) where
 
-import qualified Data.Trie.ArrayMapped.Base as T
-import qualified Data.Trie.ArrayMapped.Convenience as TC
+import qualified Data.Trie.BigEndianPatricia.Base as T
+import qualified Data.Trie.BigEndianPatricia.Convenience as TC
 import qualified Data.ByteString          as S
 import qualified Data.ByteString.Internal as S (c2w, w2c)
 

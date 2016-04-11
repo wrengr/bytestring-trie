@@ -79,6 +79,7 @@ import qualified Data.ByteString.Unsafe as BSU
 import           Data.Trie.ByteStringInternal
 import qualified Data.Trie.ArrayMapped.SparseArray as SA
 import           Data.Trie.ArrayMapped.SparseArray (SubsingletonView(..))
+import           Data.Trie.ArrayMapped.Errors      (impossible)
 
 import Data.Binary
 
@@ -601,7 +602,7 @@ contextualMapBy f = \t0 ->
         let !s' = BS.append s0 s in
         arc s (f s' v t) (go s' t)
     go s0 (Branch s vz tz) =
-        error "contextualMapBy: unimplemented" {-
+        error "TODO: contextualMapBy{Branch}" {-
         let !s' = BS.append s0 s in
         branch s (SA.rzipFilter_ (f2 s') (f1 s') vz tz)
             (SA.filterMap (trunk2maybe . go s') tz)
@@ -1089,7 +1090,7 @@ alterBy_ accept reject = start
                 else
                     case SA.lookup w tz of
                     Nothing -> prependT_ p
-                        . error "alterBy_: unimplemented"
+                        . error "TODO: alterBy_"
                         $ SA.insert' w (prependT_ ws $ reject Empty) tz
                     Just t' -> prepend_ p (go ws t')
             else branch2 p s' (Reject $ Branch BS.empty vz tz)
@@ -1116,7 +1117,7 @@ alterBy_ accept reject = start
 -- symmetric difference but, with those two, all set operations can
 -- be defined (albeit inefficiently).
 mergeBy :: (a -> a -> Maybe a) -> Trie a -> Trie a -> Trie a
-mergeBy = error "mergeBy: unimplemented" -- TODO
+mergeBy = error "TODO: mergeBy"
 
 
 mergeMaybe :: (a -> a -> Maybe a) -> Maybe a -> Maybe a -> Maybe a
@@ -1144,13 +1145,14 @@ minAssoc = start
         case SA.assocs vz of
         (k,v) : _ -> Just (appendSnoc s0 s k, v)
         []        ->
-            -- N.B., this should only force mb if the recursion fails
-            SA.foldrWithKey
-                (\k t mb -> go (appendSnoc s0 s k) t <|> mb) __impossible tz
-        
-    __impossible = error
-        "Data.Trie.ArrayMapped.Internal.minAssoc: the impossible happened"
-    (<|>) = error "minAssoc: unimplemented"
+            -- Invariant: because @vz@ is empty, @tz@ must contain
+            -- at least two non-'Empty' trunks. Therefore, we can
+            -- recurs on the first trunk, knowing it must contain
+            -- some value.
+            case SA.assocs tz of
+            (k,t) : _ -> go (appendSnoc s0 s k) t
+            []        -> impossible ".Internal.minAssoc"
+
 
 
 {-

@@ -62,7 +62,7 @@ Library
                    , Data.Trie.BigEndianPatricia.Convenience
                    , Data.Trie.ArrayMapped.Base
                    , Data.Trie.ArrayMapped.Internal
-                   -- Data.Trie.ArrayMapped.Convenience
+                   , Data.Trie.ArrayMapped.Convenience
     Other-Modules:   Data.Trie.BigEndianPatricia.BitTwiddle
                    , Data.Trie.BigEndianPatricia.Errors
                    , Data.Trie.ArrayMapped.SparseArray

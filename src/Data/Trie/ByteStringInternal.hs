@@ -13,10 +13,10 @@ distribution.
 {-# LANGUAGE CPP #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2015.03.23
+--                                                  ~ 2016.04.10
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
--- Copyright   :  Copyright (c) 2008--2015 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2016 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  experimental
@@ -30,6 +30,13 @@ module Data.Trie.ByteStringInternal
     ( ByteString(), ByteStringElem
     , appendSnoc
     , breakMaximalPrefix
+    
+    -- * Builders for strict 'ByteString'
+    , Builder()
+    , runBuilder
+    , emptyBuilder
+    , snocBuilder
+    , appendBuilder
     ) where
 
 import Data.ByteString          (empty)
@@ -162,6 +169,48 @@ indexOfDifference p1 p2 limit = goByte 0
 {-
 #endif
 -}
+
+----------------------------------------------------------------
+
+-- | Our builders allow us to construct a strict 'ByteString' with
+-- a single allocation and only copying the inputs exactly once.
+-- The main difference vs "Data.ByteString.Builder" is that we do
+-- not require first serializing to lazy bytestrings and then copying
+-- a second time to make it strict. (Also, we do not export a
+-- function for appending two builders together; though there's no
+-- reason we cannot do so.)
+--
+-- TODO: benchmark against "Data.ByteString.Builder" so we can
+-- quantify the overhead of that approach.
+data Builder =
+    Builder
+        {-# UNPACK #-}!Int
+        (Ptr ByteStringElem -> IO (Ptr ByteStringElem))
+
+-- | Convert a builder into a strict 'ByteString'. This is the only
+-- function of the 'Builder' interface that actually performs IO
+-- actions like allocation and copying.
+runBuilder :: Builder -> ByteString
+runBuilder (Builder len run) =
+    unsafeCreate len $ \p -> run p >> return ()
+
+emptyBuilder :: Builder
+emptyBuilder = Builder 0 return
+
+snocBuilder :: Builder -> ByteStringElem -> Builder
+snocBuilder (Builder len run) w =
+    Builder (len + 1) $ \p0 -> do
+        p1 <- run p0
+        poke p1 w
+        return (p1 `plusPtr` 1)
+
+appendBuilder :: Builder -> ByteString -> Builder
+appendBuilder (Builder len1 run) (PS s2 off2 len2) =
+    Builder (len1 + len2) $ \p0 -> do
+        p1 <- run p0
+        withForeignPtr s2 $ \p2 ->
+            memcpy p1 (p2 `plusPtr` off2) (fromIntegral len2)
+        return (p1 `plusPtr` len2)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

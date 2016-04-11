@@ -9,7 +9,7 @@
 -- TODO: benchmark using SA.lazyLookup instead of SA.lookup
 
 ----------------------------------------------------------------
---                                                  ~ 2015.04.09
+--                                                  ~ 2016.04.10
 -- |
 -- Module      :  Data.Trie.ArrayMapped.Internal
 -- Copyright   :  Copyright (c) 2014--2015 wren gayle romano
@@ -28,7 +28,10 @@
 module Data.Trie.ArrayMapped.Internal
     (
     -- * Data types
-      Trie(), showTrie
+      Trie()
+    {-
+    , showTrie
+    -}
     
     -- * Basic functions
     , empty, null, singleton, size
@@ -37,7 +40,13 @@ module Data.Trie.ArrayMapped.Internal
     , foldrWithKey, foldrWithKey', assocsBy
     
     -- * Query functions
-    , lookupBy_, submap
+    , member
+    , lookup
+    , lookupBy
+    , lookupBy_
+    , submap
+    , subtrie
+    , match_
     
     -- * Single-value modification
     , alter, alterBy, alterBy_
@@ -55,8 +64,11 @@ module Data.Trie.ArrayMapped.Internal
     , contextualMapBy
     
     -- * Priority-queue functions
-    , minAssoc, maxAssoc
+    , minAssoc
+    {-
+    , maxAssoc
     , updateMinViewBy, updateMaxViewBy
+    -}
     ) where
 
 import Prelude hiding    (null, lookup)
@@ -70,7 +82,7 @@ import           Data.Trie.ArrayMapped.SparseArray (SubsingletonView(..))
 
 import Data.Binary
 
-import Data.Typeable       (Typeable(..))
+import Data.Typeable       (Typeable())
 import Control.DeepSeq     (NFData(rnf))
 
 import Data.Monoid         (Monoid(..))
@@ -495,11 +507,14 @@ filterMap f = \t0 ->
 "fmap . filterMap"
     forall f g xs.
         fmap f (filterMap g xs) = filterMap (\x -> f <$> g x) xs
+    #-}
+{-
+-- Warning about not firing because @fmap'@ may inline too soon
 "fmap' . filterMap"
     forall f g xs.
         fmap' f (filterMap g xs) =
             filterMap (\x -> case g x of {Just y -> Just $! f y; _ -> Nothing}) xs
-    #-}
+-}
 
 -- TODO: (?) use a large buffer for the bytestring and overwrite it in place, only copying it off for handing to @f@...? Benchmark it; also Builder stuff
 -- TODO: just use contextualMapBy and ignore the Trunk argument?
@@ -1118,9 +1133,11 @@ mergeMaybe f (Just v0)   (Just v1) = f v0 v1
 
 -- TODO: use a single large buffer for building up the string, since we're guaranteed not to share it.
 minAssoc :: Trie a -> Maybe (ByteString, a)
-minAssoc (Accept v _) = Just (BS.empty, v)
-minAssoc (Reject   t) = go BS.empty t
+minAssoc = start
     where
+    start (Accept v _) = Just (BS.empty, v)
+    start (Reject   t) = go BS.empty t
+
     go !_ Empty            = Nothing
     go s0 (Arc    s v  t)  = Just (BS.append s0 s, v)
     go s0 (Branch s vz tz) =
@@ -1128,7 +1145,7 @@ minAssoc (Reject   t) = go BS.empty t
         (k,v) : _ -> Just (appendSnoc s0 s k, v)
         []        ->
             -- N.B., this should only force mb if the recursion fails
-            foldrWithKey
+            SA.foldrWithKey
                 (\k t mb -> go (appendSnoc s0 s k) t <|> mb) __impossible tz
         
     __impossible = error
@@ -1136,6 +1153,7 @@ minAssoc (Reject   t) = go BS.empty t
     (<|>) = error "minAssoc: unimplemented"
 
 
+{-
 maxAssoc :: Trie a -> Maybe (ByteString, a)
 maxAssoc = go BS.empty
     where
@@ -1171,6 +1189,7 @@ updateMaxViewBy f = go BS.empty
                                   in Just (q',v, arc k (f q' v) Empty)
     go q (Arc k mv       t)     = mapView (arc k mv) (go (BS.append q k) t)
     go q (Branch p m l r)       = mapView (branch p m l) (go q r)
+-}
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

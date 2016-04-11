@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 ----------------------------------------------------------------
---                                                  ~ 2014.05.29
+--                                                  ~ 2016.04.10
 -- |
 -- Module      :  Data.Trie.ArrayMapped.Base
 -- Copyright   :  Copyright (c) 2014--2015 wren gayle romano
@@ -33,28 +33,29 @@ module Data.Trie.ArrayMapped.Base
       Trie()
     
     -- * Basic functions
-    , empty, null, singleton, size
+    , I.empty, I.null, I.singleton, I.size
     
     -- * Conversion functions
     , fromList, toListBy, toList, keys, elems
     
     -- * Query functions
-    , lookupBy, lookup, member, submap
+    , I.lookupBy, lookup, member, I.submap
     
     -- * Single-value modification
-    , alterBy, insert, adjust, delete
+    , I.alterBy, insert, I.adjust, delete
     
     -- * Combining tries
-    , mergeBy, unionL, unionR
+    , I.mergeBy, unionL, unionR
     
     -- * Mapping functions
-    , mapBy, filterMap
+    , I.mapBy, I.filterMap
     ) where
 
 import Prelude hiding    (null, lookup)
 import qualified Prelude (null, lookup)
 
-import Data.Trie.ArrayMapped.Internal
+import Data.Trie.ArrayMapped.Internal (Trie())
+import qualified Data.Trie.ArrayMapped.Internal as I
 import Data.Trie.ArrayMapped.Errors     (impossible)
 import Data.ByteString                  (ByteString)
 import Data.Maybe                       (isJust)
@@ -71,9 +72,13 @@ import Control.Monad                    (liftM)
 -- earlier in the list shadow later ones.
 fromList :: [(ByteString,a)] -> Trie a
 {-# INLINE fromList #-}
-fromList = foldr (uncurry insert) empty
+fromList = foldr (uncurry insert) I.empty
     -- TODO: this can be *greatly* improved by using DynamicArrays
 
+
+toListBy :: (ByteString -> a -> b) -> Trie a -> [b]
+{-# INLINE toListBy #-}
+toListBy = error "TODO: toListBy"
 
 -- | Convert trie into association list. Keys will be in sorted order.
 toList :: Trie a -> [(ByteString,a)]
@@ -102,20 +107,14 @@ elems  = toListBy (flip const)
 
 -- | Does a string have a value in the trie?
 member :: ByteString -> Trie a -> Bool
-member  = (isJust .) . lookup
+member  = I.lookupBy_ (\_ _ -> True) (\_ -> False)
 {-# INLINE member #-}
 
 
 -- | Return the value associated with a query string if it exists.
 lookup :: ByteString -> Trie a -> Maybe a
-lookup  = lookupBy const
+lookup  = I.lookupBy_ (\v _ -> Just v) (\_ -> Nothing)
 {-# INLINE lookup #-}
-
-
--- | Return the subtrie containing all keys beginning with a prefix.
-submap :: ByteString -> Trie a -> Trie a
-submap  = lookupBy accept
-{-# INLINE submap #-}
 
 
 
@@ -127,20 +126,15 @@ submap  = lookupBy accept
 -- old value
 insert :: ByteString -> a -> Trie a -> Trie a
 {-# INLINE insert #-}
-insert = alterBy (\_ x _ -> Just x)
-
-
--- | Apply a function to the value at a key.
-adjust :: (a -> a) -> ByteString -> Trie a -> Trie a
-{-# INLINE adjust #-}
-adjust f q = adjustBy (\_ _ -> f) q (impossible "adjust")
--- TODO: benchmark vs the definition with alterBy/liftM
+insert k v = I.alter (\_ -> Just v) k
+-- TODO: can we use 'I.alterBy_' directly?
 
 
 -- | Remove the value stored at a key.
 delete :: ByteString -> Trie a -> Trie a
 {-# INLINE delete #-}
-delete q = alterBy (\_ _ _ -> Nothing) q (impossible "delete")
+delete = I.alter (\_ -> Nothing)
+-- TODO: can we use 'I.alterBy_' directly?
 
 
 {---------------------------------------------------------------
@@ -151,14 +145,14 @@ delete q = alterBy (\_ _ _ -> Nothing) q (impossible "delete")
 -- from the left trie.
 unionL :: Trie a -> Trie a -> Trie a
 {-# INLINE unionL #-}
-unionL = mergeBy (\x _ -> Just x)
+unionL = I.mergeBy (\x _ -> Just x)
 
 
 -- | Combine two tries, resolving conflicts by choosing the value
 -- from the right trie.
 unionR :: Trie a -> Trie a -> Trie a
 {-# INLINE unionR #-}
-unionR = mergeBy (\_ y -> Just y)
+unionR = I.mergeBy (\_ y -> Just y)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

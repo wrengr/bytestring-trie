@@ -211,6 +211,7 @@ branch2 s0 s1 vt1 s2 vt2 =
     where
     k1 = BSU.unsafeHead s1
     k2 = BSU.unsafeHead s2 
+    -- BUG: is this definition for @go@ correct? Shouldn't we wrap @t1@ and @t2@ with the tail of @s1@ and @s2@? Actually, that'll affect @vz@ as well (shouldn't it always be empty, given that @s1@ and @s2@ are nonempty?)
     go t1 t2 vz = Branch s0 vz (SA.doubleton k1 t1 k2 t2)
 
 
@@ -1115,7 +1116,58 @@ alterBy_ accept reject = start
 -- symmetric difference but, with those two, all set operations can
 -- be defined (albeit inefficiently).
 mergeBy :: (a -> a -> Maybe a) -> Trie a -> Trie a -> Trie a
-mergeBy = error "TODO: mergeBy"
+mergeBy f = start
+    where
+    start (Accept v1 t1) (Accept v2 t2) = mkTrie (f v1 v2) (go t1 t2)
+    start (Accept v1 t1) (Reject    t2) = Accept v1        (go t1 t2)
+    start (Reject    t1) (Accept v2 t2) = Accept v2        (go t1 t2)
+    start (Reject    t1) (Reject    t2) = Reject           (go t1 t2)
+    
+    go Empty          t2             = t2
+    go t1             Empty          = t1
+    go (Arc s1 v1 t1) (Arc s2 v2 t2) =
+        let (p,s1',s2') = breakMaximalPrefix s1 s2 in
+        case (BS.null s1', BS.null s2') of
+        (True,  True)  -> arc s1 (f v1 v2) (go t1 t2)
+        (True,  False) -> Arc s1 v1 (go t1 (Arc s2' v2 t2))
+        (False, True)  -> Arc s2 v2 (go (Arc s1' v1 t1) t2)
+        (False, False) -> branch2 p s1' (Accept v1 t1) s2' (Accept v2 t2)
+
+    go (Arc s1 v1 t1) (Branch s2 vz2 tz2) =
+        let (p,s1',s2') = breakMaximalPrefix s1 s2 in
+        case BS.uncons s1' of
+        Nothing        -> Arc s1 v1 (go t1 (Branch s2' vz2 tz2))
+        Just (k1,s1'') ->
+            case BS.uncons s2' of
+            Nothing
+                | BS.null s1'' ->
+                    Branch s2
+                        (SA.alter (maybe (Just v1) (f v1)) k1 vz2)
+                        (SA.insertWith go k1 t1 tz2)
+                | otherwise ->
+                    Branch s2
+                        vz2
+                        (SA.insertWith go k1 (Arc s1'' v1 t1) tz2)
+            Just (k2,s2'')
+                | BS.null s1'' ->
+                    -- manually inlining 'branch2' (with bugfixes)
+                    Branch p
+                        (SA.singleton k1 v1)
+                        (SA.doubleton
+                            k1 t1
+                            k2 (Branch s2'' vz2 tz2))
+                | otherwise ->
+                    -- manually inlining 'branch2' (with bugfixes)
+                    Branch p
+                        SA.empty
+                        (SA.doubleton
+                            k1 (Arc    s1'' v1  t1)
+                            k2 (Branch s2'' vz2 tz2))
+
+    go (Branch s1 vz1 tz1) (Arc s2 v2 t2) =
+        error "TODO: mergeBy{Branch,Arc}"
+    go (Branch s1 vz1 tz1) (Branch s2 vz2 tz2) =
+        error "TODO: mergeBy{Branch,Branch}"
 
 
 mergeMaybe :: (a -> a -> Maybe a) -> Maybe a -> Maybe a -> Maybe a

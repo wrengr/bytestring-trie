@@ -161,8 +161,8 @@ data Trunk a
 -- | Case elimination on 'Trie', as a higher-order function.
 elimTrie :: (a -> Trunk a -> b) -> (Trunk a -> b) -> Trie a -> b
 {-# INLINE elimTrie #-}
-elimTrie accept reject (Accept v t) = accept v t
-elimTrie accept reject (Reject   t) = reject   t
+elimTrie accept _      (Accept v t) = accept v t
+elimTrie _      reject (Reject   t) = reject   t
 
 
 -- | Smart constructor for 'Trie' type (or for the 'Accept'
@@ -859,7 +859,7 @@ match_ = start
         let (p,q',s') = breakMaximalPrefix q s in
         if BS.null s'
         then
-            let n' = n + BS.length p in n' `seq`
+            let !n' = n + BS.length p in
             if BS.null q'
             then Just (n',v)
             else goJust n' v n' q' t
@@ -869,7 +869,7 @@ match_ = start
         case BS.uncons q' of
         Nothing     -> Nothing
         Just (w,ws) ->
-            let n' = n + BS.length p + 1 in n' `seq`
+            let !n' = n + BS.length p + 1 in
             case (BS.null ws, SA.lookup w tz) of
             (False, Just t) -> 
                 case SA.lookup w vz of
@@ -882,7 +882,7 @@ match_ = start
         let (p,q',s') = breakMaximalPrefix q s in
         if BS.null s'
         then
-            let n' = n + BS.length p in n' `seq`
+            let !n' = n + BS.length p in
             if BS.null q'
             then Just (n',v)
             else goJust n' v n' q' t
@@ -892,7 +892,7 @@ match_ = start
         case BS.uncons q' of
         Nothing     -> Just (n0,v0)
         Just (w,ws) ->
-            let n' = n + BS.length p + 1 in n' `seq`
+            let !n' = n + BS.length p + 1 in
             case (BS.null ws, SA.lookup w tz) of
             (False, Just t) -> 
                 case SA.lookup w vz of
@@ -950,7 +950,7 @@ adjust f = start
         | BS.null q = t0
         | otherwise = Reject (go q t)
 
-    go !q t0@Empty       = t0
+    go !_ t0@Empty       = t0
     go  q t0@(Arc s v t) =
         let (p,q',s') = breakMaximalPrefix q s in
         case (BS.null q', BS.null s') of
@@ -992,7 +992,7 @@ adjust' f = start
         | BS.null q = t0
         | otherwise = Reject (go q t)
 
-    go !q t0@Empty       = t0
+    go !_ t0@Empty       = t0
     go  q t0@(Arc s v t) =
         let (p,q',s') = breakMaximalPrefix q s in
         case (BS.null q', BS.null s') of
@@ -1138,7 +1138,7 @@ minAssoc = start
     start (Reject   t) = go BS.empty t
 
     go !_ Empty            = Nothing
-    go s0 (Arc    s v  t)  = Just (BS.append s0 s, v)
+    go s0 (Arc    s v  _)  = Just (BS.append s0 s, v)
     go s0 (Branch s vz tz) =
         case SA.assocs vz of
         (k,v) : _ -> Just (appendSnoc s0 s k, v)

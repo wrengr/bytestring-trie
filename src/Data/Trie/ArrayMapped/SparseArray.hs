@@ -41,10 +41,10 @@
 -- unlikely to matter. Notably, "GHC.Arr" doesn't use CONLIKE anywhere...
 
 ----------------------------------------------------------------
---                                                  ~ 2016.04.12
+--                                                  ~ 2016.04.13
 -- |
 -- Module      :  Data.Trie.ArrayMapped.SparseArray
--- Copyright   :  Copyright (c) 2014--2015 wren gayle romano; 2010--2012 Johan Tibell
+-- Copyright   :  Copyright (c) 2014--2016 wren gayle romano; 2010--2012 Johan Tibell
 -- License     :  BSD3
 -- Maintainer  :  wren@community.haskell.org
 -- Stability   :  experimental
@@ -80,12 +80,13 @@ module Data.Trie.ArrayMapped.SparseArray
     -- ** Single-element operations
     , lookup
     , insert, insert'
+    , insertWith, insertWith' -- insertWithKey
+    -- insertLookup, insertLookupWithKey
     , delete
-    -- insertWith, insertWithKey, insertLookup, insertLookupWithKey
     , adjust, adjust' -- adjustWithKey, adjustWithKey'
     , adjustK, adjustK'
     -- update, updateWithKey, updateLookupWithKey
-    -- alter
+    , alter
     
     -- * Views
     , SubsingletonView(..), viewSubsingleton
@@ -813,6 +814,49 @@ insert !k x sa@(SA p xs) =
             unsafeFreeze (p .|. b) xs'
 
 
+-- | /O(n)/. Create a copy of the array, storing the given value
+-- at the key. If there's already a value at the key, then we call
+-- the function to combine the elements (with the argument order
+-- @f new old@).
+insertWith :: (a -> a -> a) -> Key -> a -> SparseArray a -> SparseArray a
+insertWith = __insertWith ($)
+
+-- | /O(n)/. A variant of 'insertWith' which forces the element
+-- ultimately inserted into the array. N.B., if there is already
+-- an element for the key but the function is not strict in its
+-- first argument, then the new-value argument will never be forced.
+insertWith' :: (a -> a -> a) -> Key -> a -> SparseArray a -> SparseArray a
+insertWith' = __insertWith ($!)
+
+-- HACK: to avoid repeating ourselves
+{-# INLINE __insertWith #-}
+__insertWith
+    :: (forall a b. (a -> b) -> a -> b)
+    -> (a -> a -> a) -> Key -> a -> SparseArray a -> SparseArray a
+__insertWith ($?) = \f !k x sa@(SA p xs) ->
+    CHECK_KEY("insertWith", k)
+    let b = key2bit k
+        i = bit2index p b
+    in
+    if b `elem` p
+    then
+        let maxN = length sa in
+        runST $
+            new_ maxN $ \xs' -> do
+            copy xs 0 xs' 0 maxN
+            index xs  i $ \y -> do
+            write xs' i $? f x y
+            unsafeFreeze p xs'
+    else
+        let maxN = length sa + 1 in
+        runST $
+            new_ maxN $ \xs' -> do
+            copy xs 0 xs' 0 i
+            write xs' i $? x
+            copy xs i xs' (i+1) (maxN-i)
+            unsafeFreeze (p .|. b) xs'
+
+
 -- | /O(n)/. Apply a function to the element at a given key. If
 -- there is no such element, then returns the original array.
 adjust :: (a -> a) -> Key -> SparseArray a -> SparseArray a
@@ -900,6 +944,63 @@ adjustK' f !k sa@(SA p xs) unchanged changed =
 {-# INLINE adjustK' #-}
 
 
+-- | /O(n)/. Apply a function at a given key. If there is an element
+-- at that key, it is passed to the function. If the function returns
+-- a value then it is inserted at the key, otherwise the key will
+-- be cleared (i.e., if there was an element at the key then it
+-- will be deleted; otherwise the original array will be returned).
+alter :: (Maybe a -> Maybe a) -> Key -> SparseArray a -> SparseArray a
+alter f !k sa =
+    case lookup k sa of
+    Nothing ->
+        case f Nothing of
+        Nothing -> sa
+        Just v' -> insert k v' sa
+    Just v  ->
+        case f (Just v) of
+        Nothing -> delete k    sa
+        Just v' -> insert k v' sa
+-- TODO: do we need/want an INLINE pragma to try to get @f@ inlined into here to possibly enable case-of-constructor?
+{-
+-- Version optimized by inlining 'lookup', 'insert', and 'delete' and doing some partial evaluation to eliminate unreachable branches.
+-- TODO: benchmark whether this helps. GHC should be smart enough to do this itself, but...
+alter f !k sa@(SA p xs) =
+    CHECK_KEY("alter", k)
+    let !b = key2bit k
+        !i = bit2index p b
+    in
+    if b `elem` p
+    then
+        index xs i $ \v ->
+        case f (Just v) of
+        Nothing ->
+            let !maxN = length sa - 1 in
+            runST $
+                new_ maxN $ \xs' -> do
+                copy xs 0 xs' 0 i
+                copy xs (i+1) xs' i (maxN-i)
+                unsafeFreeze (p `xor` b) xs'
+        Just v' ->
+            let !maxN = length sa in
+            runST $
+                new_ maxN $ \xs' -> do
+                copy xs 0 xs' 0 maxN
+                write xs' i v'
+                unsafeFreeze p xs'
+    else
+        case f Nothing of
+        Nothing -> sa
+        Just v' ->
+            let !maxN = length sa + 1 in
+            runST $
+                new_ maxN $ \xs' -> do
+                copy xs 0 xs' 0 i
+                write xs' i v'
+                copy xs i xs' (i+1) (maxN-i)
+                unsafeFreeze (p .|. b) xs'
+-}
+
+
 -- | /O(n)/. Create a copy of the array, removing a key. If the key
 -- is not present, then returns the same array.
 delete :: Key -> SparseArray a -> SparseArray a
@@ -916,7 +1017,7 @@ delete !k sa@(SA p xs) =
             copy xs (i+1) xs' i (maxN-i)
             unsafeFreeze (p `xor` b) xs'
     else sa
-    
+
 
 ----------------------------------------------------------------
 data SubsingletonView a

@@ -41,7 +41,7 @@
 -- unlikely to matter. Notably, "GHC.Arr" doesn't use CONLIKE anywhere...
 
 ----------------------------------------------------------------
---                                                  ~ 2015.04.09
+--                                                  ~ 2016.04.12
 -- |
 -- Module      :  Data.Trie.ArrayMapped.SparseArray
 -- Copyright   :  Copyright (c) 2014--2015 wren gayle romano; 2010--2012 Johan Tibell
@@ -123,7 +123,8 @@ module Data.Trie.ArrayMapped.SparseArray
     , rzipWithKey, rzipWithKey_
     , rzipWithKey', rzipWithKey'_
     , rzipFilter, rzipFilter_
-    
+    , rzipFilterWithKey_, rzipFilterWithKey
+
     -- ** TODO: left-biased zipping functions
     -- lzip, lzipWith, lzipWith_
     -- lzipWithKey, lzipWithKey_
@@ -1909,7 +1910,7 @@ rzipWithKey f = rzipWithKey_ (\k -> f k . Just) (\k -> f k Nothing)
 rzipFilter_
     :: (a -> b -> Maybe c) -> (b -> Maybe c)
     -> SparseArray a -> SparseArray b -> SparseArray c
-rzipFilter_ f g (SA p xs) (SA q ys) =
+rzipFilter_ f g = \ (SA p xs) (SA q ys) ->
     let !n = popCount q in
     runST $
         new_ n $ \zs ->
@@ -1941,6 +1942,48 @@ rzipFilter
 rzipFilter f = rzipFilter_ (f . Just) (f Nothing)
 {-# INLINE rzipFilter #-}
 
+
+-- TODO: see the performance notes with '__rzipWithKey'
+rzipFilterWithKey_
+    :: (Key -> a -> b -> Maybe c)
+    -> (Key -> b -> Maybe c)
+    -> SparseArray a
+    -> SparseArray b
+    -> SparseArray c
+rzipFilterWithKey_ f g = \ (SA p xs) (SA q ys) ->
+    let !n = popCount q in
+    runST $
+        new_ n $ \zs ->
+        let go !i !b !j !k !r
+                | j >= n     =
+                    unsafeFreezeOrTrim (j == k {- aka: q == r -}) r zs
+                | b `elem` p =
+                    case f (bit2key b) (xs ! i) (ys ! j) of
+                    Just z -> do
+                        write zs k z
+                        go (i+1) (getNextBit q b) (j+1) (k+1) (r .|. b)
+                    Nothing ->
+                        go (i+1) (getNextBit q b) (j+1) k r
+                | otherwise  =
+                    case g (bit2key b) (ys ! j) of
+                    Just z -> do
+                        write zs k z
+                        go i (getNextBit q b) (j+1) (k+1) (r .|. b)
+                    Nothing ->
+                        go i (getNextBit q b) (j+1) k r
+            --
+        in go 0 (getFirstBit q) 0 0 0
+
+rzipFilterWithKey
+    :: (Key -> Maybe a -> b -> Maybe c)
+    -> SparseArray a
+    -> SparseArray b
+    -> SparseArray c
+{-# INLINE rzipFilterWithKey #-}
+rzipFilterWithKey f =
+    rzipFilterWithKey_
+        (\k a b -> f k (Just a) b)
+        (\k   b -> f k Nothing  b)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------

@@ -243,7 +243,7 @@ prepend s
 -- as necessary.
 prepend_ :: NonEmptyByteString -> Trunk a -> Trunk a
 {-# INLINE prepend_ #-}
-prepend_ s0 Empty            = Empty
+prepend_ _  Empty            = Empty
 prepend_ s0 (Arc    s v  t)  = Arc    (s0 `BS.append` s) v t
 prepend_ s0 (Branch s vz tz) = Branch (s0 `BS.append` s) vz tz
     -- TODO: 'BS.append' will recheck whether @s0@ is empty. We can avoid that extraneous check if we create an @unsafeAppend@...
@@ -602,14 +602,12 @@ contextualMapBy f = \t0 ->
         let !s' = BS.append s0 s in
         arc s (f s' v t) (go s' t)
     go s0 (Branch s vz tz) =
-        error "TODO: contextualMapBy{Branch}" {-
         let !s' = BS.append s0 s in
-        branch s (SA.rzipFilter_ (f2 s') (f1 s') vz tz)
+        branch s (SA.rzipFilterWithKey_ (f2 s') (f1 s') tz vz)
             (SA.filterMap (trunk2maybe . go s') tz)
-        -}
     
-    f1 s0   v = f s0 v Empty
-    f2 s0 t v = f s0 v t
+    f1 s0 k   v = f (BS.snoc s0 k) v Empty
+    f2 s0 k t v = f (BS.snoc s0 k) v t
 
 
 {---------------------------------------------------------------

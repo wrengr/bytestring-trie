@@ -13,7 +13,7 @@ distribution.
 {-# LANGUAGE CPP #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2016.04.10
+--                                                  ~ 2016.09.30
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
 -- Copyright   :  Copyright (c) 2008--2016 wren gayle romano
@@ -106,24 +106,15 @@ breakMaximalPrefix
         withForeignPtr s1 $ \p1 ->
         withForeignPtr s2 $ \p2 -> do
             i <- indexOfDifference
-                    (p1 `ptrElemOff` off1)
-                    (p2 `ptrElemOff` off2)
+                    (p1 `advancePtr` off1)
+                    (p2 `advancePtr` off2)
                     (min len1 len2)
             let pre = if off1 + len1 < off2 + len2  -- share the smaller one
                       then newPS s1 off1 i
                       else newPS s2 off2 i
             let s1' = newPS s1 (off1 + i) (len1 - i)
             let s2' = newPS s2 (off2 + i) (len2 - i)
-            
             return $! (,,) !$ pre !$ s1' !$ s2'
-
-
--- TODO: other than restricting the type, was this really necessary?
--- | C-style pointer addition, without the liberal type of 'plusPtr'.
-ptrElemOff :: Storable a => Ptr a -> Int -> Ptr a
-{-# INLINE ptrElemOff #-}
-ptrElemOff p i =
-    p `plusPtr` (i * sizeOf (undefined `asTypeOf` inlinePerformIO (peek p)))
 
 
 newPS :: ForeignPtr ByteStringElem -> Int -> Int -> ByteString

@@ -62,21 +62,21 @@ module Data.Trie.ArrayMapped.SparseArray
     (
     -- * Sparse arrays
       Key, SparseArray()
-    
+
     -- ** Construction
     , empty, singleton, doubleton
-    
+
     -- ** Conversion to\/from lists
     , fromList -- fromListWith, fromListWithKey
     -- fromAscList, fromAscListWith, fromAscListWithKey, fromDistinctAscList
     -- Can't use the name toList because of conflict with Foldable
     , assocs, assocsBy, keys, elems
-    
+
     -- ** Predicates and Queries
     , null, length, member, notMember, isSubarrayOf
     -- isSubmapOf, isSubmapOfBy
     -- isProperSubarrayOf, isProperSubmapOf, isProperSubmapOfBy
-    
+
     -- ** Single-element operations
     , lookup
     , insert, insert'
@@ -87,35 +87,35 @@ module Data.Trie.ArrayMapped.SparseArray
     , adjustK, adjustK'
     -- update, updateWithKey, updateLookupWithKey
     , alter
-    
+
     -- * Views
     , SubsingletonView(..), viewSubsingleton
-    
+
     -- * Map-like functions
     -- ** Mapping
     , map, map'
     , mapWithKey, mapWithKey'
     -- mapAccumL, mapAccumR, mapAccumLWithKey, mapAccumRWithKey
-    
+
     -- TODO: mapKeys*/ixmap* stuff? slicing and marginalizing?
-    
+
     -- ** Filtering
     , filter,    filterWithKey
     , filterMap, filterMapWithKey -- aka mapMaybe{,WithKey}
-    
+
     -- ** Partitioning
     , partition,    partitionWithKey
     , partitionMap, partitionMapWithKey -- aka mapEither{,WithKey}
-    
+
     -- * Extra folding functions
     , foldL, foldR
     , foldrWithKey, foldrWithKey'
     , foldlWithKey, foldlWithKey'
-    
+
     -- * Extra traversal functions
     , sequenceST, traverseST
     -- traverseWithKey
-    
+
     -- * Set-theoretic operations
     -- ** Right-biased zipping functions
     -- $rzip
@@ -132,7 +132,7 @@ module Data.Trie.ArrayMapped.SparseArray
     -- lzipWith', lzipWith'_
     -- lzipWithKey', lzipWithKey'_
     -- lzipFilter, lzipFilter_
-    
+
     -- ** Union-like operators
     , unionL, unionR, unionWith, unionWith_
     -- unionWithKey, unionWithKey_
@@ -141,20 +141,20 @@ module Data.Trie.ArrayMapped.SparseArray
     , unionFilterWith, unionFilterWith_
     -- unionFilterWithKey_
     -- unionsL, unionsR, unionsWith, unionsWith_
-    
+
     -- ** Intersection-like operators
     , intersectionL, intersectionR, intersectionWith -- intersectionWithKey
     , intersectionWith' -- intersectionWithKey'
     -- intersectionFilterWith
     -- intersectionsWith
-    
+
     -- ** Difference-like operators
     , differenceL, differenceR
     -- differenceWith, differenceWithKey
     -- symdiff, symdiffWith, symdiffWith_
-    
+
     ----
-    
+
     -- new, new_, trim, unsafeFreeze, unsafeFreezeOrTrim
     ) where
 
@@ -547,7 +547,7 @@ copyMA !src !sidx !dst !didx n =
 -- TODO: would it be faster just to allocate a new array and use copyMutableArray# for each half?
 -- | Shift the elements between @i@ and @n-1@ to @i+1@ and @n@.
 shiftUpOne :: MutableArray# s e -> Index -> Index -> ST s ()
-shiftUpOne !xs !i !n = 
+shiftUpOne !xs !i !n =
     CHECK_GE("shiftUpOne: i", i, (0 :: Int))
     CHECK_GE("shiftUpOne: n", n, (0 :: Int))
     CHECK_BOUNDS("shiftUpOne: ", lengthMA src, i + n) -- TODO/BUG: (subtract 1) ??
@@ -1289,7 +1289,7 @@ instance (Binary a) => Binary (SparseArray a) where
         putArray# !xs !n !i
             | i < n     = do index xs i put; putArray# xs n (i+1)
             | otherwise = return ()
-    
+
     get = do
         p <- get
         fromElems p <$> replicateM (popCount p) get
@@ -1324,7 +1324,7 @@ instance Functor SparseArray where
 
 
 map :: (a -> b) -> SparseArray a -> SparseArray b
-map f = 
+map f =
     \(SA p xs) ->
         let !n = popCount p in
         runST $
@@ -1378,7 +1378,7 @@ map' f =
 -- TODO: how expensive is using bit2key? can we avoid/amortize that cost?
 -- TODO: benchmark alongside map and map'
 mapWithKey :: (Key -> a -> b) -> SparseArray a -> SparseArray b
-mapWithKey f = 
+mapWithKey f =
     \(SA p xs) ->
         let !n = popCount p in
         runST $
@@ -1393,7 +1393,7 @@ mapWithKey f =
 
 
 mapWithKey' :: (Key -> a -> b) -> SparseArray a -> SparseArray b
-mapWithKey' f = 
+mapWithKey' f =
     \(SA p xs) ->
         let !n = popCount p in
         runST $
@@ -1424,10 +1424,10 @@ mapWithKey' f =
 instance Foldable SparseArray where
     {-# INLINE fold #-}
     fold      = F.foldr' mappend mempty
-    
+
     {-# INLINE foldMap #-}
     foldMap f = F.foldr' (mappend . f) mempty
-    
+
     {-# INLINABLE foldr #-}
     foldr f z = \ (SA p xs) -> go xs (popCount p) 0
         where
@@ -1444,7 +1444,7 @@ instance Foldable SparseArray where
             | n >= 0    = go xs (n-1) $! f (xs ! n) z
             | otherwise = z
 #endif
-    
+
     {-# INLINABLE foldl #-}
     foldl f z = \ (SA p xs) -> go xs (popCount p - 1)
         where
@@ -1466,7 +1466,7 @@ instance Foldable SparseArray where
     -- as far back as MIN_VERSION_base(4,0,0)) at least
     foldl1 = foldl1Elems
     foldr1 = foldr1Elems
-    
+
         -- | A left fold over the elements with no starting value
         {-# INLINABLE foldl1Elems #-}
         foldl1Elems :: Ix i => (a -> a -> a) -> Array i a -> a
@@ -1476,7 +1476,7 @@ instance Foldable SparseArray where
                  | otherwise = f (go (i-1)) (unsafeAt arr i)
           in
             if n == 0 then error "foldl1: empty Array" else go (n-1)
-        
+
         -- | A right fold over the elements with no starting value
         {-# INLINABLE foldr1Elems #-}
         foldr1Elems :: Ix i => (a -> a -> a) -> Array i a -> a
@@ -1496,7 +1496,7 @@ instance Foldable SparseArray where
     length = __length -- HACK: to avoid cyclic definition
     {-# INLINE null #-}
     null   = __null   -- HACK: to avoid cyclic definition
-    
+
     {- TODO
     elem :: Eq a => a -> t a -> Bool
     -- N.B., the default implementations for these use the (#.) hack to avoid efficiency issues with eta; cf., <http://hackage.haskell.org/package/base-4.8.0.0/docs/src/Data-Foldable.html>
@@ -1506,7 +1506,7 @@ instance Foldable SparseArray where
     product :: Num a => t a -> a
     -}
 #endif
-    
+
 
 
 -- BUG: can we improve the asymptotics without needing bit2key for incrementing k?
@@ -1589,7 +1589,7 @@ foldR f = \z0 (SA p xs) -> go xs (popCount p - 1) z0
 -- This implementation a la the one for @array:Data.Array.Array@ is in @base:Data.Traversable@
 instance Traversable SparseArray where
     traverse f sa@(SA p _) = fromElems p <$> traverse f (elems sa)
-    
+
     -- TODO: can we optimize 'sequenceA' over the default?
 
 
@@ -1638,7 +1638,7 @@ filterMap f (SA p xs) =
             --
         in go 0 (getFirstBit p) 0 0
 
--- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to 
+-- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to
 -- avoid warnings about the rules possibly not firing...
 {-# NOINLINE [1] filterMap #-}
 {-# RULES
@@ -1712,7 +1712,7 @@ filter f xz@(SA p xs) =
             --
         in go 0 (getFirstBit p) 0 0
 
--- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to 
+-- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to
 -- avoid warnings about the rules possibly not firing...
 {-# NOINLINE [1] filter #-}
 {-# RULES
@@ -1749,7 +1749,7 @@ filter f xz@(SA p xs) =
         filter f (filterMap g xs) =
             filterMap (\x -> case g x of { my@(Just y) | f y -> my; _ -> Nothing }) xs
     #-}
-    
+
 filterWithKey :: (Key -> a -> Bool) -> SparseArray a -> SparseArray a
 filterWithKey f xz@(SA p xs) =
     let !n = popCount p in
@@ -1800,7 +1800,7 @@ partition f xz@(SA p xs) =
             --
         in go 0 (getFirstBit p) 0 0 0 0
 
--- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to 
+-- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to
 -- avoid warnings about the rules possibly not firing...
 {-# NOINLINE [1] partition #-}
 {-# RULES
@@ -1865,7 +1865,7 @@ partitionMap f (SA p xs) =
             --
         in go 0 (getFirstBit p) 0 0 0 0
 
--- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to 
+-- HACK: we'd like it to be INLINABLE, but we need NOINLINE[1] to
 -- avoid warnings about the rules possibly not firing...
 {-# NOINLINE [1] partitionMap #-}
 {-# RULES

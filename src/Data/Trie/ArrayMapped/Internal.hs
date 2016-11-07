@@ -202,6 +202,9 @@ branch2
     -> NonEmptyByteString -> Trie a
     -> Trunk a
 {-# INLINE branch2 #-}
+
+{-
+-- BUG: I have no idea what this code was really up to, but I'm pretty certain it doesn't do the right thing at all. For example, it drops the tails of @s1@ and @s2@ on the floor; which can't be right.
 branch2 s0 s1 vt1 s2 vt2 =
     case (vt1, vt2) of
     (Accept v1 t1, Accept v2 t2) -> go t1 t2 (SA.doubleton k1 v1 k2 v2)
@@ -213,6 +216,19 @@ branch2 s0 s1 vt1 s2 vt2 =
     k2 = BSU.unsafeHead s2 
     -- BUG: is this definition for @go@ correct? Shouldn't we wrap @t1@ and @t2@ with the tail of @s1@ and @s2@? Actually, that'll affect @vz@ as well (shouldn't it always be empty, given that @s1@ and @s2@ are nonempty?)
     go t1 t2 vz = Branch s0 vz (SA.doubleton k1 t1 k2 t2)
+-}
+branch2 s0 s1 vt1 s2 vt2 =
+    -- TODO: CHECK_NE("branch2", k1, k2)
+    case (vt1, vt2) of
+    (Accept v1 t1, Accept v2 t2) ->
+    (Accept v1 t1, Reject    t2) ->
+    (Reject    t1, Accept v2 t2) ->
+    (Reject    t1, Reject    t2) ->
+    where
+    k1  = BSU.unsafeHead s1
+    k2  = BSU.unsafeHead s2
+    s1' = BSU.unsafeTail s1
+    s2' = BSU.unsafeTail s2
 
 
 -- | Extract a non-empty trunk from a possibly 'Empty' trunk.
@@ -1092,7 +1108,9 @@ alterBy_ accept reject = start
                         . error "TODO: alterBy_"
                         $ SA.insert' w (prependT_ ws $ reject Empty) tz
                     Just t' -> prepend_ p (go ws t')
-            else branch2 p s' (Reject $ Branch BS.empty vz tz)
+            else
+                -- TODO: make sure 'branch2' does the right thing here!
+                branch2 p s' (Reject $ Branch BS.empty vz tz)
                            q' (reject Empty)
 
 
@@ -1131,7 +1149,9 @@ mergeBy f = start
         (True,  True)  -> arc s1 (f v1 v2) (go t1 t2)
         (True,  False) -> Arc s1 v1 (go t1 (Arc s2' v2 t2))
         (False, True)  -> Arc s2 v2 (go (Arc s1' v1 t1) t2)
-        (False, False) -> branch2 p s1' (Accept v1 t1) s2' (Accept v2 t2)
+        (False, False) ->
+            -- TODO: make sure 'branch2' does the right thing here!
+            branch2 p s1' (Accept v1 t1) s2' (Accept v2 t2)
 
     go (Arc s1 v1 t1) (Branch s2 vz2 tz2) =
         let (p,s1',s2') = breakMaximalPrefix s1 s2 in

@@ -87,6 +87,9 @@ import Data.Typeable       (Typeable())
 import Control.DeepSeq     (NFData(rnf))
 
 import Data.Monoid         (Monoid(..))
+#if MIN_VERSION_base(4,9,0)
+import Data.Semigroup      (Semigroup(..))
+#endif
 import Control.Monad       (ap, liftM, liftM3, liftM4)
 #if __GLASGOW_HASKELL__ < 710
 import Control.Applicative (Applicative(..), (<$>))
@@ -429,12 +432,19 @@ instance Monad Trie where
 -}
 
 
+#if MIN_VERSION_base(4,9,0)
+instance (Semigroup a) => Semigroup (Trie a) where
+    (<>) = mergeBy $ \x y -> Just (x <> y)
+#endif
+
+
 -- This instance is more sensible than Data.IntMap and Data.Map's
--- TODO: use semigroup instead (?)
 -- TODO: newtypes for left/right biased unions, a~la IntMap/Map
 instance (Monoid a) => Monoid (Trie a) where
     mempty  = empty
+#if !(MIN_VERSION_base(4,11,0))
     mappend = mergeBy $ \x y -> Just (x `mappend` y)
+#endif
 
 
 {-

@@ -12,7 +12,7 @@ Build-Type:     Simple
 Name:           bytestring-trie
 Version:        0.3.0.3
 Stability:      experimental
-Homepage:       http://code.haskell.org/~wren/
+Homepage:       https://github.com/wrengr/bytestring-trie
 Author:         wren gayle romano
 Maintainer:     wren@community.haskell.org
 Copyright:      Copyright (c) 2008--2016 wren gayle romano
@@ -39,8 +39,8 @@ Tested-With:
     
 ----------------------------------------------------------------
 Source-Repository head
-    Type:     darcs
-    Location: http://community.haskell.org/~wren/bytestring-trie
+    Type:     git
+    Location: https://github.com/wrengr/bytestring-trie.git
 
 ----------------------------------------------------------------
 --Flag useCinternal

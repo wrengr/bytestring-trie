@@ -1,5 +1,8 @@
+0.2.4.3 (2019.02.XX):
+    - Moved VERSION to CHANGELOG
+    - Nudging things so they compile on GHC-8.*
 0.2.4.1 (2015.04.04):
-	- Data.Trie.Internal: adjusted imports to compule under GHC 7.10.1
+    - Data.Trie.Internal: adjusted imports to compule under GHC 7.10.1
 0.2.4 (2014.10.09):
     - added Data.Trie.Internal.{match_,matches_}, Data.Trie.Base.{match,matches}
 0.2.3 (2010.02.12):
@@ -16,4 +19,4 @@
     - Most recent release before adding a VERSION file
 
 0.1.4 (2009.01.11):
-	- The only previous tag
+    - The only previous tag

@@ -102,11 +102,13 @@ before_install:
   # called instead...
   - |
     if command -v $CABAL >/dev/null 2>&1 ; then
+        # Found it, so we're all good.
+        :
+    else
         echo >&2 "Why can't I find $CABAL in the path?!"
         if command -v cabal >/dev/null 2>&1 ; then
-            :
-        else
-            echo >&2 "But I found 'cabal'..."
+            echo >&2 "But I did find 'cabal' instead..."
+            cabal --version >&2
         fi
         exit 1
     fi

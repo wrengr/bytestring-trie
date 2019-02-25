@@ -304,7 +304,7 @@ instance Monad Trie where
 -- The "Data.Semigroup" module is in base since 4.9.0.0; but having
 -- the 'Semigroup' superclass for the 'Monoid' instance only comes
 -- into force in base 4.11.0.0.
-instance (Semigroup a) -> Semigroup (Trie a) where
+instance (Semigroup a) => Semigroup (Trie a) where
     (<>) = mergeBy $ \x y -> Just (x `mappend` y)
     -- TODO: optimized implementations of:
     -- sconcat :: NonEmpty a -> a

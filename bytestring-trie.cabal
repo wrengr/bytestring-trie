@@ -77,8 +77,8 @@ Library
     Other-Modules:   Data.Trie.BitTwiddle
                    , Data.Trie.ByteStringInternal
                    , Data.Trie.Errors
-    Build-Depends: base       >= 4    && < 4.11
-                 , bytestring >= 0.10 && < 0.11
+    Build-Depends: base       >= 4   && < 4.11
+                 , bytestring >= 0.9 && < 0.11
                  , binary
     
     if flag(useCinternal)

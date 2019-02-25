@@ -305,7 +305,7 @@ instance Monad Trie where
 -- the 'Semigroup' superclass for the 'Monoid' instance only comes
 -- into force in base 4.11.0.0.
 instance (Semigroup a) => Semigroup (Trie a) where
-    (<>) = mergeBy $ \x y -> Just (x `mappend` y)
+    (<>) = mergeBy $ \x y -> Just (x <> y)
     -- TODO: optimized implementations of:
     -- sconcat :: NonEmpty a -> a
     -- stimes :: Integral b => b -> a -> a

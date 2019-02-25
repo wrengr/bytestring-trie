@@ -10,7 +10,7 @@ Cabal-Version:  >= 1.9.2
 Build-Type:     Simple
 
 Name:           bytestring-trie
-Version:        0.2.4.3
+Version:        0.2.4.4
 Stability:      provisional
 Homepage:       http://wrengr.org
 Author:         wren gayle romano
@@ -53,10 +53,9 @@ Tested-With:
     GHC ==7.8.1, GHC ==7.8.2, GHC ==7.8.3, GHC ==7.8.4,
     GHC ==7.10.1, GHC ==7.10.2, GHC ==7.10.3,
     GHC ==8.0.1, GHC ==8.0.2,
-    GHC ==8.2.1, GHC ==8.2.2
-    -- TODO: re-enable these and get them to work.
-    -- GHC ==8.4.1, GHC ==8.4.2, GHC ==8.4.3,
-    -- GHC ==8.6.1, GHC ==8.6.2
+    GHC ==8.2.1, GHC ==8.2.2,
+    GHC ==8.4.1, GHC ==8.4.2, GHC ==8.4.3,
+    GHC ==8.6.1, GHC ==8.6.2
 
 Source-Repository head
     Type:     git
@@ -77,7 +76,9 @@ Library
     Other-Modules:   Data.Trie.BitTwiddle
                    , Data.Trie.ByteStringInternal
                    , Data.Trie.Errors
-    Build-Depends: base       >= 4   && < 4.11
+    -- N.B., GHC>=8.4 requires base>=4.11, which breaks some of our
+    -- code vs the older versions of base
+    Build-Depends: base       >= 4   && < 4.13
                  , bytestring >= 0.9 && < 0.11
                  , binary
     

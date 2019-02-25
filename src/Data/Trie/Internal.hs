@@ -70,12 +70,10 @@ import Data.Binary
 
 import Data.Monoid         (Monoid(..))
 import Control.Monad       (liftM, liftM3, liftM4)
-#ifdef APPLICATIVE_IN_BASE
 import Control.Monad       (ap)
 import Control.Applicative (Applicative(..), (<$>))
 import Data.Foldable       (Foldable(foldMap))
 import Data.Traversable    (Traversable(traverse))
-#endif
 
 #ifdef __GLASGOW_HASKELL__
 import GHC.Exts (build)
@@ -236,7 +234,6 @@ instance Functor Trie where
         go (Branch p m l r)   = Branch p m (go l) (go r)
 
 
-#ifdef APPLICATIVE_IN_BASE
 instance Foldable Trie where
     -- If our definition of foldr is so much faster than the Endo
     -- default, then maybe we should remove this and use the default
@@ -247,7 +244,7 @@ instance Foldable Trie where
         go (Arc _ Nothing  t) = go t
         go (Arc _ (Just v) t) = f v `mappend` go t
         go (Branch _ _ l r)   = go l `mappend` go r
-    
+
     {- This definition is much faster, but it's also wrong
     -- (or at least different than foldrWithKey)
     foldr f = \z t -> go t id z
@@ -256,7 +253,7 @@ instance Foldable Trie where
         go (Branch _ _ l r)   k x = go r (go l k) x
         go (Arc _ Nothing t)  k x = go t k x
         go (Arc _ (Just v) t) k x = go t k (f v x)
-    
+
     foldl f = \z t -> go t id z
         where
         go Empty              k x = k x
@@ -279,7 +276,6 @@ instance Traversable Trie where
 instance Applicative Trie where
     pure  = return
     (<*>) = ap
-#endif
 
 -- Does this even make sense? It's not nondeterminism like lists
 -- and sets. If no keys were prefixes of other keys it'd make sense

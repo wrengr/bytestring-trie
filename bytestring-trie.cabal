@@ -1,18 +1,20 @@
-----------------------------------------------------------------
--- wren gayle romano <wren@community.haskell.org>   ~ 2019.02.23
-----------------------------------------------------------------
+------------------------------------------------------------
+-- wren gayle romano <wren@cpan.org>            ~ 2019.02.23
+------------------------------------------------------------
 
--- By and large Cabal >=1.2 is fine; but >= 1.6 gives tested-with:
--- and source-repository:.
-Cabal-Version:  >= 1.6
+-- By and large Cabal >=1.2 is fine; but
+-- * >=1.6 gives tested-with: and source-repository:
+-- * >=1.8 allows executables to build-depends: on the library
+-- * >=1.9.2 allows Test-Suite
+Cabal-Version:  >= 1.9.2
 Build-Type:     Simple
 
 Name:           bytestring-trie
-Version:        0.2.4.2
+Version:        0.2.4.3
 Stability:      provisional
-Homepage:       http://code.haskell.org/~wren/
+Homepage:       http://wrengr.org
 Author:         wren gayle romano
-Maintainer:     wren@community.haskell.org
+Maintainer:     wren@cpan.org
 Copyright:      Copyright (c) 2008--2019 wren gayle romano
 License:        BSD3
 License-File:   LICENSE
@@ -41,37 +43,32 @@ Description:    An efficient finite map from (byte)strings to values.
                 maximum keys, etc.)
 
 
-Tested-With:
-    GHC == 6.12.1, GHC == 7.6.1
 Extra-source-files:
-    AUTHORS, VERSION
+    AUTHORS, CHANGELOG, README.md
+
+-- Cf., <https://travis-ci.org/wrengr/bytestring-lexing>
+Tested-With:
+    GHC ==7.4.1, GHC ==7.4.2,
+    GHC ==7.6.1, GHC ==7.6.2, GHC ==7.6.3,
+    GHC ==7.8.1, GHC ==7.8.2, GHC ==7.8.3, GHC ==7.8.4,
+    GHC ==7.10.1, GHC ==7.10.2, GHC ==7.10.3,
+    GHC ==8.0.1, GHC ==8.0.2,
+    GHC ==8.2.1, GHC ==8.2.2
+    -- TODO: re-enable these and get them to work.
+    -- GHC ==8.4.1, GHC ==8.4.2, GHC ==8.4.3,
+    -- GHC ==8.6.1, GHC ==8.6.2
+
 Source-Repository head
-    Type:     darcs
-    Location: http://community.haskell.org/~wren/bytestring-trie
+    Type:     git
+    Location: https://github.com/wrengr/bytestring-trie.git
 
-----------------------------------------------------------------
-Flag base4
-    Default:     True
-    Description: base-4.0 emits "Prelude deprecated" messages in
-                 order to get people to be explicit about which
-                 version of base they use.
-
+------------------------------------------------------------
 Flag useCinternal
     Default:     False
     Description: Use optimized C implementation for indexOfDifference.
                  See notes in Data.Trie.ByteStringInternal.
 
-Flag applicativeInBase
-    Default:     True
-    Description: Applicative functors were added in base-2.0
-
-Flag bytestringInBase
-    Default:     False
-    Description: The bytestring library was included in base-2.0
-                 and base-2.1.1, but for base-1.0 and base-3.0 it
-                 was a separate package
-
-----------------------------------------------------------------
+------------------------------------------------------------
 Library
     Hs-Source-Dirs:  src
     Exposed-Modules: Data.Trie
@@ -80,28 +77,9 @@ Library
     Other-Modules:   Data.Trie.BitTwiddle
                    , Data.Trie.ByteStringInternal
                    , Data.Trie.Errors
-    Build-Depends: binary
-    
-    -- I think this is all that needs doing to get rid of the warnings?
-    -- BUG: looks like it's not enough
-    if flag(base4)
-        Build-Depends: base >= 4 && < 4.11
-    else
-        Build-Depends: base < 4
-        
-    if flag(bytestringInBase)
-        Build-Depends: base >= 2.0 && < 2.2
-    else
-        Build-Depends: base < 2.0 || >= 3, bytestring
-    
-    if flag(applicativeInBase)
-        Build-Depends: base >= 2.0
-        Cpp-Options: -DAPPLICATIVE_IN_BASE
-        -- BUG (Cabal 1.2 + Haddock): enable for Haddock, disable
-        -- for Hackage. Fixed in Cabal 1.6
-        --Ghc-Options: -DAPPLICATIVE_IN_BASE
-    else
-        Build-Depends: base < 2.0
+    Build-Depends: base       >= 4   && < 4.11
+                 , bytestring >= 0.9 && < 0.11
+                 , binary
     
     if flag(useCinternal)
         C-Sources:     src/Data/Trie/ByteStringInternal/indexOfDifference.c
@@ -109,5 +87,5 @@ Library
         Cpp-Options:   -D__USE_C_INTERNAL__
 -- Also need to add stuff to run Configure.hs, FWIW
 
-----------------------------------------------------------------
------------------------------------------------------------ fin.
+------------------------------------------------------------
+------------------------------------------------------- fin.

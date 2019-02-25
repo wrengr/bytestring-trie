@@ -79,8 +79,30 @@ before_install:
       travis_retry sudo add-apt-repository -y ppa:hvr/ghc
       travis_retry sudo apt-get update
       travis_retry sudo apt-get install cabal-install-$CABALVER ghc-$GHCVER
-      export CABAL=cabal-$CABALVER
       export PATH=/opt/ghc/$GHCVER/bin:/opt/cabal/$CABALVER/bin:$PATH
+      # HACK: For some reason CABALVER>=1.24 uses the bare name
+      # 'cabal' rather than the versioned name. So we try to
+      # autodetect and autocorrect for that anomaly.
+      if command -v cabal-$CABALVER >/dev/null 2>&1 ; then
+        # The usual/old case, for CABALVER<1.24
+        export CABAL=cabal-$CABALVER
+      elif command -v cabal >/dev/null 2>&1 ; then
+        # Found something called 'cabal', but should double-check
+        # that it's the right one.  (Maybe I'm being excessively
+        # paranoid?)
+        ACTUAL=$(cabal --version | head -1)
+        EXPECTED="cabal-install version $CABALVER"
+        if [[ $ACTUAL =~ $EXPECTED ]] ; then
+          export CABAL=cabal
+        else
+          echo 2>&1 "I found something called cabal, but not the one I expected..."
+          cabal --version 2>&1
+          exit 1
+        fi
+      else
+        echo >&2 "Why can't I find $CABAL?!"
+        exit 1
+      fi
     fi
   
   # The standard configuration for cabal-1.16 gives a horribly
@@ -95,22 +117,6 @@ before_install:
         # Warning: /home/travis/.cabal/config: Unrecognized stanza on line 117
         # /home/travis/.cabal/config: Unrecognized stanza on line 89
         # /home/travis/.cabal/config: Unrecognized field extra-prog-path on line 37
-    fi
-  
-  # BUG: for some reason CABALVER=1.24 and above don't give us the
-  # command named in $CABAL, so we have to figure out what it got
-  # called instead...
-  - |
-    if command -v $CABAL >/dev/null 2>&1 ; then
-        # Found it, so we're all good.
-        :
-    else
-        echo >&2 "Why can't I find $CABAL in the path?!"
-        if command -v cabal >/dev/null 2>&1 ; then
-            echo >&2 "But I did find 'cabal' instead..."
-            cabal --version >&2
-        fi
-        exit 1
     fi
 
   # Uncomment this line whenever hackage is down.

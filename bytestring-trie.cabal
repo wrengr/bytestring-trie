@@ -44,7 +44,7 @@ Description:    An efficient finite map from (byte)strings to values.
 
 
 Extra-source-files:
-    AUTHORS, VERSION
+    AUTHORS, README.md, VERSION
 
 -- Cf., <https://travis-ci.org/wrengr/bytestring-lexing>
 --

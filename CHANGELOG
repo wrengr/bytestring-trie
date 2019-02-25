@@ -1,6 +1,6 @@
-0.2.4.3 (2019.02.XX):
+0.2.4.3 (2019.02.24):
     - Moved VERSION to CHANGELOG
-    - Nudging things so they compile on GHC-8.*
+    - Fixing things to compile under GHC 8.0 and 8.2.  N.B., still doesn't compile under 8.4 or 8.6, due to the version limit on `base`.
 0.2.4.1 (2015.04.04):
     - Data.Trie.Internal: adjusted imports to compule under GHC 7.10.1
 0.2.4 (2014.10.09):

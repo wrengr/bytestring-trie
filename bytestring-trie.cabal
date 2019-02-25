@@ -47,16 +47,12 @@ Extra-source-files:
     AUTHORS, README.md, VERSION
 
 -- Cf., <https://travis-ci.org/wrengr/bytestring-lexing>
---
--- BUG: remove the versions that use base<4, since we got rid of
--- the flag for supporting that.
---
--- TODO: add all the GHC-8.* variants.
 Tested-With:
     GHC ==7.4.1, GHC ==7.4.2,
     GHC ==7.6.1, GHC ==7.6.2, GHC ==7.6.3,
     GHC ==7.8.1, GHC ==7.8.2, GHC ==7.8.3, GHC ==7.8.4,
-    GHC ==7.10.1, GHC ==7.10.2
+    GHC ==7.10.1, GHC ==7.10.3,
+    GHC ==8.0.2, GHC ==8.2.2, GHC ==8.4.3, GHC ==8.6.1
 
 Source-Repository head
     Type:     git

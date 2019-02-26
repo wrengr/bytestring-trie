@@ -52,7 +52,6 @@ The implementation is quite portable, relying only on a few basic
 language extensions. The complete list of extensions used is:
 
 * CPP
-* ForeignFunctionInterface
 * MagicHash 
 * NoImplicitPrelude
 

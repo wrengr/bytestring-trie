@@ -2,20 +2,22 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 ----------------------------------------------------------------
---                                                  ~ 2014.10.09
+--                                                  ~ 2019.04.03
 -- |
--- Module      :  Data.Trie
--- Copyright   :  Copyright (c) 2008--2015 wren gayle romano
+-- Module      :  Data.Trie.Text
+-- Copyright   :  Copyright (c) 2008--2015 wren gayle romano, 2019 michael j. klein
 -- License     :  BSD3
--- Maintainer  :  wren@community.haskell.org
+-- Maintainer  :  lambdamichael@gmail.com
 -- Stability   :  experimental
--- Portability :  portable
 --
 -- An efficient implementation of finite maps from strings to values.
 -- The implementation is based on /big-endian patricia trees/, like
--- "Data.IntMap". We first trie on the elements of "Data.ByteString"
+-- "Data.IntMap". We first trie on the `Word16` elements of `T.Text`
 -- and then trie on the big-endian bit representation of those
--- elements. For further details on the latter, see
+-- elements. For further details, see
+--
+--    * Original implementation: `bytestring-trie`
+--    <https://github.com/wrengr/bytestring-trie>
 --
 --    * Chris Okasaki and Andy Gill,  \"/Fast Mergeable Integer Maps/\",
 --    Workshop on ML, September 1998, pages 77-86,
@@ -27,34 +29,34 @@
 --
 -- This module aims to provide an austere interface, while being
 -- detailed enough for most users. For an extended interface with
--- many additional functions, see "Data.Trie.Convenience". For
+-- many additional functions, see "Data.Trie.Text.Convenience". For
 -- functions that give more detailed (potentially abstraction-breaking)
 -- access to the data strucuture, or for experimental functions
--- which aren't quite ready for the public API, see "Data.Trie.Internal".
+-- which aren't quite ready for the public API, see "Data.Trie.Text.Internal".
 ----------------------------------------------------------------
 
 module Data.Trie.Text
     (
     -- * Data type
-      TrieText()
+      Trie()
 
     -- * Basic functions
-    , emptyText, nullText, singletonText, sizeText
+    , empty, null, singleton, size
 
     -- * Conversion functions
-    , fromListText, toListByText, toListText, keysText, elemsText
+    , fromList, toListBy, toList, keys, elems
 
     -- * Query functions
-    , lookupByText, lookupText, memberText, submapText, matchText, matchesText
+    , lookupBy, lookup, member, submap, match, matches
 
     -- * Single-value modification
-    , alterByText, insertText, adjustText, deleteText
+    , alterBy, insert, adjust, delete
 
     -- * Combining tries
-    , mergeByText, unionLText, unionRText
+    , mergeBy, unionL, unionR
 
     -- * Mapping functions
-    , mapByText, filterMapText
+    , mapBy, filterMap
     ) where
 
 import Prelude hiding     (null, lookup)
@@ -62,8 +64,6 @@ import qualified Prelude  (null, lookup)
 
 import Data.Trie.Text.Internal
 import Data.Trie.Errors   (impossible)
--- import Data.ByteString    (ByteString)
--- import qualified Data.ByteString as S
 
 import Data.Text          (Text)
 import qualified Data.Text as T
@@ -80,27 +80,27 @@ import Control.Monad      (liftM)
 
 -- | Convert association list into a trie. On key conflict, values
 -- earlier in the list shadow later ones.
-fromListText :: [(Text,a)] -> TrieText a
-{-# INLINE fromListText #-}
-fromListText = foldr (uncurry insertText) emptyText
+fromList :: [(Text,a)] -> Trie a
+{-# INLINE fromList #-}
+fromList = foldr (uncurry insert) empty
 
 
 -- | Convert trie into association list. Keys will be in sorted order.
-toListText :: TrieText a -> [(Text,a)]
-{-# INLINE toListText #-}
-toListText  = toListByText (,)
+toList :: Trie a -> [(Text,a)]
+{-# INLINE toList #-}
+toList  = toListBy (,)
 
 -- FIX? should 'keys' and 'elems' move to Data.Trie.Convenience instead?
 
 -- | Return all keys in the trie, in sorted order.
-keysText :: TrieText a -> [Text]
-{-# INLINE keysText #-}
-keysText = toListByText const
+keys :: Trie a -> [Text]
+{-# INLINE keys #-}
+keys = toListBy const
 
 -- | Return all values in the trie, in sorted order according to the keys.
-elemsText :: TrieText a -> [a]
-{-# INLINE elemsText #-}
-elemsText = toListByText (flip const)
+elems :: Trie a -> [a]
+{-# INLINE elems #-}
+elems = toListBy (flip const)
 
 {---------------------------------------------------------------
 -- Query functions (just recurse)
@@ -108,28 +108,28 @@ elemsText = toListByText (flip const)
 
 -- | Generic function to find a value (if it exists) and the subtrie
 -- rooted at the prefix.
-lookupByText :: (Maybe a -> TrieText a -> b) -> Text -> TrieText a -> b
-{-# INLINE lookupByText #-}
-lookupByText f = lookupByText_ f (f Nothing emptyText) (f Nothing)
+lookupBy :: (Maybe a -> Trie a -> b) -> Text -> Trie a -> b
+{-# INLINE lookupBy #-}
+lookupBy f = lookupBy_ f (f Nothing empty) (f Nothing)
 
 -- | Return the value associated with a query string if it exists.
-lookupText :: Text -> TrieText a -> Maybe a
-{-# INLINE lookupText #-}
-lookupText = lookupByText_ const Nothing (const Nothing)
+lookup :: Text -> Trie a -> Maybe a
+{-# INLINE lookup #-}
+lookup = lookupBy_ const Nothing (const Nothing)
 
 
 -- TODO? move to "Data.Trie.Convenience"?
 -- | Does a string have a value in the trie?
-memberText :: Text -> TrieText a -> Bool
-{-# INLINE memberText #-}
-memberText q = isJust . lookupText q
+member :: Text -> Trie a -> Bool
+{-# INLINE member #-}
+member q = isJust . lookup q
 
 -- | Given a query, find the longest prefix with an associated value
 -- in the trie, returning that prefix, it's value, and the remaining
 -- string.
-matchText :: TrieText a -> Text -> Maybe (Text, a, Text)
-matchText t q =
-    case matchText_ t q of
+match :: Trie a -> Text -> Maybe (Text, a, Text)
+match t q =
+    case match_ t q of
     Nothing    -> Nothing
     Just (n,x) ->
         case T.splitAt n q of
@@ -138,9 +138,9 @@ matchText t q =
 -- | Given a query, find all prefixes with associated values in the
 -- trie, returning the prefixes, their values, and their remaining
 -- strings. This function is a good producer for list fusion.
-matchesText :: TrieText a -> Text -> [(Text, a, Text)]
-{-# INLINE matchesText #-}
-matchesText t q = map f (matchesText_ t q)
+matches :: Trie a -> Text -> [(Text, a, Text)]
+{-# INLINE matches #-}
+matches t q = map f (matches_ t q)
     where
     f (n,x) =
         case T.splitAt n q of
@@ -152,21 +152,21 @@ matchesText t q = map f (matchesText_ t q)
 
 -- | Insert a new key. If the key is already present, overrides the
 -- old value
-insertText :: Text -> a -> TrieText a -> TrieText a
-{-# INLINE insertText #-}
-insertText = alterByText (\_ x _ -> Just x)
+insert :: Text -> a -> Trie a -> Trie a
+{-# INLINE insert #-}
+insert = alterBy (\_ x _ -> Just x)
 
 -- | Apply a function to the value at a key.
-adjustText :: (a -> a) -> Text -> TrieText a -> TrieText a
-{-# INLINE adjustText #-}
-adjustText f q = adjustByText (\_ _ -> f) q (impossible "adjust")
+adjust :: (a -> a) -> Text -> Trie a -> Trie a
+{-# INLINE adjust #-}
+adjust f q = adjustBy (\_ _ -> f) q (impossible "adjust")
 -- TODO: benchmark vs the definition with alterBy/liftM
 
 
 -- | Remove the value stored at a key.
-deleteText :: Text -> TrieText a -> TrieText a
-{-# INLINE deleteText #-}
-deleteText q = alterByText (\_ _ _ -> Nothing) q (impossible "delete")
+delete :: Text -> Trie a -> Trie a
+{-# INLINE delete #-}
+delete q = alterBy (\_ _ _ -> Nothing) q (impossible "delete")
 
 {---------------------------------------------------------------
 -- Trie-combining functions
@@ -174,15 +174,15 @@ deleteText q = alterByText (\_ _ _ -> Nothing) q (impossible "delete")
 
 -- | Combine two tries, resolving conflicts by choosing the value
 -- from the left trie.
-unionLText :: TrieText a -> TrieText a -> TrieText a
-{-# INLINE unionLText #-}
-unionLText = mergeByText (\x _ -> Just x)
+unionL :: Trie a -> Trie a -> Trie a
+{-# INLINE unionL #-}
+unionL = mergeBy (\x _ -> Just x)
 
 -- | Combine two tries, resolving conflicts by choosing the value
 -- from the right trie.
-unionRText :: TrieText a -> TrieText a -> TrieText a
-{-# INLINE unionRText #-}
-unionRText = mergeByText (\_ y -> Just y)
+unionR :: Trie a -> Trie a -> Trie a
+{-# INLINE unionR #-}
+unionR = mergeBy (\_ y -> Just y)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

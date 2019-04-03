@@ -1,11 +1,16 @@
-bytestring-trie
+text-trie
 ===============
-[![Hackage version](https://img.shields.io/hackage/v/bytestring-trie.svg?style=flat)](https://hackage.haskell.org/package/bytestring-trie) 
-[![Hackage-Deps](https://img.shields.io/hackage-deps/v/bytestring-trie.svg?style=flat)](http://packdeps.haskellers.com/specific?package=bytestring-trie)
-[![TravisCI Build Status](https://img.shields.io/travis/wrengr/bytestring-trie.svg?style=flat)](https://travis-ci.org/wrengr/bytestring-trie) 
-[![CircleCI Build Status](https://circleci.com/gh/wrengr/bytestring-trie.svg?style=shield&circle-token=b57517657c556be6fd8fca92b843f9e4cffaf8d1)](https://circleci.com/gh/wrengr/bytestring-trie)
+[![Hackage version](https://img.shields.io/hackage/v/bytestring-trie.svg?style=flat)](https://hackage.haskell.org/package/text-trie) 
+[![TravisCI Build Status](https://img.shields.io/travis/michaeljklein/bytestring-trie.svg?style=flat)](https://travis-ci.org/michaeljklein/text-trie) 
 
-The bytestring-trie package provides an efficient implementation
+The `text-trie` package is a lightweight adaptation of `bytestring-trie` to `Text`.
+
+For the differences in performance, see below.
+
+
+## bytestring-trie
+
+The [bytestring-trie](https://github.com/wrengr/bytestring-trie) package provides an efficient implementation
 of tries mapping `ByteString` to values.  The implementation is
 based on Okasaki's big-endian patricia trees, à la `IntMap`.  We
 first trie on the elements of `ByteString` and then trie on the
@@ -28,37 +33,91 @@ and maximum keys, etc.)
 This is a simple package and should be easy to install.  You should
 be able to use one of the following standard methods to install it.
 
-    -- With cabal-install and without the source:
-    $> cabal install bytestring-trie
+```bash
+    -- With stack and without the source:
+    $> stack install text-trie
     
-    -- With cabal-install and with the source already:
-    $> cd bytestring-trie
-    $> cabal install
+    -- With stack and with the source already:
+    $> cd text-trie
+    $> stack install
     
-    -- Without cabal-install, but with the source already:
-    $> cd bytestring-trie
-    $> runhaskell Setup.hs configure --user
-    $> runhaskell Setup.hs build
-    $> runhaskell Setup.hs haddock --hyperlink-source
-    $> runhaskell Setup.hs copy
-    $> runhaskell Setup.hs register
+```
 
-The Haddock step is optional.
+
+## Performance
+
+Example performance compared to `bytestring-trie` from benchmarks run on 04/03/2019:
+
+`fromListR` obverse:
+| String Type | Per iteration | Per second |
+|-------------|---------------|------------|
+| ByteString  | 43.230ns      | 23131.93   |
+| Text        | 45.256ns      | 22096.29   |
+
+`fromListL` obverse:
+| String Type | Per iteration | Per second |
+|-------------|---------------|------------|
+| ByteString  | 182.380ns     | 5483.07    |
+| Text        | 274.391ns     | 3644.43    |
+
+`fromListR` reverse:
+| String Type | Per iteration | Per second |
+|-------------|---------------|------------|
+| ByteString  | 279.460ns     | 3578.33    |
+| Text        | 356.662ns     | 2803.78    |
+
+`fromListL` reverse:
+| String Type | Per iteration | Per second |
+|-------------|---------------|------------|
+| ByteString  | 43.646ns      | 22911.79   |
+| Text        | 45.778ns      | 21844.78   |
+
+`fromListR` obverse sorted:
+| String Type | Per iteration | Per second |
+|-------------|---------------|------------|
+| ByteString  | 45.714ns      | 21875.24   |
+| Text        | 49.093ns      | 20369.65   |
+
+`fromListL` obverse sorted:
+| String Type | Per iteration | Per second |
+|-------------|---------------|------------|
+| ByteString  | 179.145ns     | 5582.08    |
+| Text        | 281.516ns     | 3552.19    |
+
+`fromListR` reverse sorted:
+| String Type | Per iteration | Per second |
+|-------------|---------------|------------|
+| ByteString  | 45.055ns      | 22194.92   |
+| Text        | 49.776ns      | 20089.87   |
+
+`fromListL` reverse sorted:
+| String Type | Per iteration | Per second |
+|-------------|---------------|------------|
+| ByteString  | 176.282ns     | 5672.73    |
+| Text        | 282.495ns     | 3539.89    |
 
 
 ## Portability
 
-The implementation is quite portable, relying only on a few basic
-language extensions. The complete list of extensions used is:
+The implementation only relies on a few basic
+language extensions and `DeriveGeneric`. The complete list of extensions used is:
 
-* CPP
-* MagicHash 
-* NoImplicitPrelude
+* `CPP`
+* `MagicHash`
+* `NoImplicitPrelude`
+* `StandaloneDeriving`
+* `DeriveGeneric`
+
 
 ## Links
 
-* [Website](http://wrengr.org/)
-* [Blog](http://winterkoninkje.dreamwidth.org/)
-* [Twitter](https://twitter.com/wrengr)
-* [Hackage](http://hackage.haskell.org/package/bytestring-trie)
-* [GitHub](https://github.com/wrengr/bytestring-trie)
+- [Hackage](http://hackage.haskell.org/package/text-trie)
+- [GitHub](https://github.com/michaeljklein/text-trie)
+
+- `bytestring-trie`
+  * [Website](http://wrengr.org/)
+  * [Blog](http://winterkoninkje.dreamwidth.org/)
+  * [Twitter](https://twitter.com/wrengr)
+  * [Hackage](http://hackage.haskell.org/package/bytestring-trie)
+  * [GitHub](https://github.com/wrengr/bytestring-trie)
+

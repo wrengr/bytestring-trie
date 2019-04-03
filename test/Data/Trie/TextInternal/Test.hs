@@ -1,17 +1,16 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.02.06
+--                                                  ~ 2019.04.03
 -- |
 -- Module      :  Data.Trie.TextInternal.Test
--- Copyright   :  Copyright (c) 2019 Michael J. Klein
+-- Copyright   :  Copyright (c) 2008--2009 wren gayle romano, 2019 michael j. klein
 -- License     :  BSD3
 -- Maintainer  :  lambdamichael@gmail.com
--- Stability   :  provisional
--- Portability :  portable
+-- Stability   :  experimental
 --
--- Testing helper functions on 'Text'.
-----------------------------------------------------------------
+-- Testing helper functions on 'Text'
+-- (mostly to ensure they match expectations from `bytestring-trie`).
 
 module Data.Trie.TextInternal.Test where
 
@@ -32,7 +31,7 @@ showBits = unfoldr getBit
 -- TODO: make this into an HUnit test
 test :: IO ()
 test  = do
-    cmp' helloText
+    cmp' hello
     cmp' $ T.pack "hi"
     cmp' $ T.pack "heat"
     cmp' $ T.pack "held"
@@ -41,11 +40,11 @@ test  = do
     cmp' $ T.pack "jello"
 
     where
-    cmp' y = do putStrLn . show . breakMaximalPrefixText helloText $ y
-                putStrLn . show . (\(a,b,c) -> (a,c,b)) . breakMaximalPrefixText y $ helloText
+    cmp' y = do putStrLn . show . breakMaximalPrefix hello $ y
+                putStrLn . show . (\(a,b,c) -> (a,c,b)) . breakMaximalPrefix y $ hello
                 putStrLn "\n"
 
-    helloText = T.pack "hello"
+    hello = T.pack "hello"
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

@@ -9,14 +9,13 @@
 #endif
 
 ------------------------------------------------------------
---                                              ~ 2019.02.24
+--                                              ~ 2019.04.03
 -- |
--- Module      :  Data.Trie.Internal
--- Copyright   :  Copyright (c) 2008--2019 wren gayle romano
+-- Module      :  Data.Trie.Text.Internal
+-- Copyright   :  Copyright (c) 2008--2015 wren gayle romano, 2019 michael j. klein
 -- License     :  BSD3
--- Maintainer  :  wren@cpan.org
--- Stability   :  provisional
--- Portability :  portable (with CPP)
+-- Maintainer  :  lambdamichael@gmail.com
+-- Stability   :  experimental
 --
 -- Internal definition of the 'Trie' data type and generic functions
 -- for manipulating them. Almost everything here is re-exported
@@ -28,38 +27,38 @@
 module Data.Trie.Text.Internal
     (
     -- * Data types
-      TrieText(), showTrieText
+      Trie(), showTrie
 
     -- * Functions for 'Text'
-    , breakMaximalPrefixText
+    , breakMaximalPrefix
 
     -- * Basic functions
-    , emptyText, nullText, singletonText, sizeText
+    , empty, null, singleton, size
 
     -- * Conversion and folding functions
-    , foldrWithKeyText, toListByText
+    , foldrWithKey, toListBy
 
     -- * Query functions
-    , lookupByText_, submapText
-    , matchText_, matchesText_
+    , lookupBy_, submap
+    , match_, matches_
 
     -- * Single-value modification
-    , alterByText, alterByText_, adjustByText
+    , alterBy, alterBy_, adjustBy
 
     -- * Combining tries
-    , mergeByText
+    , mergeBy
 
     -- * Mapping functions
-    , mapByText
-    , filterMapText
-    , contextualMapText
-    , contextualMapText'
-    , contextualFilterMapText
-    , contextualMapByText
+    , mapBy
+    , filterMap
+    , contextualMap
+    , contextualMap'
+    , contextualFilterMap
+    , contextualMapBy
 
     -- * Priority-queue functions
-    , minAssocText, maxAssocText
-    , updateMinViewByText, updateMaxViewByText
+    , minAssoc, maxAssoc
+    , updateMinViewBy, updateMaxViewBy
 
     -- * Internal Text access
     , toList16
@@ -172,19 +171,19 @@ data Trie a = Empty
 -- useful for anything, or if there's a more sensible instance, I'd
 -- be curious to know.
 
-data TrieText a = EmptyText
-                | ArcText    {-# UNPACK #-} !Text
-                                            !(Maybe a)
-                                            !(TrieText a)
-                | BranchText {-# UNPACK #-} !PrefixText
-                             {-# UNPACK #-} !MaskText
-                                            !(TrieText a)
-                                            !(TrieText a)
+data Trie a = Empty
+            | Arc    {-# UNPACK #-} !Text
+                                    !(Maybe a)
+                                    !(Trie a)
+            | Branch {-# UNPACK #-} !Prefix
+                     {-# UNPACK #-} !Mask
+                                    !(Trie a)
+                                    !(Trie a)
     deriving Eq
 
 #ifdef __GLASGOW_HASKELL__
-deriving instance Generic1 TrieText
-deriving instance Generic a => Generic (TrieText a)
+deriving instance Generic1 Trie
+deriving instance Generic a => Generic (Trie a)
 #endif
 
 
@@ -198,77 +197,77 @@ deriving instance Generic a => Generic (TrieText a)
 -- It doesn't emit truly proper Haskell code though, since ByteStrings
 -- are printed as (ASCII) Strings, but that's not our fault. (Also
 -- 'fromList' is in "Data.Trie" instead of here.)
-instance (Show a) => Show (TrieText a) where
+instance (Show a) => Show (Trie a) where
     showsPrec p t = showParen (p > 10)
-                  $ ("Data.Trie.fromListText "++) . shows (toListByText (,) t)
+                  $ ("Data.Trie.fromList "++) . shows (toListBy (,) t)
 
 -- | Visualization fuction for debugging.
-showTrieText :: (Show a) => TrieText a -> String
-showTrieText t = shows' id t ""
-    where
+showTrie :: (Show a) => Trie a -> String
+showTrie t = shows' id t ""
+  where
     spaces f = map (const ' ') (f "")
-
-    shows' _  EmptyText            = (".\n"++)
-    shows' ss (BranchText p m l r) =
-        let s'  = ("--"++) . shows p . (","++) . shows m . ("-+"++)
-            ss' = ss . (tail (spaces s') ++)
-        in s'              . shows' (ss' . ("|"++)) l
-           . ss' . ("|\n"++)
-           . ss' . ("`"++) . shows' (ss' . (" "++)) r
-    shows' ss (ArcText k mv t') =
-        let s' = ("--"++) . shows k
-                 . maybe id (\v -> ("-("++) . shows v . (")"++)) mv
-                 . ("--"++)
-        in  s' . shows' (ss . (spaces s' ++)) t'
+    shows' _ Empty = (".\n" ++)
+    shows' ss (Branch p m l r) =
+      let s' = ("--" ++) . shows p . ("," ++) . shows m . ("-+" ++)
+          ss' = ss . (tail (spaces s') ++)
+       in s' .
+          shows' (ss' . ("|" ++)) l .
+          ss' . ("|\n" ++) . ss' . ("`" ++) . shows' (ss' . (" " ++)) r
+    shows' ss (Arc k mv t') =
+      let s' =
+            ("--" ++) .
+            shows k .
+            maybe id (\v -> ("-(" ++) . shows v . (")" ++)) mv . ("--" ++)
+       in s' . shows' (ss . (spaces s' ++)) t'
 
 
 -- TODO?? a Read instance? hrm... should I?
 
 -- TODO: consider an instance more like the new one for Data.Map. Better?
-instance (Binary a) => Binary (TrieText a) where
-    put EmptyText            = do put (0 :: Word8)
-    put (ArcText k m t)      = do put (1 :: Word8); put k; put m; put t
-    put (BranchText p m l r) = do put (2 :: Word8); put p; put m; put l; put r
+instance (Binary a) => Binary (Trie a) where
+    put Empty            = do put (0 :: Word8)
+    put (Arc k m t)      = do put (1 :: Word8); put k; put m; put t
+    put (Branch p m l r) = do put (2 :: Word8); put p; put m; put l; put r
 
     get = do tag <- get :: Get Word8
              case tag of
-                 0 -> return EmptyText
-                 1 -> liftM3 ArcText get get get
-                 _ -> liftM4 BranchText get get get get
+                 0 -> return Empty
+                 1 -> liftM3 Arc get get get
+                 _ -> liftM4 Branch get get get get
 
 
 {-----------------------------------------------------------
 -- Trie instances: Abstract Nonsense
 -----------------------------------------------------------}
 
-instance Functor TrieText where
+instance Functor Trie where
     fmap f = go
         where
-        go EmptyText              = EmptyText
-        go (ArcText k Nothing  t) = ArcText k Nothing      (go t)
-        go (ArcText k (Just v) t) = ArcText k (Just (f v)) (go t)
-        go (BranchText p m l r)   = BranchText p m (go l) (go r)
+        go Empty              = Empty
+        go (Arc k Nothing  t) = Arc k Nothing      (go t)
+        go (Arc k (Just v) t) = Arc k (Just (f v)) (go t)
+        go (Branch p m l r)   = Branch p m (go l) (go r)
 
-instance Foldable TrieText where
+instance Foldable Trie where
     foldMap f = go
         where
-        go EmptyText              = mempty
-        go (ArcText _ Nothing  t) = go t
-        go (ArcText _ (Just v) t) = f v `mappend` go t
-        go (BranchText _ _ l r)   = go l `mappend` go r
+        go Empty              = mempty
+        go (Arc _ Nothing  t) = go t
+        go (Arc _ (Just v) t) = f v `mappend` go t
+        go (Branch _ _ l r)   = go l `mappend` go r
 
 -- TODO: newtype Keys = K Trie  ; instance Foldable Keys
 -- TODO: newtype Assoc = A Trie ; instance Foldable Assoc
 
-instance Traversable TrieText where
+instance Traversable Trie where
     traverse f = go
         where
-        go EmptyText              = pure EmptyText
-        go (ArcText k Nothing  t) = ArcText k Nothing        <$> go t
-        go (ArcText k (Just v) t) = ArcText k . Just <$> f v <*> go t
-        go (BranchText p m l r)   = BranchText p m <$> go l <*> go r
+        go Empty              = pure Empty
+        go (Arc k Nothing  t) = Arc k Nothing        <$> go t
+        go (Arc k (Just v) t) = Arc k . Just <$> f v <*> go t
+        go (Branch p m l r)   = Branch p m <$> go l <*> go r
 
-instance Applicative TrieText where
+instance Applicative Trie where
     pure  = return
     (<*>) = ap
 
@@ -282,15 +281,15 @@ instance Applicative TrieText where
 --  1. return x >>= f  == f x
 --  2. m >>= return    == m
 --  3. (m >>= f) >>= g == m >>= (\x -> f x >>= g)
-instance Monad TrieText where
-    return = singletonText T.empty
+instance Monad Trie where
+    return = singleton T.empty
 
-    (>>=) EmptyText              _ = emptyText
-    (>>=) (BranchText p m l r)   f = branchText p m (l >>= f) (r >>= f)
-    (>>=) (ArcText k Nothing  t) f = arcText k Nothing (t >>= f)
-    (>>=) (ArcText k (Just v) t) f = arcText k Nothing (f v `unionLText` (t >>= f))
+    (>>=) Empty              _ = empty
+    (>>=) (Branch p m l r)   f = branch p m (l >>= f) (r >>= f)
+    (>>=) (Arc k Nothing  t) f = arc k Nothing (t >>= f)
+    (>>=) (Arc k (Just v) t) f = arc k Nothing (f v `unionL` (t >>= f))
                                where
-                               unionLText = mergeByText (\x _ -> Just x)
+                               unionL = mergeBy (\x _ -> Just x)
 
 
 #if MIN_VERSION_base(4,9,0)
@@ -298,17 +297,17 @@ instance Monad TrieText where
 -- the 'Semigroup' superclass for the 'Monoid' instance only comes
 -- into force in base 4.11.0.0.
 
-instance (Semigroup a) => Semigroup (TrieText a) where
-    (<>) = mergeByText $ \x y -> Just (x <> y)
+instance (Semigroup a) => Semigroup (Trie a) where
+    (<>) = mergeBy $ \x y -> Just (x <> y)
     -- TODO: optimized implementations of:
     -- sconcat :: NonEmpty a -> a
     -- stimes :: Integral b => b -> a -> a
 #endif
 
 -- This instance is more sensible than Data.IntMap and Data.Map's
-instance (Monoid a) => Monoid (TrieText a) where
-    mempty  = emptyText
-    mappend = mergeByText $ \x y -> Just (x `mappend` y)
+instance (Monoid a) => Monoid (Trie a) where
+    mempty  = empty
+    mappend = mergeBy $ \x y -> Just (x `mappend` y)
 
 -- Since the Monoid instance isn't natural in @a@, I can't think
 -- of any other sensible instance for MonadPlus. It's as specious
@@ -339,66 +338,66 @@ instance MonadPlus Trie where
 -----------------------------------------------------------}
 
 -- | Apply a function to all values, potentially removing them.
-filterMapText :: (a -> Maybe b) -> TrieText a -> TrieText b
-filterMapText f = go
+filterMap :: (a -> Maybe b) -> Trie a -> Trie b
+filterMap f = go
     where
-    go EmptyText              = emptyText
-    go (ArcText k Nothing  t) = arcText k Nothing (go t)
-    go (ArcText k (Just v) t) = arcText k (f v)   (go t)
-    go (BranchText p m l r)   = branchText p m (go l) (go r)
+    go Empty              = empty
+    go (Arc k Nothing  t) = arc k Nothing (go t)
+    go (Arc k (Just v) t) = arc k (f v)   (go t)
+    go (Branch p m l r)   = branch p m (go l) (go r)
 
 
 -- | Generic version of 'fmap'. This function is notably more
 -- expensive than 'fmap' or 'filterMap' because we have to reconstruct
 -- the keys.
-mapByText :: (Text -> a -> Maybe b) -> TrieText a -> TrieText b
-mapByText f = go T.empty
+mapBy :: (Text -> a -> Maybe b) -> Trie a -> Trie b
+mapBy f = go T.empty
     where
-    go _ EmptyText              = emptyText
-    go q (ArcText k Nothing  t) = arcText k Nothing  (go q' t) where q' = T.append q k
-    go q (ArcText k (Just v) t) = arcText k (f q' v) (go q' t) where q' = T.append q k
-    go q (BranchText p m l r)   = branchText p m (go q l) (go q r)
+    go _ Empty              = empty
+    go q (Arc k Nothing  t) = arc k Nothing  (go q' t) where q' = T.append q k
+    go q (Arc k (Just v) t) = arc k (f q' v) (go q' t) where q' = T.append q k
+    go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
 -- | A variant of 'fmap' which provides access to the subtrie rooted
 -- at each value.
-contextualMapText :: (a -> TrieText a -> b) -> TrieText a -> TrieText b
-contextualMapText f = go
+contextualMap :: (a -> Trie a -> b) -> Trie a -> Trie b
+contextualMap f = go
     where
-    go EmptyText              = EmptyText
-    go (ArcText k Nothing  t) = ArcText k Nothing        (go t)
-    go (ArcText k (Just v) t) = ArcText k (Just (f v t)) (go t)
-    go (BranchText p m l r)   = BranchText p m (go l) (go r)
+    go Empty              = Empty
+    go (Arc k Nothing  t) = Arc k Nothing        (go t)
+    go (Arc k (Just v) t) = Arc k (Just (f v t)) (go t)
+    go (Branch p m l r)   = Branch p m (go l) (go r)
 
 
 -- | A variant of 'contextualMap' which applies the function strictly.
-contextualMapText' :: (a -> TrieText a -> b) -> TrieText a -> TrieText b
-contextualMapText' f = go
+contextualMap' :: (a -> Trie a -> b) -> Trie a -> Trie b
+contextualMap' f = go
     where
-    go EmptyText              = EmptyText
-    go (ArcText k Nothing  t) = ArcText k Nothing         (go t)
-    go (ArcText k (Just v) t) = ArcText k (Just $! f v t) (go t)
-    go (BranchText p m l r)   = BranchText p m (go l) (go r)
+    go Empty              = Empty
+    go (Arc k Nothing  t) = Arc k Nothing         (go t)
+    go (Arc k (Just v) t) = Arc k (Just $! f v t) (go t)
+    go (Branch p m l r)   = Branch p m (go l) (go r)
 
 
 -- | A contextual variant of 'filterMap'.
-contextualFilterMapText :: (a -> TrieText a -> Maybe b) -> TrieText a -> TrieText b
-contextualFilterMapText f = go
+contextualFilterMap :: (a -> Trie a -> Maybe b) -> Trie a -> Trie b
+contextualFilterMap f = go
     where
-    go EmptyText              = emptyText
-    go (ArcText k Nothing  t) = arcText k Nothing (go t)
-    go (ArcText k (Just v) t) = arcText k (f v t) (go t)
-    go (BranchText p m l r)   = branchText p m (go l) (go r)
+    go Empty              = empty
+    go (Arc k Nothing  t) = arc k Nothing (go t)
+    go (Arc k (Just v) t) = arc k (f v t) (go t)
+    go (Branch p m l r)   = branch p m (go l) (go r)
 
 -- | A contextual variant of 'mapBy'. Again note that this is
 -- expensive since we must reconstruct the keys.
-contextualMapByText :: (Text -> a -> TrieText a -> Maybe b) -> TrieText a -> TrieText b
-contextualMapByText f = go T.empty
+contextualMapBy :: (Text -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
+contextualMapBy f = go T.empty
     where
-    go _ EmptyText              = emptyText
-    go q (ArcText k Nothing  t) = arcText k Nothing (go (T.append q k) t)
-    go q (ArcText k (Just v) t) = let q' = T.append q k
-                              in arcText k (f q' v t) (go q' t)
-    go q (BranchText p m l r)   = branchText p m (go q l) (go q r)
+    go _ Empty              = empty
+    go q (Arc k Nothing  t) = arc k Nothing (go (T.append q k) t)
+    go q (Arc k (Just v) t) = let q' = T.append q k
+                              in arc k (f q' v t) (go q' t)
+    go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
 
 
@@ -407,22 +406,23 @@ contextualMapByText f = go T.empty
 -----------------------------------------------------------}
 
 -- | Smart constructor to prune @Empty@ from @Branch@es.
-branchText :: PrefixText -> MaskText -> TrieText a -> TrieText a -> TrieText a
-{-# INLINE branchText #-}
-branchText _ _ EmptyText r     = r
-branchText _ _ l     EmptyText = l
-branchText p m l     r     = BranchText p m l r
+branch :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
+{-# INLINE branch #-}
+branch _ _ Empty r     = r
+branch _ _ l     Empty = l
+branch p m l     r     = Branch p m l r
 
 
 -- | Smart constructor to prune @Arc@s that lead nowhere.
 -- N.B if mv=Just then doesn't check whether t=epsilon. It's up to callers to ensure that invariant isn't broken.
-arcText :: Text -> Maybe a -> TrieText a -> TrieText a
-{-# INLINE arcText #-}
-arcText k mv@(Just _)   t                                = ArcText k mv t
-arcText _    Nothing    EmptyText                        = EmptyText
-arcText k    Nothing  t@(BranchText _ _ _ _) | T.null k  = t
-                                             | otherwise = ArcText k Nothing t
-arcText k    Nothing    (ArcText k' mv' t')              = ArcText (T.append k k') mv' t'
+arc :: Text -> Maybe a -> Trie a -> Trie a
+{-# INLINE arc #-}
+arc k mv@(Just _) t = Arc k mv t
+arc _ Nothing Empty = Empty
+arc k Nothing t@(Branch _ _ _ _)
+  | T.null k = t
+  | otherwise = Arc k Nothing t
+arc k Nothing (Arc k' mv' t') = Arc (T.append k k') mv' t'
 
 
 
@@ -431,27 +431,28 @@ arcText k    Nothing    (ArcText k' mv' t')              = ArcText (T.append k k
 -- either @Branch@es or @Arc@s.
 --
 -- N.B. /do not/ use if prefixes could match entirely!
-branchMergeText :: PrefixText -> TrieText a -> PrefixText -> TrieText a -> TrieText a
-{-# INLINE branchMergeText #-}
-branchMergeText _ EmptyText _ t2    = t2
-branchMergeText _  t1   _ EmptyText = t1
-branchMergeText p1 t1  p2 t2
-    | zeroText p1 m             = BranchText p m t1 t2
-    | otherwise             = BranchText p m t2 t1
+branchMerge :: Prefix -> Trie a -> Prefix -> Trie a -> Trie a
+{-# INLINE branchMerge #-}
+branchMerge _ Empty _ t2    = t2
+branchMerge _  t1   _ Empty = t1
+branchMerge p1 t1  p2 t2
+    | zero p1 m             = Branch p m t1 t2
+    | otherwise             = Branch p m t2 t1
     where
-    m = branchMaskText p1 p2
-    p = maskText p1 m
+    m = branchMask p1 p2
+    p = mask p1 m
 
 -- It would be better if Arc used
 -- Data.ByteString.TrieInternal.wordHead somehow, that way
 -- we can see 4/8/?*Word8 at a time instead of just one.
 -- But that makes maintaining invariants ...difficult :(
-getPrefixText :: TrieText a -> PrefixText
-{-# INLINE getPrefixText #-}
-getPrefixText (BranchText p _ _ _)        = p
-getPrefixText (ArcText k _ _) | T.null k  = 0 -- for lack of a better value
-                              | otherwise = head16 k
-getPrefixText EmptyText                   = error "getPrefixText: no PrefixText of EmptyText"
+getPrefix :: Trie a -> Prefix
+{-# INLINE getPrefix #-}
+getPrefix (Branch p _ _ _) = p
+getPrefix (Arc k _ _)
+  | T.null k = 0 -- for lack of a better value
+  | otherwise = head16 k
+getPrefix Empty = error "getPrefix: no Prefix of Empty"
 
 
 {-----------------------------------------------------------
@@ -473,9 +474,9 @@ toList16 xs =
 
 
 -- TODO: shouldn't we inline the logic and just NOINLINE the string constant? There are only three use sites, which themselves aren't inlined...
-errorLogHeadText :: String -> Text -> TextElem
-{-# NOINLINE errorLogHeadText #-}
-errorLogHeadText fn q
+errorLogHead :: String -> Text -> TextElem
+{-# NOINLINE errorLogHead #-}
+errorLogHead fn q
     | T.null q  = error $ "Data.Trie.Internal." ++ fn ++": found null subquery"
     | otherwise = head16 q
 
@@ -488,36 +489,36 @@ errorLogHeadText fn q
 -----------------------------------------------------------}
 
 -- | /O(1)/, Construct the empty trie.
-emptyText :: TrieText a
-{-# INLINE emptyText #-}
-emptyText = EmptyText
+empty :: Trie a
+{-# INLINE empty #-}
+empty = Empty
 
 
 -- | /O(1)/, Is the trie empty?
-nullText :: TrieText a -> Bool
-{-# INLINE nullText #-}
-nullText EmptyText = True
-nullText _         = False
+null :: Trie a -> Bool
+{-# INLINE null #-}
+null Empty = True
+null _         = False
 
 
 -- | /O(1)/, Construct a singleton trie.
-singletonText :: Text -> a -> TrieText a
-{-# INLINE singletonText #-}
-singletonText k v = ArcText k (Just v) EmptyText
+singleton :: Text -> a -> Trie a
+{-# INLINE singleton #-}
+singleton k v = Arc k (Just v) Empty
 -- For singletons, don't need to verify invariant on arc length >0
 
 -- | /O(n)/, Get count of elements in trie.
-sizeText  :: TrieText a -> Int
-{-# INLINE sizeText #-}
-sizeText t = sizeText' t id 0
+size  :: Trie a -> Int
+{-# INLINE size #-}
+size t = size' t id 0
 
 
 -- | /O(n)/, CPS accumulator helper for calculating 'size'.
-sizeText' :: TrieText a -> (Int -> Int) -> Int -> Int
-sizeText' EmptyText              f n = f n
-sizeText' (BranchText _ _ l r)   f n = sizeText' l (sizeText' r f) n
-sizeText' (ArcText _ Nothing t)  f n = sizeText' t f n
-sizeText' (ArcText _ (Just _) t) f n = sizeText' t f $! n + 1
+size' :: Trie a -> (Int -> Int) -> Int -> Int
+size' Empty              f n = f n
+size' (Branch _ _ l r)   f n = size' l (size' r f) n
+size' (Arc _ Nothing t)  f n = size' t f n
+size' (Arc _ (Just _) t) f n = size' t f $! n + 1
 
 
 
@@ -544,12 +545,12 @@ sizeText' (ArcText _ (Just _) t) f n = sizeText' t f $! n + 1
 --
 -- | Convert a trie into a list (in key-sorted order) using a
 -- function, folding the list as we go.
-foldrWithKeyText :: (Text -> a -> b -> b) -> b -> TrieText a -> b
-foldrWithKeyText fcons nil = \t -> go T.empty t nil
+foldrWithKey :: (Text -> a -> b -> b) -> b -> Trie a -> b
+foldrWithKey fcons nil = \t -> go T.empty t nil
     where
-    go _ EmptyText            = id
-    go q (BranchText _ _ l r) = go q l . go q r
-    go q (ArcText k mv t)     =
+    go _ Empty            = id
+    go q (Branch _ _ l r) = go q l . go q r
+    go q (Arc k mv t)     =
         case mv of
         Nothing -> rest
         Just v  -> fcons k' v . rest
@@ -564,23 +565,23 @@ foldrWithKeyText fcons nil = \t -> go T.empty t nil
 --
 -- | Convert a trie into a list using a function. Resulting values
 -- are in key-sorted order.
-toListByText :: (Text -> a -> b) -> TrieText a -> [b]
-{-# INLINE toListByText #-}
+toListBy :: (Text -> a -> b) -> Trie a -> [b]
+{-# INLINE toListBy #-}
 #if !defined(__GLASGOW_HASKELL__)
 -- TODO: should probably inline foldrWithKey
 -- TODO: compare performance of that vs both this and the GHC version
-toListByText f t = foldrWithKeyText (((:) .) . f) [] t
+toListBy f t = foldrWithKey (((:) .) . f) [] t
 #else
 -- Written with 'build' to enable the build\/foldr fusion rules.
-toListByText f t = build (toListByTextFB f t)
+toListBy f t = build (toListByFB f t)
 
 -- TODO: should probably have a specialized version for strictness,
 -- and a rule to rewrite generic lazy version into it. As per
 -- Data.ByteString.unpack and the comments there about strictness
 -- and fusion.
-toListByTextFB :: (Text -> a -> b) -> TrieText a -> (b -> c -> c) -> c -> c
-{-# INLINE [0] toListByTextFB #-}
-toListByTextFB f t cons nil = foldrWithKeyText ((cons .) . f) nil t
+toListByFB :: (Text -> a -> b) -> Trie a -> (b -> c -> c) -> c -> c
+{-# INLINE [0] toListByFB #-}
+toListByFB f t cons nil = foldrWithKey ((cons .) . f) nil t
 #endif
 
 
@@ -598,37 +599,37 @@ toListByTextFB f t cons nil = foldrWithKeyText ((cons .) . f) nil t
 --
 -- This function is intended for internal use. For the public-facing
 -- version, see @lookupBy@ in "Data.Trie".
-lookupByText_ :: (Maybe a -> TrieText a -> b) -> b -> (TrieText a -> b)
-          -> Text -> TrieText a -> b
-lookupByText_ f z a = lookupByText_'
+lookupBy_ :: (Maybe a -> Trie a -> b) -> b -> (Trie a -> b)
+          -> Text -> Trie a -> b
+lookupBy_ f z a = lookupBy_'
     where
     -- | Deal with epsilon query (when there is no epsilon value)
-    lookupByText_' q t@(BranchText _ _ _ _) | T.null q = f Nothing t
-    lookupByText_' q t                                 = go q t
+    lookupBy_' q t@(Branch _ _ _ _) | T.null q = f Nothing t
+    lookupBy_' q t                                 = go q t
 
     -- | The main recursion
-    go _    EmptyText       = z
+    go _    Empty       = z
 
-    go q   (ArcText k mv t) =
-        let (_,k',q')       = breakMaximalPrefixText k q
+    go q   (Arc k mv t) =
+        let (_,k',q')       = breakMaximalPrefix k q
         in case (not $ T.null k', T.null q') of
-                (True,  True)  -> a (ArcText k' mv t)
+                (True,  True)  -> a (Arc k' mv t)
                 (True,  False) -> z
                 (False, True)  -> f mv t
                 (False, False) -> go q' t
 
-    go q t_@(BranchText _ _ _ _) = findArcText t_
+    go q t_@(Branch _ _ _ _) = findArc t_
         where
-        qh = errorLogHeadText "lookupByText_" q
+        qh = errorLogHead "lookupBy_" q
 
         -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
         -- branching, and /W/ is the word size of the Prefix,Mask type.
-        findArcText (BranchText p m l r)
-            | nomatchText qh p m  = z
-            | zeroText qh m       = findArcText l
-            | otherwise       = findArcText r
-        findArcText t@(ArcText _ _ _) = go q t
-        findArcText EmptyText         = z
+        findArc (Branch p m l r)
+            | nomatch qh p m  = z
+            | zero qh m       = findArc l
+            | otherwise       = findArc r
+        findArc t@(Arc _ _ _) = go q t
+        findArc Empty         = z
 
 
 
@@ -642,9 +643,9 @@ lookupByText_ f z a = lookupByText_'
 --           of (>>=) for epsilon`elem`t)
 --
 -- | Return the subtrie containing all keys beginning with a prefix.
-submapText :: Text -> TrieText a -> TrieText a
-{-# INLINE submapText #-}
-submapText q = lookupByText_ (arcText q) emptyText (arcText q Nothing) q
+submap :: Text -> Trie a -> Trie a
+{-# INLINE submap #-}
+submap q = lookupBy_ (arc q) empty (arc q Nothing) q
 {-  -- Disable superfluous error checking.
     -- @submap'@ would replace the first argument to @lookupBy_@
     where
@@ -681,18 +682,18 @@ length16 (TI.Text _ off len) = len - off
 -- This function may not have the most useful return type. For a
 -- version that returns the prefix itself as well as the remaining
 -- string, see @match@ in "Data.Trie".
-matchText_ :: TrieText a -> Text -> Maybe (Int, a)
-matchText_ = flip start
+match_ :: Trie a -> Text -> Maybe (Int, a)
+match_ = flip start
     where
     -- | Deal with epsilon query (when there is no epsilon value)
-    start q (BranchText _ _ _ _) | T.null q = Nothing
+    start q (Branch _ _ _ _) | T.null q = Nothing
     start q t                               = goNothing 0 q t
 
     -- | The initial recursion
-    goNothing _ _    EmptyText       = Nothing
+    goNothing _ _    Empty       = Nothing
 
-    goNothing n q   (ArcText k mv t) =
-        let (p,k',q') = breakMaximalPrefixText k q
+    goNothing n q   (Arc k mv t) =
+        let (p,k',q') = breakMaximalPrefix k q
             n'        = n + length16 p
         in n' `seq`
             if T.null k'
@@ -705,24 +706,24 @@ matchText_ = flip start
                     Just v  -> goJust n' v n' q' t
             else Nothing
 
-    goNothing n q t_@(BranchText _ _ _ _) = findArc t_
+    goNothing n q t_@(Branch _ _ _ _) = findArc t_
         where
-        qh = errorLogHeadText "matchText_" q
+        qh = errorLogHead "match_" q
 
         -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
         -- branching, and /W/ is the word size of the Prefix,Mask type.
-        findArc (BranchText p m l r)
-            | nomatchText qh p m  = Nothing
-            | zeroText qh m       = findArc l
+        findArc (Branch p m l r)
+            | nomatch qh p m  = Nothing
+            | zero qh m       = findArc l
             | otherwise       = findArc r
-        findArc t@(ArcText _ _ _) = goNothing n q t
-        findArc EmptyText         = Nothing
+        findArc t@(Arc _ _ _) = goNothing n q t
+        findArc Empty         = Nothing
 
     -- | The main recursion
-    goJust n0 v0 _ _    EmptyText       = Just (n0,v0)
+    goJust n0 v0 _ _    Empty       = Just (n0,v0)
 
-    goJust n0 v0 n q   (ArcText k mv t) =
-        let (p,k',q') = breakMaximalPrefixText k q
+    goJust n0 v0 n q   (Arc k mv t) =
+        let (p,k',q') = breakMaximalPrefix k q
             n'        = n + length16 p
         in n' `seq`
             if T.null k'
@@ -738,18 +739,18 @@ matchText_ = flip start
                     Just v  -> goJust n' v  n' q' t
             else Just (n0,v0)
 
-    goJust n0 v0 n q t_@(BranchText _ _ _ _) = findArc t_
+    goJust n0 v0 n q t_@(Branch _ _ _ _) = findArc t_
         where
-        qh = errorLogHeadText "matchText_" q
+        qh = errorLogHead "match_" q
 
         -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
         -- branching, and /W/ is the word size of the Prefix,Mask type.
-        findArc (BranchText p m l r)
-            | nomatchText qh p m  = Just (n0,v0)
-            | zeroText qh m       = findArc l
+        findArc (Branch p m l r)
+            | nomatch qh p m  = Just (n0,v0)
+            | zero qh m       = findArc l
             | otherwise       = findArc r
-        findArc t@(ArcText _ _ _) = goJust n0 v0 n q t
-        findArc EmptyText         = Just (n0,v0)
+        findArc t@(Arc _ _ _) = goJust n0 v0 n q t
+        findArc Empty         = Just (n0,v0)
 
 
 
@@ -760,29 +761,29 @@ matchText_ = flip start
 -- This function may not have the most useful return type. For a
 -- version that returns the prefix itself as well as the remaining
 -- string, see @matches@ in "Data.Trie".
-matchesText_ :: TrieText a -> Text -> [(Int,a)]
-matchesText_ t q =
+matches_ :: Trie a -> Text -> [(Int,a)]
+matches_ t q =
 #if !defined(__GLASGOW_HASKELL__)
-    matchFBText_ t q (((:) .) . (,)) []
+    matchFB_ t q (((:) .) . (,)) []
 #else
-    build (\cons nil -> matchFBText_ t q ((cons .) . (,)) nil)
-{-# INLINE matchesText_ #-}
+    build (\cons nil -> matchFB_ t q ((cons .) . (,)) nil)
+{-# INLINE matches_ #-}
 #endif
 
-matchFBText_ :: TrieText a -> Text -> (Int -> a -> r -> r) -> r -> r
-matchFBText_ = \t q cons nil -> matchFB_' cons q t nil
+matchFB_ :: Trie a -> Text -> (Int -> a -> r -> r) -> r -> r
+matchFB_ = \t q cons nil -> matchFB_' cons q t nil
     where
     matchFB_' cons = start
         where
         -- | Deal with epsilon query (when there is no epsilon value)
-        start q (BranchText _ _ _ _) | T.null q = id
+        start q (Branch _ _ _ _) | T.null q = id
         start q t                               = go 0 q t
 
         -- | The main recursion
-        go _ _    EmptyText       = id
+        go _ _    Empty       = id
 
-        go n q   (ArcText k mv t) =
-            let (p,k',q') = breakMaximalPrefixText k q
+        go n q   (Arc k mv t) =
+            let (p,k',q') = breakMaximalPrefix k q
                 n'        = n + length16 p
             in n' `seq`
                 if T.null k'
@@ -792,18 +793,18 @@ matchFBText_ = \t q cons nil -> matchFB_' cons q t nil
                     if T.null q' then id else go n' q' t
                 else id
 
-        go n q t_@(BranchText _ _ _ _) = findArc t_
+        go n q t_@(Branch _ _ _ _) = findArc t_
             where
-            qh = errorLogHeadText "matches_" q
+            qh = errorLogHead "matches_" q
 
             -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
             -- branching, and /W/ is the word size of the Prefix,Mask type.
-            findArc (BranchText p m l r)
-                | nomatchText qh p m  = id
-                | zeroText qh m       = findArc l
+            findArc (Branch p m l r)
+                | nomatch qh p m  = id
+                | zero qh m       = findArc l
                 | otherwise       = findArc r
-            findArc t@(ArcText _ _ _) = go n q t
-            findArc EmptyText         = id
+            findArc t@(Arc _ _ _) = go n q t
+            findArc Empty         = id
 
 
 
@@ -819,57 +820,57 @@ matchFBText_ = \t q cons nil -> matchFB_' cons q t nil
 --
 -- | Generic function to alter a trie by one element with a function
 -- to resolve conflicts (or non-conflicts).
-alterByText :: (Text -> a -> Maybe a -> Maybe a)
-             -> Text -> a -> TrieText a -> TrieText a
-alterByText f = alterByText_ (\k v mv t -> (f k v mv, t))
+alterBy :: (Text -> a -> Maybe a -> Maybe a)
+             -> Text -> a -> Trie a -> Trie a
+alterBy f = alterBy_ (\k v mv t -> (f k v mv, t))
 -- TODO: use GHC's 'inline' function so that this gets specialized away.
 -- TODO: benchmark to be sure that this doesn't introduce unforseen performance costs because of the uncurrying etc.
 
 
 
 -- | A variant of 'alterBy' which also allows modifying the sub-trie.
-alterByText_ :: (Text -> a -> Maybe a -> TrieText a -> (Maybe a, TrieText a))
-              -> Text -> a -> TrieText a -> TrieText a
-alterByText_ f_ q_ x_
+alterBy_ :: (Text -> a -> Maybe a -> Trie a -> (Maybe a, Trie a))
+              -> Text -> a -> Trie a -> Trie a
+alterBy_ f_ q_ x_
     | T.null q_ = alterEpsilon
     | otherwise = go q_
     where
     f         = f_ q_ x_
-    nothing q = uncurry (arcText q) (f Nothing EmptyText)
+    nothing q = uncurry (arc q) (f Nothing Empty)
 
-    alterEpsilon t_@EmptyText                    = uncurry (arcText q_) (f Nothing t_)
-    alterEpsilon t_@(BranchText _ _ _ _)         = uncurry (arcText q_) (f Nothing t_)
-    alterEpsilon t_@(ArcText k mv t) | T.null k  = uncurry (arcText q_) (f mv      t)
-                                     | otherwise = uncurry (arcText q_) (f Nothing t_)
+    alterEpsilon t_@Empty                    = uncurry (arc q_) (f Nothing t_)
+    alterEpsilon t_@(Branch _ _ _ _)         = uncurry (arc q_) (f Nothing t_)
+    alterEpsilon t_@(Arc k mv t) | T.null k  = uncurry (arc q_) (f mv      t)
+                                     | otherwise = uncurry (arc q_) (f Nothing t_)
 
 
-    go q EmptyText            = nothing q
+    go q Empty            = nothing q
 
-    go q t@(BranchText p m l r)
-        | nomatchText qh p m  = branchMergeText p t  qh (nothing q)
-        | zeroText qh m       = branchText p m (go q l) r
-        | otherwise       = branchText p m l (go q r)
+    go q t@(Branch p m l r)
+        | nomatch qh p m  = branchMerge p t  qh (nothing q)
+        | zero qh m       = branch p m (go q l) r
+        | otherwise       = branch p m l (go q r)
         where
-        qh = errorLogHeadText "alterBy" q
+        qh = errorLogHead "alterBy" q
 
-    go q t_@(ArcText k mv t) =
-        let (p,k',q') = breakMaximalPrefixText k q in
+    go q t_@(Arc k mv t) =
+        let (p,k',q') = breakMaximalPrefix k q in
         case (not $ T.null k', T.null q') of
         (True,  True)  -> -- add node to middle of arc
-                          uncurry (arcText p) (f Nothing (ArcText k' mv t))
+                          uncurry (arc p) (f Nothing (Arc k' mv t))
         (True,  False) ->
             case nothing q' of
-            EmptyText -> t_ -- Nothing to add, reuse old arc
-            l     -> arc' (branchMergeText (getPrefixText l) l (getPrefixText r) r)
+            Empty -> t_ -- Nothing to add, reuse old arc
+            l     -> arc' (branchMerge (getPrefix l) l (getPrefix r) r)
                     where
-                    r = ArcText k' mv t
+                    r = Arc k' mv t
 
                     -- inlined version of 'arc'
                     arc' | T.null p  = id
-                         | otherwise = ArcText p Nothing
+                         | otherwise = Arc p Nothing
 
-        (False, True)  -> uncurry (arcText k) (f mv t)
-        (False, False) -> arcText k mv (go q' t)
+        (False, True)  -> uncurry (arc k) (f mv t)
+        (False, False) -> arc k mv (go q' t)
 
 
 -- | Alter the value associated with a given key. If the key is not
@@ -877,33 +878,33 @@ alterByText_ f_ q_ x_
 -- you are interested in inserting new keys or deleting old keys.
 -- Because this function does not need to worry about changing the
 -- trie structure, it is somewhat faster than 'alterBy'.
-adjustByText :: (Text -> a -> a -> a)
-              -> Text -> a -> TrieText a -> TrieText a
-adjustByText f_ q_ x_
+adjustBy :: (Text -> a -> a -> a)
+              -> Text -> a -> Trie a -> Trie a
+adjustBy f_ q_ x_
     | T.null q_ = adjustEpsilon
     | otherwise = go q_
     where
     f = f_ q_ x_
 
-    adjustEpsilon (ArcText k (Just v) t) | T.null k = ArcText k (Just (f v)) t
+    adjustEpsilon (Arc k (Just v) t) | T.null k = Arc k (Just (f v)) t
     adjustEpsilon t_                                = t_
 
-    go _ EmptyText            = EmptyText
+    go _ Empty            = Empty
 
-    go q t@(BranchText p m l r)
-        | nomatchText qh p m  = t
-        | zeroText qh m       = BranchText p m (go q l) r
-        | otherwise       = BranchText p m l (go q r)
+    go q t@(Branch p m l r)
+        | nomatch qh p m  = t
+        | zero qh m       = Branch p m (go q l) r
+        | otherwise       = Branch p m l (go q r)
         where
-        qh = errorLogHeadText "adjustByText" q
+        qh = errorLogHead "adjustBy" q
 
-    go q t_@(ArcText k mv t) =
-        let (_,k',q') = breakMaximalPrefixText k q in
+    go q t_@(Arc k mv t) =
+        let (_,k',q') = breakMaximalPrefix k q in
         case (not $ T.null k', T.null q') of
         (True,  True)  -> t_ -- don't break arc inline
         (True,  False) -> t_ -- don't break arc branching
-        (False, True)  -> ArcText k (liftM f mv) t
-        (False, False) -> ArcText k mv (go q' t)
+        (False, True)  -> Arc k (liftM f mv) t
+        (False, False) -> Arc k mv (go q' t)
 
 
 {-----------------------------------------------------------
@@ -919,84 +920,84 @@ adjustByText f_ q_ x_
 -- This can only define the space of functions between union and
 -- symmetric difference but, with those two, all set operations can
 -- be defined (albeit inefficiently).
-mergeByText :: (a -> a -> Maybe a) -> TrieText a -> TrieText a -> TrieText a
-mergeByText f = mergeBy'
+mergeBy :: (a -> a -> Maybe a) -> Trie a -> Trie a -> Trie a
+mergeBy f = mergeBy'
     where
     -- | Deals with epsilon entries, before recursing into @go@
     mergeBy'
-        t0_@(ArcText k0 mv0 t0)
-        t1_@(ArcText k1 mv1 t1)
-        | T.null k0 && T.null k1 = arcText k0 (mergeMaybe f mv0 mv1) (go t0 t1)
-        | T.null k0              = arcText k0 mv0 (go t0 t1_)
-        |              T.null k1 = arcText k1 mv1 (go t1 t0_)
+        t0_@(Arc k0 mv0 t0)
+        t1_@(Arc k1 mv1 t1)
+        | T.null k0 && T.null k1 = arc k0 (mergeMaybe f mv0 mv1) (go t0 t1)
+        | T.null k0              = arc k0 mv0 (go t0 t1_)
+        |              T.null k1 = arc k1 mv1 (go t1 t0_)
     mergeBy'
-        (ArcText k0 mv0@(Just _) t0)
-        t1_@(BranchText _ _ _ _)
-        | T.null k0              = arcText k0 mv0 (go t0 t1_)
+        (Arc k0 mv0@(Just _) t0)
+        t1_@(Branch _ _ _ _)
+        | T.null k0              = arc k0 mv0 (go t0 t1_)
     mergeBy'
-        t0_@(BranchText _ _ _ _)
-        (ArcText k1 mv1@(Just _) t1)
-        | T.null k1              = arcText k1 mv1 (go t1 t0_)
+        t0_@(Branch _ _ _ _)
+        (Arc k1 mv1@(Just _) t1)
+        | T.null k1              = arc k1 mv1 (go t1 t0_)
     mergeBy' t0_ t1_             = go t0_ t1_
 
 
     -- | The main recursion
-    go EmptyText t1    = t1
-    go t0    EmptyText = t0
+    go Empty t1    = t1
+    go t0    Empty = t0
 
     -- /O(n+m)/ for this part where /n/ and /m/ are sizes of the branchings
-    go  t0@(BranchText p0 m0 l0 r0)
-        t1@(BranchText p1 m1 l1 r1)
-        | shorterText m0 m1  = union0
-        | shorterText m1 m0  = union1
-        | p0 == p1       = branchText p0 m0 (go l0 l1) (go r0 r1)
-        | otherwise      = branchMergeText p0 t0 p1 t1
+    go  t0@(Branch p0 m0 l0 r0)
+        t1@(Branch p1 m1 l1 r1)
+        | shorter m0 m1  = union0
+        | shorter m1 m0  = union1
+        | p0 == p1       = branch p0 m0 (go l0 l1) (go r0 r1)
+        | otherwise      = branchMerge p0 t0 p1 t1
         where
-        union0  | nomatchText p1 p0 m0  = branchMergeText p0 t0 p1 t1
-                | zeroText p1 m0        = branchText p0 m0 (go l0 t1) r0
-                | otherwise         = branchText p0 m0 l0 (go r0 t1)
+        union0  | nomatch p1 p0 m0  = branchMerge p0 t0 p1 t1
+                | zero p1 m0        = branch p0 m0 (go l0 t1) r0
+                | otherwise         = branch p0 m0 l0 (go r0 t1)
 
-        union1  | nomatchText p0 p1 m1  = branchMergeText p0 t0 p1 t1
-                | zeroText p0 m1        = branchText p1 m1 (go t0 l1) r1
-                | otherwise         = branchText p1 m1 l1 (go t0 r1)
+        union1  | nomatch p0 p1 m1  = branchMerge p0 t0 p1 t1
+                | zero p0 m1        = branch p1 m1 (go t0 l1) r1
+                | otherwise         = branch p1 m1 l1 (go t0 r1)
 
     -- We combine these branches of 'go' in order to clarify where the definitions of 'p0', 'p1', 'm'', 'p'' are relevant. However, this may introduce inefficiency in the pattern matching automaton...
     -- TODO: check. And get rid of 'go'' if it does.
     go t0_ t1_ = go' t0_ t1_
         where
-        p0 = getPrefixText t0_
-        p1 = getPrefixText t1_
-        m' = branchMaskText p0 p1
-        p' = maskText p0 m'
+        p0 = getPrefix t0_
+        p1 = getPrefix t1_
+        m' = branchMask p0 p1
+        p' = mask p0 m'
 
-        go' (ArcText k0 mv0 t0)
-            (ArcText k1 mv1 t1)
+        go' (Arc k0 mv0 t0)
+            (Arc k1 mv1 t1)
             | m' == 0 =
-                let (pre,k0',k1') = breakMaximalPrefixText k0 k1 in
+                let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
                 if T.null pre
                 then error "mergeBy: no mask, but no prefix string"
-                else let {-# INLINE arcMergeText #-}
-                         arcMergeText mv' t1' t2' = arcText pre mv' (go t1' t2')
+                else let {-# INLINE arcMerge #-}
+                         arcMerge mv' t1' t2' = arc pre mv' (go t1' t2')
                      in case (T.null k0', T.null k1') of
-                         (True, True)  -> arcMergeText (mergeMaybe f mv0 mv1) t0 t1
-                         (True, False) -> arcMergeText mv0 t0 (ArcText k1' mv1 t1)
-                         (False,True)  -> arcMergeText mv1 (ArcText k0' mv0 t0) t1
-                         (False,False) -> arcMergeText Nothing (ArcText k0' mv0 t0)
-                                                               (ArcText k1' mv1 t1)
-        go' (ArcText _ _ _)
-            (BranchText _p1 m1 l r)
-            | nomatchText p0 p1 m1 = branchMergeText p1 t1_  p0 t0_
-            | zeroText p0 m1       = branchText p1 m1 (go t0_ l) r
-            | otherwise        = branchText p1 m1 l (go t0_ r)
-        go' (BranchText _p0 m0 l r)
-            (ArcText _ _ _)
-            | nomatchText p1 p0 m0 = branchMergeText p0 t0_  p1 t1_
-            | zeroText p1 m0       = branchText p0 m0 (go l t1_) r
-            | otherwise        = branchText p0 m0 l (go r t1_)
+                         (True, True)  -> arcMerge (mergeMaybe f mv0 mv1) t0 t1
+                         (True, False) -> arcMerge mv0 t0 (Arc k1' mv1 t1)
+                         (False,True)  -> arcMerge mv1 (Arc k0' mv0 t0) t1
+                         (False,False) -> arcMerge Nothing (Arc k0' mv0 t0)
+                                                               (Arc k1' mv1 t1)
+        go' (Arc _ _ _)
+            (Branch _p1 m1 l r)
+            | nomatch p0 p1 m1 = branchMerge p1 t1_  p0 t0_
+            | zero p0 m1       = branch p1 m1 (go t0_ l) r
+            | otherwise        = branch p1 m1 l (go t0_ r)
+        go' (Branch _p0 m0 l r)
+            (Arc _ _ _)
+            | nomatch p1 p0 m0 = branchMerge p0 t0_  p1 t1_
+            | zero p1 m0       = branch p0 m0 (go l t1_) r
+            | otherwise        = branch p0 m0 l (go r t1_)
 
         -- Inlined branchMerge. Both tries are disjoint @Arc@s now.
-        go' _ _ | zeroText p0 m'   = BranchText p' m' t0_ t1_
-        go' _ _                    = BranchText p' m' t1_ t0_
+        go' _ _ | zero p0 m'   = Branch p' m' t0_ t1_
+        go' _ _                    = Branch p' m' t1_ t0_
 
 
 
@@ -1012,49 +1013,49 @@ mergeMaybe f (Just v0)   (Just v1) = f v0 v1
 -- Priority-queue functions
 -----------------------------------------------------------}
 
-minAssocText :: TrieText a -> Maybe (Text, a)
-minAssocText = go T.empty
+minAssoc :: Trie a -> Maybe (Text, a)
+minAssoc = go T.empty
     where
-    go _ EmptyText              = Nothing
-    go q (ArcText k (Just v) _) = Just (T.append q k,v)
-    go q (ArcText k Nothing  t) = go   (T.append q k) t
-    go q (BranchText _ _ l _)   = go q l
+    go _ Empty              = Nothing
+    go q (Arc k (Just v) _) = Just (T.append q k,v)
+    go q (Arc k Nothing  t) = go   (T.append q k) t
+    go q (Branch _ _ l _)   = go q l
 
 
-maxAssocText :: TrieText a -> Maybe (Text, a)
-maxAssocText = go T.empty
+maxAssoc :: Trie a -> Maybe (Text, a)
+maxAssoc = go T.empty
     where
-    go _ EmptyText                  = Nothing
-    go q (ArcText k (Just v) EmptyText) = Just (T.append q k,v)
-    go q (ArcText k _        t)     = go   (T.append q k) t
-    go q (BranchText _ _ _ r)       = go q r
+    go _ Empty                  = Nothing
+    go q (Arc k (Just v) Empty) = Just (T.append q k,v)
+    go q (Arc k _        t)     = go   (T.append q k) t
+    go q (Branch _ _ _ r)       = go q r
 
 
-mapViewText :: (TrieText a -> TrieText a)
-            -> Maybe (Text, a, TrieText a) -> Maybe (Text, a, TrieText a)
-mapViewText _ Nothing        = Nothing
-mapViewText f (Just (k,v,t)) = Just (k,v, f t)
+mapView :: (Trie a -> Trie a)
+            -> Maybe (Text, a, Trie a) -> Maybe (Text, a, Trie a)
+mapView _ Nothing        = Nothing
+mapView f (Just (k,v,t)) = Just (k,v, f t)
 
 
-updateMinViewByText :: (Text -> a -> Maybe a)
-                     -> TrieText a -> Maybe (Text, a, TrieText a)
-updateMinViewByText f = go T.empty
+updateMinViewBy :: (Text -> a -> Maybe a)
+                     -> Trie a -> Maybe (Text, a, Trie a)
+updateMinViewBy f = go T.empty
     where
-    go _ EmptyText              = Nothing
-    go q (ArcText k (Just v) t) = let q' = T.append q k
-                              in Just (q',v, arcText k (f q' v) t)
-    go q (ArcText k Nothing  t) = mapViewText (arcText k Nothing) (go (T.append q k) t)
-    go q (BranchText p m l r)   = mapViewText (\l' -> branchText p m l' r) (go q l)
+    go _ Empty              = Nothing
+    go q (Arc k (Just v) t) = let q' = T.append q k
+                              in Just (q',v, arc k (f q' v) t)
+    go q (Arc k Nothing  t) = mapView (arc k Nothing) (go (T.append q k) t)
+    go q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
 
-updateMaxViewByText :: (Text -> a -> Maybe a)
-                    -> TrieText a -> Maybe (Text, a, TrieText a)
-updateMaxViewByText f = go T.empty
+updateMaxViewBy :: (Text -> a -> Maybe a)
+                    -> Trie a -> Maybe (Text, a, Trie a)
+updateMaxViewBy f = go T.empty
     where
-    go _ EmptyText                  = Nothing
-    go q (ArcText k (Just v) EmptyText) = let q' = T.append q k
-                                          in Just (q',v, arcText k (f q' v) EmptyText)
-    go q (ArcText k mv       t)     = mapViewText (arcText k mv) (go (T.append q k) t)
-    go q (BranchText p m l r)       = mapViewText (branchText p m l) (go q r)
+    go _ Empty                  = Nothing
+    go q (Arc k (Just v) Empty) = let q' = T.append q k
+                                          in Just (q',v, arc k (f q' v) Empty)
+    go q (Arc k mv       t)     = mapView (arc k mv) (go (T.append q k) t)
+    go q (Branch p m l r)       = mapView (branch p m l) (go q r)
 
 ------------------------------------------------------------
 ------------------------------------------------------- fin.

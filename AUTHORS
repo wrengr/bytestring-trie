@@ -1,4 +1,8 @@
-=== Haskell bytestring-trie package AUTHORS/THANKS file ===
+=== Haskell text-trie package AUTHORS/THANKS file ===
+
+The text-trie package was adapted from bytestring-trie by michael j. klein and is
+released under the terms in the LICENSE file.
+
 
 The bytestring-trie package was written by wren gayle romano and is
 released under the terms in the LICENSE file. I would also like to

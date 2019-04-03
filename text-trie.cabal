@@ -12,16 +12,16 @@ Build-Type:     Simple
 Name:           text-trie
 Version:        0.2.5.0
 Stability:      provisional
-Homepage:       http://wrengr.org
-Author:         wren gayle romano
-Maintainer:     wren@cpan.org
-Copyright:      Copyright (c) 2008--2019 wren gayle romano
+Homepage:       http://github.com/michaeljklein/text-trie
+Author:         wren gayle romano, michael j. klein
+Maintainer:     lambdamichael@gmail.com
+Copyright:      Copyright (c) 2008--2019 wren gayle romano, 2019 michael j. klein
 License:        BSD3
 License-File:   LICENSE
 
 Category:       Data, Data Structures
-Synopsis:       An efficient finite map from (byte)strings to values.
-Description:    An efficient finite map from (byte)strings to values.
+Synopsis:       An efficient finite map from Text to values, based on bytestring-trie.
+Description:    An efficient finite map from Text to values, based on bytestring-trie.
                 .
                 The implementation is based on big-endian patricia
                 trees, like "Data.IntMap". We first trie on the
@@ -46,7 +46,7 @@ Description:    An efficient finite map from (byte)strings to values.
 Extra-source-files:
     AUTHORS, CHANGELOG, README.md
 
--- Cf., <https://travis-ci.org/wrengr/bytestring-lexing>
+-- Cf., <https://travis-ci.org/michaeljklein/bytestring-lexing>
 Tested-With:
     GHC ==7.4.1, GHC ==7.4.2,
     GHC ==7.6.1, GHC ==7.6.2, GHC ==7.6.3,
@@ -59,7 +59,7 @@ Tested-With:
 
 Source-Repository head
     Type:     git
-    Location: https://github.com/wrengr/bytestring-trie.git
+    Location: https://github.com/michaeljklein/text-trie.git
 
 ------------------------------------------------------------
 Library

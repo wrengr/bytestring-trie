@@ -8,18 +8,17 @@
 {-# LANGUAGE StandaloneDeriving, DeriveGeneric #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2011.02.12
+--                                                  ~ 2019.04.03
 -- |
 -- Module      :  Data.Trie.Test
--- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2015 wren gayle romano, 2019 michael j. klein
 -- License     :  BSD3
--- Maintainer  :  wren@community.haskell.org
--- Stability   :  provisional
--- Portability :  semi-portable (MPTC,...)
+-- Maintainer  :  lambdamichael@gmail.com
+-- Stability   :  experimental
 --
 -- Testing 'Trie's.
 ----------------------------------------------------------------
-module Data.Trie.Text.Test (testText) where
+module Data.Trie.Text.Test (test) where
 
 import qualified Data.Trie.Text             as Tr
 import qualified Data.Trie.Text.Internal    as TrI
@@ -34,8 +33,6 @@ import qualified Test.SmallCheck.Series     as SCS
 -- import qualified Test.LazySmallCheck as LSC
 -- import qualified Test.SparseCheck    as PC
 
--- import Data.Monoid
--- import Control.Monad (liftM)
 import Data.Function
 import Data.List     (nubBy, sortBy)
 import Data.Ord      (comparing)
@@ -47,8 +44,8 @@ import System.IO.Silently (capture)
 ----------------------------------------------------------------
 deriving instance Generic Int
 
-testText :: IO ()
-testText  = do
+test :: IO ()
+test  = do
     putStrLn ""
     putStrLn (replicate 80 '~')
 
@@ -62,58 +59,58 @@ testText  = do
     putStrLn ""
 
     putStrLn "quickcheck @ Int (Text):"
-    putStrLn "prop_insertText"
-    checkQuick 500  (prop_insertText        :: StrText -> Int -> Tr.TrieText Int -> Bool)
-    putStrLn "prop_singletonText"
-    checkQuick 5000 (prop_singletonText     :: StrText -> Int -> Bool)
-    putStrLn "prop_size_insertText"
-    checkQuick 500  (prop_size_insertText   :: StrText -> Int -> Tr.TrieText Int -> QC.Property)
-    putStrLn "prop_size_deleteText"
-    checkQuick 500  (prop_size_deleteText   :: StrText -> Int -> Tr.TrieText Int -> QC.Property)
-    putStrLn "prop_insert_deleteText"
-    checkQuick 500  (prop_insert_deleteText :: StrText -> Int -> Tr.TrieText Int -> QC.Property)
-    putStrLn "prop_delete_lookupText"
-    checkQuick 500  (prop_delete_lookupText :: StrText -> Tr.TrieText Int -> QC.Property)
-    putStrLn "prop_submap1Text"
-    checkQuick 500  (prop_submap1Text       :: StrText -> Tr.TrieText Int -> Bool)
-    putStrLn "prop_submap2Text"
-    checkQuick 500  (prop_submap2Text       :: StrText -> Tr.TrieText Int -> Bool)
-    putStrLn "prop_submap3Text"
-    checkQuick 500  (prop_submap3Text       :: StrText -> Tr.TrieText Int -> Bool)
+    putStrLn "prop_insert"
+    checkQuick 500  (prop_insert        :: Str -> Int -> Tr.Trie Int -> Bool)
+    putStrLn "prop_singleton"
+    checkQuick 5000 (prop_singleton     :: Str -> Int -> Bool)
+    putStrLn "prop_size_insert"
+    checkQuick 500  (prop_size_insert   :: Str -> Int -> Tr.Trie Int -> QC.Property)
+    putStrLn "prop_size_delete"
+    checkQuick 500  (prop_size_delete   :: Str -> Int -> Tr.Trie Int -> QC.Property)
+    putStrLn "prop_insert_delete"
+    checkQuick 500  (prop_insert_delete :: Str -> Int -> Tr.Trie Int -> QC.Property)
+    putStrLn "prop_delete_lookup"
+    checkQuick 500  (prop_delete_lookup :: Str -> Tr.Trie Int -> QC.Property)
+    putStrLn "prop_submap1"
+    checkQuick 500  (prop_submap1       :: Str -> Tr.Trie Int -> Bool)
+    putStrLn "prop_submap2"
+    checkQuick 500  (prop_submap2       :: Str -> Tr.Trie Int -> Bool)
+    putStrLn "prop_submap3"
+    checkQuick 500  (prop_submap3       :: Str -> Tr.Trie Int -> Bool)
 
-    putStrLn "prop_toListText"
-    checkQuick 500  (prop_toListText        :: Tr.TrieText Int -> QC.Property)
-    putStrLn "prop_fromList_takes_firstText"
-    checkQuick 500  (prop_fromList_takes_firstText  :: [(StrText, Int)] -> QC.Property)
-    putStrLn "prop_fromListR_takes_firstText"
-    checkQuick 500  (prop_fromListR_takes_firstText :: [(StrText, Int)] -> QC.Property)
-    putStrLn "prop_fromListL_takes_firstText"
-    checkQuick 500  (prop_fromListL_takes_firstText :: [(StrText, Int)] -> QC.Property)
-    putStrLn "prop_fromListS_takes_firstText"
-    checkQuick 500  (prop_fromListS_takes_firstText :: [(StrText, Int)] -> QC.Property)
-    putStrLn "prop_fromListWithConst_takes_firstText"
-    checkQuick 500  (prop_fromListWithConst_takes_firstText  :: [(StrText, Int)] -> QC.Property)
-    putStrLn "prop_fromListWithLConst_takes_firstText"
-    checkQuick 500  (prop_fromListWithLConst_takes_firstText :: [(StrText, Int)] -> QC.Property)
+    putStrLn "prop_toList"
+    checkQuick 500  (prop_toList        :: Tr.Trie Int -> QC.Property)
+    putStrLn "prop_fromList_takes_first"
+    checkQuick 500  (prop_fromList_takes_first  :: [(Str, Int)] -> QC.Property)
+    putStrLn "prop_fromListR_takes_first"
+    checkQuick 500  (prop_fromListR_takes_first :: [(Str, Int)] -> QC.Property)
+    putStrLn "prop_fromListL_takes_first"
+    checkQuick 500  (prop_fromListL_takes_first :: [(Str, Int)] -> QC.Property)
+    putStrLn "prop_fromListS_takes_first"
+    checkQuick 500  (prop_fromListS_takes_first :: [(Str, Int)] -> QC.Property)
+    putStrLn "prop_fromListWithConst_takes_first"
+    checkQuick 500  (prop_fromListWithConst_takes_first  :: [(Str, Int)] -> QC.Property)
+    putStrLn "prop_fromListWithLConst_takes_first"
+    checkQuick 500  (prop_fromListWithLConst_takes_first :: [(Str, Int)] -> QC.Property)
     putStrLn ""
 
     putStrLn "smallcheck @ () (Text):" -- Beware the exponential!
-    putStrLn "prop_insertText"
-    checkSmall 3 (prop_insertText        :: StrText -> () -> Tr.TrieText () -> Bool)
-    putStrLn "prop_singletonText"
-    checkSmall 7 (prop_singletonText     :: StrText -> () -> Bool)
-    putStrLn "prop_size_insertText"
-    checkSmall 3 (prop_size_insertText   :: StrText -> () -> Tr.TrieText () -> SC.Property IO)
-    putStrLn "prop_size_deleteText"
-    checkSmall 3 (prop_size_deleteText   :: StrText -> () -> Tr.TrieText () -> SC.Property IO)
-    putStrLn "prop_insert_deleteText"
-    checkSmall 3 (prop_insert_deleteText :: StrText -> () -> Tr.TrieText () -> SC.Property IO)
-    putStrLn "prop_delete_lookupText"
-    checkSmall 3 (prop_delete_lookupText :: StrText -> Tr.TrieText () -> SC.Property IO)
-    putStrLn "prop_submap1Text"
-    checkSmall 3 (prop_submap1Text       :: StrText -> Tr.TrieText () -> Bool)
-    putStrLn "prop_submap2Text"
-    checkSmall 3 (prop_submap2Text       :: StrText -> Tr.TrieText () -> Bool)
+    putStrLn "prop_insert"
+    checkSmall 3 (prop_insert        :: Str -> () -> Tr.Trie () -> Bool)
+    putStrLn "prop_singleton"
+    checkSmall 7 (prop_singleton     :: Str -> () -> Bool)
+    putStrLn "prop_size_insert"
+    checkSmall 3 (prop_size_insert   :: Str -> () -> Tr.Trie () -> SC.Property IO)
+    putStrLn "prop_size_delete"
+    checkSmall 3 (prop_size_delete   :: Str -> () -> Tr.Trie () -> SC.Property IO)
+    putStrLn "prop_insert_delete"
+    checkSmall 3 (prop_insert_delete :: Str -> () -> Tr.Trie () -> SC.Property IO)
+    putStrLn "prop_delete_lookup"
+    checkSmall 3 (prop_delete_lookup :: Str -> Tr.Trie () -> SC.Property IO)
+    putStrLn "prop_submap1"
+    checkSmall 3 (prop_submap1       :: Str -> Tr.Trie () -> Bool)
+    putStrLn "prop_submap2"
+    checkSmall 3 (prop_submap2       :: Str -> Tr.Trie () -> Bool)
     putStrLn ""
 
     where
@@ -143,23 +140,23 @@ testEqual s a b =
 test_Union :: HU.Test
 test_Union = HU.TestLabel "epsilon union"
     $ HU.TestList
-    [ testEqual "left"  (e1 `Tr.unionLText` e2) e1
-    , testEqual "right" (e1 `Tr.unionRText` e2) e2 -- meh, why not
-    , testEqual "unionR regression" (tLeft `Tr.unionRText` tRight) tRightResult
-    , testEqual "unionL regression" (tLeft `Tr.unionLText` tRight) tLeftResult
+    [ testEqual "left"  (e1 `Tr.unionL` e2) e1
+    , testEqual "right" (e1 `Tr.unionR` e2) e2 -- meh, why not
+    , testEqual "unionR regression" (tLeft `Tr.unionR` tRight) tRightResult
+    , testEqual "unionL regression" (tLeft `Tr.unionL` tRight) tLeftResult
     ]
     where
-    e1 = Tr.singletonText T.empty (4::Int)
-    e2 = Tr.singletonText T.empty (2::Int)
+    e1 = Tr.singleton T.empty (4::Int)
+    e2 = Tr.singleton T.empty (2::Int)
 
     -- Regression test against bug filed by Gregory Crosswhite on 2010.06.10 against version 0.2.1.1.
     a, b :: T.Text
     a = T.pack $ read "\"\231^\179\160Y\134Gr\158<)&\222\217#\156\""
     b = T.pack $ read "\"\172\193\GSp\222\174GE\186\151\DC1#P\213\147\SI\""
-    tLeft   = Tr.fromListText [(a,1::Int),(b,0::Int)]
-    tRight  = Tr.fromListText [(a,2::Int)]
-    tRightResult = Tr.fromListText [(a,2::Int),(b,0::Int)]
-    tLeftResult  = Tr.fromListText [(a,1::Int),(b,0::Int)]
+    tLeft   = Tr.fromList [(a,1::Int),(b,0::Int)]
+    tRight  = Tr.fromList [(a,2::Int)]
+    tRightResult = Tr.fromList [(a,2::Int),(b,0::Int)]
+    tLeftResult  = Tr.fromList [(a,1::Int),(b,0::Int)]
 
 
 ----------------------------------------------------------------
@@ -180,9 +177,9 @@ test_Submap = HU.TestLabel "submap"
     ba   = T.pack "ba"
     bag  = T.pack "bag"
 
-    nullSubmap s q b = testEqual s (Tr.nullText $ Tr.submapText q t) b
+    nullSubmap s q b = testEqual s (Tr.null $ Tr.submap q t) b
 
-    vocab2trie  = Tr.fromListText . flip zip [(0::Int)..] . map T.pack
+    vocab2trie  = Tr.fromList . flip zip [(0::Int)..] . map T.pack
 
 ----------------------------------------------------------------
 -- requires Eq (Trie a) and, in case it fails, Show (Trie a)
@@ -190,8 +187,8 @@ test_Insert :: HU.Test
 test_Insert = HU.TestLabel "insert"
     $ HU.TestList
     [ testEqual "insertion is commutative for prefix/superfix"
-        (Tr.insertText aba o $ Tr.insertText abaissed i $ Tr.emptyText)
-        (Tr.insertText abaissed i $ Tr.insertText aba o $ Tr.emptyText)
+        (Tr.insert aba o $ Tr.insert abaissed i $ Tr.empty)
+        (Tr.insert abaissed i $ Tr.insert aba o $ Tr.empty)
     ]
     where
     aba      = T.pack "aba"
@@ -205,16 +202,16 @@ test_Delete :: HU.Test
 test_Delete = HU.TestLabel "delete"
     $ HU.TestList
     [ testEqual "deleting epsilon from empty trie is empty"
-        (Tr.deleteText epsilon Tr.emptyText) (Tr.emptyText :: Tr.TrieText Int)
+        (Tr.delete epsilon Tr.empty) (Tr.empty :: Tr.Trie Int)
     ]
     where
     epsilon = T.pack ""
 
-newtype LetterText = LetterText { unLetterText :: Char }
+newtype Letter = Letter { unLetter :: Char }
     deriving (Eq, Ord, Show)
 
-lettersText :: [Char]
-lettersText =
+letters :: [Char]
+letters =
   concat
     [ ['\t' .. '\n']
     , [' ']
@@ -244,23 +241,23 @@ lettersText =
       ]
     ]
 
-instance QCA.Arbitrary LetterText where
-    arbitrary = LetterText `fmap` QC.elements lettersText
+instance QCA.Arbitrary Letter where
+    arbitrary = Letter `fmap` QC.elements letters
 
-    shrink = fmap LetterText . QCA.shrink . unLetterText
+    shrink = fmap Letter . QCA.shrink . unLetter
 
 
-newtype StrText = StrText { unStrText :: T.Text }
+newtype Str = Str { unStr :: T.Text }
     deriving (Eq, Ord, Show)
 
-instance QCA.Arbitrary StrText where
+instance QCA.Arbitrary Str where
     arbitrary = QC.sized $ \n -> do
         k <- QC.choose (0,n)
         s <- QC.vector k
         c <- QC.arbitrary -- We only want non-empty strings.
-        return . StrText . T.pack $ map unLetterText (c:s)
+        return . Str . T.pack $ map unLetter (c:s)
 
-    shrink = fmap StrText . QCA.shrink . unStrText
+    shrink = fmap Str . QCA.shrink . unStr
 
 
 instance QCA.Arbitrary T.Text where
@@ -268,12 +265,12 @@ instance QCA.Arbitrary T.Text where
 
   shrink = fmap T.pack . QCA.shrink . T.unpack
 
-instance (QCA.Arbitrary a, Generic a) => QCA.Arbitrary (Tr.TrieText a) where
+instance (QCA.Arbitrary a, Generic a) => QCA.Arbitrary (Tr.Trie a) where
     arbitrary = QC.sized $ \n -> do
         k      <- QC.choose (0,n)
-        labels <- map unStrText `fmap` QC.vector k
+        labels <- map unStr `fmap` QC.vector k
         elems  <- QC.vector k
-        return . Tr.fromListText $ zip labels elems
+        return . Tr.fromList $ zip labels elems
 
     shrink = QCA.genericShrink
 
@@ -281,35 +278,35 @@ instance (QCA.Arbitrary a, Generic a) => QCA.Arbitrary (Tr.TrieText a) where
 -- cf <http://www.cs.york.ac.uk/fp/darcs/smallcheck/README>
 -- type Series a = Int -> [a]
 
-instance Monad m => SCS.Serial m LetterText where
-  series = SCS.generate $ \d -> take (d+1) $ map LetterText lettersText
+instance Monad m => SCS.Serial m Letter where
+  series = SCS.generate $ \d -> take (d+1) $ map Letter letters
 
-instance Monad m => SCS.Serial m StrText where
-    series = StrText . T.pack . map unLetterText <$> SCS.series
+instance Monad m => SCS.Serial m Str where
+    series = Str . T.pack . map unLetter <$> SCS.series
 
 -- -- TODO: This instance really needs some work. The smart constructures ensure only valid values are generated, but there are redundancies and inefficiencies.
-instance (Monoid a, SCS.Serial m a) => SCS.Serial m (Tr.TrieText a) where
-    series =      SCS.cons0 Tr.emptyText
+instance (Monoid a, SCS.Serial m a) => SCS.Serial m (Tr.Trie a) where
+    series =      SCS.cons0 Tr.empty
            SCS.\/  SCS.cons3 arcHACK
            SCS.\/  SCS.cons2 mappend
            where
-           arcHACK (StrText k) Nothing  t = Tr.singletonText k () >> t
-           arcHACK (StrText k) (Just v) t = Tr.singletonText k v
-                                            >>= Tr.unionRText t . Tr.singletonText T.empty
+           arcHACK (Str k) Nothing  t = Tr.singleton k () >> t
+           arcHACK (Str k) (Just v) t = Tr.singleton k v
+                                            >>= Tr.unionR t . Tr.singleton T.empty
 
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 -- | If you insert a value, you can look it up
-prop_insertText :: (Eq a) => StrText -> a -> Tr.TrieText a -> Bool
-prop_insertText (StrText k) v t =
-    (Tr.lookupText k . Tr.insertText k v $ t) == Just v
+prop_insert :: (Eq a) => Str -> a -> Tr.Trie a -> Bool
+prop_insert (Str k) v t =
+    (Tr.lookup k . Tr.insert k v $ t) == Just v
 
 
 -- | A singleton, is.
-prop_singletonText :: (Eq a) => StrText -> a -> Bool
-prop_singletonText (StrText k) v =
-    Tr.insertText k v Tr.emptyText == Tr.singletonText k v
+prop_singleton :: (Eq a) => Str -> a -> Bool
+prop_singleton (Str k) v =
+    Tr.insert k v Tr.empty == Tr.singleton k v
 
 
 -- | Deal with QC/SC polymorphism issues because of (==>)
@@ -349,44 +346,44 @@ instance SC.Testable IO QC.Property where
 instance (Monad m, SC.Testable m a) => CheckGuard a (SC.Property m) where
     (==>) = (SC.==>)
 
-prop_size_insertText :: (Eq a, Show a, CheckGuard QC.Property b) => StrText -> a -> Tr.TrieText a -> b
-prop_size_insertText (StrText k) v t = not (k `Tr.memberText` t) ==> (
-    (Tr.sizeText . Tr.insertText k v) === ((1+) . Tr.sizeText)
+prop_size_insert :: (Eq a, Show a, CheckGuard QC.Property b) => Str -> a -> Tr.Trie a -> b
+prop_size_insert (Str k) v t = not (k `Tr.member` t) ==> (
+    (Tr.size . Tr.insert k v) === ((1+) . Tr.size)
     $ t)
 
-prop_size_deleteText :: (Eq a, Show a, CheckGuard QC.Property b) => StrText -> a -> Tr.TrieText a -> b
-prop_size_deleteText (StrText k) v t = not (k `Tr.memberText` t) ==> (
-    (Tr.sizeText . Tr.deleteText k . Tr.insertText k v) === Tr.sizeText
+prop_size_delete :: (Eq a, Show a, CheckGuard QC.Property b) => Str -> a -> Tr.Trie a -> b
+prop_size_delete (Str k) v t = not (k `Tr.member` t) ==> (
+    (Tr.size . Tr.delete k . Tr.insert k v) === Tr.size
     $ t)
 
-prop_insert_deleteText :: (Eq a, Show a, CheckGuard QC.Property b) => StrText -> a -> Tr.TrieText a -> b
-prop_insert_deleteText (StrText k) v t = not (k `Tr.memberText` t) ==> (
-    (Tr.deleteText k . Tr.insertText k v) === id
+prop_insert_delete :: (Eq a, Show a, CheckGuard QC.Property b) => Str -> a -> Tr.Trie a -> b
+prop_insert_delete (Str k) v t = not (k `Tr.member` t) ==> (
+    (Tr.delete k . Tr.insert k v) === id
     $ t)
 
-prop_delete_lookupText :: (Eq a, Show a, CheckGuard QC.Property b) => StrText -> Tr.TrieText a -> b
-prop_delete_lookupText (StrText k) t = not (k `Tr.memberText` t) ==> (
-    (Tr.lookupText k . Tr.deleteText k) === const Nothing
+prop_delete_lookup :: (Eq a, Show a, CheckGuard QC.Property b) => Str -> Tr.Trie a -> b
+prop_delete_lookup (Str k) t = not (k `Tr.member` t) ==> (
+    (Tr.lookup k . Tr.delete k) === const Nothing
     $ t)
 
 
 -- | All keys in a submap are keys in the supermap
-prop_submap1Text :: StrText -> Tr.TrieText a -> Bool
-prop_submap1Text (StrText k) t =
-    all (`Tr.memberText` t) . Tr.keysText . Tr.submapText k $ t
+prop_submap1 :: Str -> Tr.Trie a -> Bool
+prop_submap1 (Str k) t =
+    all (`Tr.member` t) . Tr.keys . Tr.submap k $ t
 
 
 -- | All keys in a submap have the query as a prefix
-prop_submap2Text :: StrText -> Tr.TrieText a -> Bool
-prop_submap2Text (StrText k) t =
-    all (T.isPrefixOf k) . Tr.keysText . Tr.submapText k $ t
+prop_submap2 :: Str -> Tr.Trie a -> Bool
+prop_submap2 (Str k) t =
+    all (T.isPrefixOf k) . Tr.keys . Tr.submap k $ t
 
 
 -- | All values in a submap are the same in the supermap
-prop_submap3Text :: (Eq a) => StrText -> Tr.TrieText a -> Bool
-prop_submap3Text (StrText k) t =
-    (\q -> Tr.lookupText q t' == Tr.lookupText q t) `all` Tr.keysText t'
-    where t' = Tr.submapText k t
+prop_submap3 :: (Eq a) => Str -> Tr.Trie a -> Bool
+prop_submap3 (Str k) t =
+    (\q -> Tr.lookup q t' == Tr.lookup q t) `all` Tr.keys t'
+    where t' = Tr.submap k t
 
 
 infix 4 <==
@@ -400,45 +397,45 @@ x <== y =
     interpret GT = " >  "
 
 -- | Keys are ordered when converting to a list
-prop_toListText :: Tr.TrieText a -> QC.Property
-prop_toListText t = ordered (TrI.toList16 <$> Tr.keysText t)
+prop_toList :: Tr.Trie a -> QC.Property
+prop_toList t = ordered (TrI.toList16 <$> Tr.keys t)
     where ordered xs = QC.conjoin (zipWith (<==) xs (drop 1 xs))
 
 
-_takes_firstText :: (Eq c, Show c) => ([(T.Text, c)] -> Tr.TrieText c) -> [(StrText, c)] -> QC.Property
-_takes_firstText f assocs =
-    (Tr.toListText . f) === (nubBy (apFst ((==) `on` TrI.toList16)) . sortBy (comparing (TrI.toList16 . fst)))
-    $ map (first unStrText) assocs
+_takes_first :: (Eq c, Show c) => ([(T.Text, c)] -> Tr.Trie c) -> [(Str, c)] -> QC.Property
+_takes_first f assocs =
+    (Tr.toList . f) === (nubBy (apFst ((==) `on` TrI.toList16)) . sortBy (comparing (TrI.toList16 . fst)))
+    $ map (first unStr) assocs
 
 
 -- | 'fromList' takes the first value for a given key
-prop_fromList_takes_firstText :: (Eq a, Show a) => [(StrText, a)] -> QC.Property
-prop_fromList_takes_firstText = _takes_firstText Tr.fromListText
+prop_fromList_takes_first :: (Eq a, Show a) => [(Str, a)] -> QC.Property
+prop_fromList_takes_first = _takes_first Tr.fromList
 
 
 -- | 'fromListR' takes the first value for a given key
-prop_fromListR_takes_firstText :: (Eq a, Show a) => [(StrText, a)] -> QC.Property
-prop_fromListR_takes_firstText = _takes_firstText TC.fromListRText
+prop_fromListR_takes_first :: (Eq a, Show a) => [(Str, a)] -> QC.Property
+prop_fromListR_takes_first = _takes_first TC.fromListR
 
 
 -- | 'fromListL' takes the first value for a given key
-prop_fromListL_takes_firstText :: (Eq a, Show a) => [(StrText, a)] -> QC.Property
-prop_fromListL_takes_firstText = _takes_firstText TC.fromListLText
+prop_fromListL_takes_first :: (Eq a, Show a) => [(Str, a)] -> QC.Property
+prop_fromListL_takes_first = _takes_first TC.fromListL
 
 
 -- | 'fromListS' takes the first value for a given key
-prop_fromListS_takes_firstText :: (Eq a, Show a) => [(StrText, a)] -> QC.Property
-prop_fromListS_takes_firstText = _takes_firstText TC.fromListSText
+prop_fromListS_takes_first :: (Eq a, Show a) => [(Str, a)] -> QC.Property
+prop_fromListS_takes_first = _takes_first TC.fromListS
 
 
 -- | @('fromListWith' const)@ takes the first value for a given key
-prop_fromListWithConst_takes_firstText :: (Eq a, Show a) => [(StrText, a)] -> QC.Property
-prop_fromListWithConst_takes_firstText = _takes_firstText (TC.fromListWithText const)
+prop_fromListWithConst_takes_first :: (Eq a, Show a) => [(Str, a)] -> QC.Property
+prop_fromListWithConst_takes_first = _takes_first (TC.fromListWith const)
 
 
 -- | @('fromListWithL' const)@ takes the first value for a given key
-prop_fromListWithLConst_takes_firstText :: (Eq a, Show a) => [(StrText, a)] -> QC.Property
-prop_fromListWithLConst_takes_firstText = _takes_firstText (TC.fromListWithLText const)
+prop_fromListWithLConst_takes_first :: (Eq a, Show a) => [(Str, a)] -> QC.Property
+prop_fromListWithLConst_takes_first = _takes_first (TC.fromListWithL const)
 
 
 ----------------------------------------------------------------

@@ -1,3 +1,13 @@
+{-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+
+----------------------------------------------------------------
+--                                                  ~ 2019.04.03
+-- |
+-- Copyright   :  Copyright (c) 2019 michael j. klein
+-- License     :  BSD3
+-- Maintainer  :  lambdamichael@gmail.com
+-- Stability   :  experimental
+----------------------------------------------------------------
 
 import qualified Data.Trie.TextInternal.Test
 import qualified Data.Trie.Text.Test
@@ -13,7 +23,7 @@ main = do
   putStrLn ""
 
   putStrLn "Data.Trie.Text.Test"
-  Data.Trie.Text.Test.testText
+  Data.Trie.Text.Test.test
   putStrLn "End: Data.Trie.Text.Test"
   putStrLn ""
 
@@ -23,12 +33,12 @@ main = do
   putStrLn ""
 
   putStrLn "FromListBench.Text"
-  FromListBench.Text.testText
+  FromListBench.Text.test
   putStrLn "End: FromListBench.Text"
   putStrLn ""
 
   putStrLn "TrieFile.Text"
-  TrieFile.Text.testText
+  TrieFile.Text.test
   putStrLn "End: TrieFile.Text"
   putStrLn ""
 

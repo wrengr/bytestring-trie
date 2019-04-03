@@ -49,48 +49,56 @@ be able to use one of the following standard methods to install it.
 Example performance compared to `bytestring-trie` from benchmarks run on 04/03/2019:
 
 `fromListR` obverse:
+
 | String Type | Per iteration | Per second |
 |-------------|---------------|------------|
 | ByteString  | 43.230ns      | 23131.93   |
 | Text        | 45.256ns      | 22096.29   |
 
 `fromListL` obverse:
+
 | String Type | Per iteration | Per second |
 |-------------|---------------|------------|
 | ByteString  | 182.380ns     | 5483.07    |
 | Text        | 274.391ns     | 3644.43    |
 
 `fromListR` reverse:
+
 | String Type | Per iteration | Per second |
 |-------------|---------------|------------|
 | ByteString  | 279.460ns     | 3578.33    |
 | Text        | 356.662ns     | 2803.78    |
 
 `fromListL` reverse:
+
 | String Type | Per iteration | Per second |
 |-------------|---------------|------------|
 | ByteString  | 43.646ns      | 22911.79   |
 | Text        | 45.778ns      | 21844.78   |
 
 `fromListR` obverse sorted:
+
 | String Type | Per iteration | Per second |
 |-------------|---------------|------------|
 | ByteString  | 45.714ns      | 21875.24   |
 | Text        | 49.093ns      | 20369.65   |
 
 `fromListL` obverse sorted:
+
 | String Type | Per iteration | Per second |
 |-------------|---------------|------------|
 | ByteString  | 179.145ns     | 5582.08    |
 | Text        | 281.516ns     | 3552.19    |
 
 `fromListR` reverse sorted:
+
 | String Type | Per iteration | Per second |
 |-------------|---------------|------------|
 | ByteString  | 45.055ns      | 22194.92   |
 | Text        | 49.776ns      | 20089.87   |
 
 `fromListL` reverse sorted:
+
 | String Type | Per iteration | Per second |
 |-------------|---------------|------------|
 | ByteString  | 176.282ns     | 5672.73    |

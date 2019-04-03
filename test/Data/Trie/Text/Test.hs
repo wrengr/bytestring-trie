@@ -40,6 +40,7 @@ import Data.Function
 import Data.List     (nubBy, sortBy)
 import Data.Ord      (comparing)
 import GHC.Generics
+import System.IO.Silently (capture)
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
@@ -321,10 +322,11 @@ instance (QC.Testable a) => CheckGuard a QC.Property where
 
 instance SC.Testable IO QC.Property where
   test prop = SC.monadic $ do
-    result <- checkQuick 500 prop
+    (resultStr, result) <- capture $ checkQuick 500 prop
     if QC.isSuccess result
        then return True
        else do
+         putStrLn resultStr
          print result
          return False
     where

@@ -1,0 +1,6 @@
+flags: {}
+packages:
+- .
+extra-deps:
+- bytestring-trie-0.2.5.0
+resolver: lts-13.15

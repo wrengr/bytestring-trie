@@ -24,28 +24,44 @@ module Data.Trie.Convenience
       fromListL, fromListR, fromListS
     , fromListWith,  fromListWith'
     , fromListWithL, fromListWithL'
-    
+
+--     , fromListLText, fromListRText, fromListSText
+--     , fromListWithText,  fromListWithText'
+--     , fromListWithLText, fromListWithLText'
+
     -- * Query functions ('lookupBy' variants)
     , lookupWithDefault
-    
+    -- , lookupWithDefaultText
+
     -- * Inserting values ('alterBy' variants)
     , insertIfAbsent
     , insertWith,    insertWith'
     , insertWithKey, insertWithKey'
-    
+
+--     , insertIfAbsentText
+--     , insertWithText,    insertWithText'
+--     , insertWithKeyText, insertWithKeyText'
+
     -- * Updating and adjusting values ('alterBy' and 'adjustBy' variants)
     , adjustWithKey
     , update, updateWithKey
-    
+
+--     , adjustWithKeyText
+--     , updateText, updateWithKeyText
+
     -- * Combining tries ('mergeBy' variants)
     , disunion
     , unionWith, unionWith'
+
+    -- , disunionText
+    -- , unionWithText, unionWithText'
     ) where
 
 import Data.Trie
-import Data.Trie.Internal (lookupBy_, adjustBy)
+import Data.Trie.Internal (lookupBy_, adjustBy) -- , lookupByText_, adjustByText)
 import Data.Trie.Errors   (impossible)
 import Data.ByteString    (ByteString)
+-- import Data.Text          (Text)
 import Data.List          (foldl', sortBy)
 import Data.Ord           (comparing)
 
@@ -69,6 +85,9 @@ fromListL :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListL #-}
 fromListL = foldl' (flip . uncurry $ insertIfAbsent) empty
 
+-- fromListLText :: [(Text,a)] -> TrieText a
+-- {-# INLINE fromListLText #-}
+-- fromListLText = foldl' (flip . uncurry $ insertIfAbsentText) emptyText
 
 -- | An explicitly right-fold variant of 'fromList'. It is a good
 -- consumer for list fusion. Worst-case behavior is somewhat worse
@@ -77,6 +96,10 @@ fromListL = foldl' (flip . uncurry $ insertIfAbsent) empty
 fromListR :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListR #-}
 fromListR = fromList -- == foldr (uncurry insert) empty
+
+-- fromListRText :: [(Text,a)] -> TrieText a
+-- {-# INLINE fromListRText #-}
+-- fromListRText = fromListText -- == foldr (uncurry insert) empty
 
 
 -- TODO: compare performance against a fromListL variant, adjusting the sort appropriately
@@ -89,6 +112,9 @@ fromListS :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListS #-}
 fromListS = fromListR . sortBy (comparing fst)
 
+-- fromListSText :: [(Text,a)] -> TrieText a
+-- {-# INLINE fromListSText #-}
+-- fromListSText = fromListRText . sortBy (comparing fst)
 
 -- | A variant of 'fromListR' that takes a function for combining
 -- values on conflict. The first argument to the combining function
@@ -103,6 +129,12 @@ fromListWith f = foldr (uncurry $ alterBy g) empty
     g _ v Nothing  = Just v
     g _ v (Just w) = Just (f v w)
 
+-- fromListWithText :: (a -> a -> a) -> [(Text,a)] -> TrieText a
+-- {-# INLINE fromListWithText #-}
+-- fromListWithText f = foldr (uncurry $ alterByText g) emptyText
+--     where
+--     g _ v Nothing  = Just v
+--     g _ v (Just w) = Just (f v w)
 
 -- | A variant of 'fromListWith' which applies the combining
 -- function strictly. This function is a good consumer for list
@@ -116,6 +148,12 @@ fromListWith' f = foldr (uncurry $ alterBy g') empty
     g' _ v Nothing  = Just v
     g' _ v (Just w) = Just $! f v w
 
+-- fromListWithText' :: (a -> a -> a) -> [(Text,a)] -> TrieText a
+-- {-# INLINE fromListWithText' #-}
+-- fromListWithText' f = foldr (uncurry $ alterByText g') emptyText
+--     where
+--     g' _ v Nothing  = Just v
+--     g' _ v (Just w) = Just $! f v w
 
 -- | A left-fold variant of 'fromListWith'. Note that the arguments
 -- to the combining function are swapped: the first is the value
@@ -130,6 +168,13 @@ fromListWithL f = foldl' (flip . uncurry $ alterBy flipG) empty
     flipG _ v Nothing  = Just v
     flipG _ v (Just w) = Just (f w v)
 
+-- fromListWithLText :: (a -> a -> a) -> [(Text,a)] -> TrieText a
+-- {-# INLINE fromListWithLText #-}
+-- fromListWithLText f = foldl' (flip . uncurry $ alterByText flipG) emptyText
+--     where
+--     flipG _ v Nothing  = Just v
+--     flipG _ v (Just w) = Just (f w v)
+
 
 -- | A variant of 'fromListWithL' which applies the combining
 -- function strictly.
@@ -140,6 +185,14 @@ fromListWithL' f = foldl' (flip . uncurry $ alterBy flipG') empty
     flipG' _ v Nothing  = Just v
     flipG' _ v (Just w) = Just $! f w v
 
+-- fromListWithLText' :: (a -> a -> a) -> [(Text,a)] -> TrieText a
+-- {-# INLINE fromListWithLText' #-}
+-- fromListWithLText' f = foldl' (flip . uncurry $ alterByText flipG') emptyText
+--     where
+--     flipG' _ v Nothing  = Just v
+--     flipG' _ v (Just w) = Just $! f w v
+
+
 ----------------------------------------------------------------
 -- | Lookup a key, returning a default value if it's not found.
 lookupWithDefault :: a -> ByteString -> Trie a -> a
@@ -147,6 +200,13 @@ lookupWithDefault def = lookupBy_ f def (const def)
     where
     f Nothing  _ = def
     f (Just v) _ = v
+
+-- lookupWithDefaultText :: a -> Text -> TrieText a -> a
+-- lookupWithDefaultText def = lookupByText_ f def (const def)
+--     where
+--     f Nothing  _ = def
+--     f (Just v) _ = v
+
 
 ----------------------------------------------------------------
 
@@ -158,6 +218,14 @@ insertIfAbsent =
         Nothing -> Just x
         Just _  -> mv
 
+-- insertIfAbsentText :: Text -> a -> TrieText a -> TrieText a
+-- insertIfAbsentText =
+--     alterByText $ \_ x mv ->
+--         case mv of
+--         Nothing -> Just x
+--         Just _  -> mv
+
+
 -- | Insert a new key, with a function to resolve conflicts.
 insertWith :: (a -> a -> a) -> ByteString -> a -> Trie a -> Trie a
 insertWith f =
@@ -165,6 +233,14 @@ insertWith f =
         case mv of
         Nothing -> Just x
         Just v  -> Just (f x v)
+
+-- insertWithText :: (a -> a -> a) -> Text -> a -> TrieText a -> TrieText a
+-- insertWithText f =
+--     alterByText $ \_ x mv ->
+--         case mv of
+--         Nothing -> Just x
+--         Just v  -> Just (f x v)
+
 
 -- | A variant of 'insertWith' which applies the combining function
 -- strictly.
@@ -175,6 +251,14 @@ insertWith' f =
         Nothing -> Just x
         Just v  -> Just $! f x v
 
+-- insertWithText' :: (a -> a -> a) -> Text -> a -> TrieText a -> TrieText a
+-- insertWithText' f =
+--     alterByText $ \_ x mv ->
+--         case mv of
+--         Nothing -> Just x
+--         Just v  -> Just $! f x v
+
+
 -- | A variant of 'insertWith' which also provides the key to the
 -- combining function.
 insertWithKey :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> Trie a
@@ -184,6 +268,14 @@ insertWithKey f =
         Nothing -> Just x
         Just v  -> Just (f k x v)
 
+-- insertWithKeyText :: (Text -> a -> a -> a) -> Text -> a -> TrieText a -> TrieText a
+-- insertWithKeyText f =
+--     alterByText $ \k x mv ->
+--         case mv of
+--         Nothing -> Just x
+--         Just v  -> Just (f k x v)
+
+
 -- | A variant of 'insertWithKey' which applies the combining
 -- function strictly.
 insertWithKey' :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> Trie a
@@ -192,6 +284,14 @@ insertWithKey' f =
         case mv of
         Nothing -> Just x
         Just v  -> Just $! f k x v
+
+-- insertWithKeyText' :: (Text -> a -> a -> a) -> Text -> a -> TrieText a -> TrieText a
+-- insertWithKeyText' f =
+--     alterByText $ \k x mv ->
+--         case mv of
+--         Nothing -> Just x
+--         Just v  -> Just $! f k x v
+
 
 {- This is a tricky one...
 insertLookupWithKey :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> (Maybe a, Trie a)
@@ -204,15 +304,30 @@ adjustWithKey f q =
     adjustBy (\k _ -> f k) q (impossible "Convenience.adjustWithKey")
 -- TODO: benchmark vs the definition with alterBy/liftM
 
+-- adjustWithKeyText :: (Text -> a -> a) -> Text -> TrieText a -> TrieText a
+-- adjustWithKeyText f q =
+--     adjustByText (\k _ -> f k) q (impossible "Convenience.adjustWithKeyText")
+
+
 -- | Apply a function to the value at a key, possibly removing it.
 update :: (a -> Maybe a) -> ByteString -> Trie a -> Trie a
 update f q =
     alterBy (\_ _ mx -> mx >>= f) q (impossible "Convenience.update")
 
+-- updateText :: (a -> Maybe a) -> Text -> TrieText a -> TrieText a
+-- updateText f q =
+--     alterByText (\_ _ mx -> mx >>= f) q (impossible "Convenience.updateText")
+
+
 -- | A variant of 'update' which also provides the key to the function.
 updateWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> Trie a
 updateWithKey f q =
     alterBy (\k _ mx -> mx >>= f k) q (impossible "Convenience.updateWithKey")
+
+-- updateWithKeyText :: (Text -> a -> Maybe a) -> Text -> TrieText a -> TrieText a
+-- updateWithKeyText f q =
+--     alterByText (\k _ mx -> mx >>= f k) q (impossible "Convenience.updateWithKeyText")
+
 
 {-
 updateLookupWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> (Maybe a, Trie a)
@@ -227,14 +342,26 @@ updateLookupWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> (
 disunion :: Trie a -> Trie a -> Trie a
 disunion = mergeBy (\_ _ -> Nothing)
 
+-- disunionText :: TrieText a -> TrieText a -> TrieText a
+-- disunionText = mergeByText (\_ _ -> Nothing)
+
+
 -- | Combine two tries, using a function to resolve conflicts.
 unionWith :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
 unionWith f = mergeBy (\x y -> Just (f x y))
+
+-- unionWithText :: (a -> a -> a) -> TrieText a -> TrieText a -> TrieText a
+-- unionWithText f = mergeByText (\x y -> Just (f x y))
+
 
 -- | A variant of 'unionWith' which applies the combining function
 -- strictly.
 unionWith' :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
 unionWith' f = mergeBy (\x y -> Just $! f x y)
+
+-- unionWithText' :: (a -> a -> a) -> TrieText a -> TrieText a -> TrieText a
+-- unionWithText' f = mergeByText (\x y -> Just $! f x y)
+
 
 {- TODO: (efficiently)
 difference, intersection

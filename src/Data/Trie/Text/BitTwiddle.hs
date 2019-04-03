@@ -20,23 +20,17 @@
 -- to 'Int'.
 ----------------------------------------------------------------
 
-module Data.Trie.BitTwiddle
-    ( Prefix, Mask
-    -- , PrefixText, MaskText
+module Data.Trie.Text.BitTwiddle
+    ( PrefixText, MaskText
 
-    , elemToNat
-    -- , elemToNatText
+    , elemToNatText
 
-    , zero, nomatch
-    -- , zeroText, nomatchText
+    , zeroText, nomatchText
 
-    , mask, shorter, branchMask
-    -- , maskText, shorterText, branchMaskText
+    , maskText, shorterText, branchMaskText
     ) where
 
-import Data.Trie.ByteStringInternal (ByteStringElem)
-
--- import Data.Trie.TextInternal (TextElem)
+import Data.Trie.TextInternal (TextElem)
 
 import Data.Bits
 
@@ -50,31 +44,17 @@ import Data.Word (Word)
 
 ----------------------------------------------------------------
 
-type KeyElem = ByteStringElem
-type Prefix  = KeyElem
-type Mask    = KeyElem
+type KeyElemText = TextElem
+type PrefixText  = KeyElemText
+type MaskText    = KeyElemText
 
--- type KeyElemText = TextElem
--- type PrefixText  = KeyElemText
--- type MaskText    = KeyElemText
+elemToNatText :: KeyElemText -> Word
+{-# INLINE elemToNatText #-}
+elemToNatText = fromIntegral
 
-
-elemToNat :: KeyElem -> Word
-{-# INLINE elemToNat #-}
-elemToNat = fromIntegral
-
--- elemToNatText :: KeyElemText -> Word
--- {-# INLINE elemToNatText #-}
--- elemToNatText = fromIntegral
-
-
-natToElem :: Word -> KeyElem
-{-# INLINE natToElem #-}
-natToElem = fromIntegral
-
--- natToElemText :: Word -> KeyElemText
--- {-# INLINE natToElemText #-}
--- natToElemText = fromIntegral
+natToElemText :: Word -> KeyElemText
+{-# INLINE natToElemText #-}
+natToElemText = fromIntegral
 
 
 shiftRL :: Word -> Int -> Word
@@ -94,35 +74,20 @@ shiftRL x i = shiftR x i
 -- TODO: should we use the (Bits Word8) instance instead of 'elemToNat' and (Bits Nat)? We need to compare Core, C--, or ASM in order to decide this. The choice will apply to 'zero', 'mask', 'maskW',... If we shouldn't, then we should probably send a patch upstream to fix the (Bits Word8) instance.
 
 -- | Is the value under the mask zero?
-zero :: KeyElem -> Mask -> Bool
-{-# INLINE zero #-}
-zero i m = (elemToNat i) .&. (elemToNat m) == 0
-
--- zeroText :: KeyElemText -> MaskText -> Bool
--- {-# INLINE zeroText #-}
--- zeroText i m = (elemToNatText i) .&. (elemToNatText m) == 0
+zeroText :: KeyElemText -> MaskText -> Bool
+{-# INLINE zeroText #-}
+zeroText i m = (elemToNatText i) .&. (elemToNatText m) == 0
 
 
 -- | Does a value /not/ match some prefix, for all the bits preceding
 -- a masking bit? (Hence a subtree matching the value doesn't exist.)
-nomatch :: KeyElem -> Prefix -> Mask -> Bool
-{-# INLINE nomatch #-}
-nomatch i p m = mask i m /= p
+nomatchText :: KeyElemText -> PrefixText -> MaskText -> Bool
+{-# INLINE nomatchText #-}
+nomatchText i p m = maskText i m /= p
 
--- -- | Does a value /not/ match some prefix, for all the bits preceding
--- -- a masking bit? (Hence a subtree matching the value doesn't exist.)
--- nomatchText :: KeyElemText -> PrefixText -> MaskText -> Bool
--- {-# INLINE nomatchText #-}
--- nomatchText i p m = maskText i m /= p
-
-
-mask :: KeyElem -> Mask -> Prefix
-{-# INLINE mask #-}
-mask i m = maskW (elemToNat i) (elemToNat m)
-
--- maskText :: KeyElemText -> MaskText -> PrefixText
--- {-# INLINE maskText #-}
--- maskText i m = maskWText (elemToNatText i) (elemToNatText m)
+maskText :: KeyElemText -> MaskText -> PrefixText
+{-# INLINE maskText #-}
+maskText i m = maskWText (elemToNatText i) (elemToNatText m)
 
 
 {---------------------------------------------------------------
@@ -131,41 +96,28 @@ mask i m = maskW (elemToNat i) (elemToNat m)
 
 -- | Get mask by setting all bits higher than the smallest bit in
 -- @m@. Then apply that mask to @i@.
-maskW :: Word -> Word -> Prefix
-{-# INLINE maskW #-}
-maskW i m = natToElem (i .&. (complement (m-1) `xor` m))
+maskWText :: Word -> Word -> PrefixText
+{-# INLINE maskWText #-}
+maskWText i m = natToElemText (i .&. (complement (m-1) `xor` m))
 -- TODO: try the alternatives mentioned in the Containers paper:
 -- \i m -> natToElem (i .&. (negate m - m))
 -- \i m -> natToElem (i .&. (m * complement 1))
 -- N.B. these return /all/ the low bits, and therefore they are not equal functions for all m. They are, however, equal when only one bit of m is set.
 
--- maskWText :: Word -> Word -> PrefixText
--- {-# INLINE maskWText #-}
--- maskWText i m = natToElemText (i .&. (complement (m-1) `xor` m))
-
 
 -- | Determine whether the first mask denotes a shorter prefix than
 -- the second.
-shorter :: Mask -> Mask -> Bool
-{-# INLINE shorter #-}
-shorter m1 m2 = elemToNat m1 > elemToNat m2
-
--- shorterText :: MaskText -> MaskText -> Bool
--- {-# INLINE shorterText #-}
--- shorterText m1 m2 = elemToNatText m1 > elemToNatText m2
+shorterText :: MaskText -> MaskText -> Bool
+{-# INLINE shorterText #-}
+shorterText m1 m2 = elemToNatText m1 > elemToNatText m2
 
 
 
 -- | Determine first differing bit of two prefixes.
-branchMask :: Prefix -> Prefix -> Mask
-{-# INLINE branchMask #-}
-branchMask p1 p2
-    = natToElem (highestBitMask (elemToNat p1 `xor` elemToNat p2))
-
--- branchMaskText :: PrefixText -> PrefixText -> MaskText
--- {-# INLINE branchMaskText #-}
--- branchMaskText p1 p2
---     = natToElemText (highestBitMask (elemToNatText p1 `xor` elemToNatText p2))
+branchMaskText :: PrefixText -> PrefixText -> MaskText
+{-# INLINE branchMaskText #-}
+branchMaskText p1 p2
+    = natToElemText (highestBitMask (elemToNatText p1 `xor` elemToNatText p2))
 
 
 {---------------------------------------------------------------
@@ -226,3 +178,4 @@ highestBitMask x
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.
+

@@ -3,22 +3,20 @@
 ----------------------------------------------------------------
 --                                                  ~ 2009.02.06
 -- |
--- Module      :  Data.Trie.ByteStringInternal.Test
--- Copyright   :  Copyright (c) 2008--2009 wren gayle romano
+-- Module      :  Data.Trie.TextInternal.Test
+-- Copyright   :  Copyright (c) 2019 Michael J. Klein
 -- License     :  BSD3
--- Maintainer  :  wren@community.haskell.org
+-- Maintainer  :  lambdamichael@gmail.com
 -- Stability   :  provisional
 -- Portability :  portable
 --
--- Testing helper functions on 'ByteString's.
+-- Testing helper functions on 'Text'.
 ----------------------------------------------------------------
 
+module Data.Trie.TextInternal.Test where
 
-module Data.Trie.ByteStringInternal.Test where
-
-import Data.Trie.ByteStringInternal
-
-import Data.Trie.Test (packC2W)
+import qualified Data.Text as T
+import Data.Trie.TextInternal
 
 import Data.List (unfoldr)
 ----------------------------------------------------------------
@@ -31,23 +29,24 @@ showBits = unfoldr getBit
     getBit i | odd i     = Just ('I', (i-1)`div`2)
              | otherwise = Just ('O', i`div`2)
 
-
 -- TODO: make this into an HUnit test
 test :: IO ()
 test  = do
-    cmp hello
-    cmp $ packC2W "hi"
-    cmp $ packC2W "heat"
-    cmp $ packC2W "held"
-    cmp $ packC2W "hell"
-    cmp $ packC2W "hello"
-    cmp $ packC2W "jello"
+    cmp' helloText
+    cmp' $ T.pack "hi"
+    cmp' $ T.pack "heat"
+    cmp' $ T.pack "held"
+    cmp' $ T.pack "hell"
+    cmp' $ T.pack "hello"
+    cmp' $ T.pack "jello"
 
     where
-    cmp y = do putStrLn . show . breakMaximalPrefix hello $ y
-               putStrLn . show . (\(a,b,c) -> (a,c,b)) . breakMaximalPrefix y $ hello
-               putStrLn "\n"
-    hello = packC2W "hello"
+    cmp' y = do putStrLn . show . breakMaximalPrefixText helloText $ y
+                putStrLn . show . (\(a,b,c) -> (a,c,b)) . breakMaximalPrefixText y $ helloText
+                putStrLn "\n"
+
+    helloText = T.pack "hello"
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.
+

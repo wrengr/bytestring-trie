@@ -2,6 +2,7 @@
 .DS_Store
 
 # Ignore Haskell building stuff
+.stack-work/
 .cabal-sandbox/
 cabal.sandbox.config
 cabal-dev/

@@ -989,6 +989,34 @@ mergeMaybe _ mv0@(Just _) Nothing  = mv0
 mergeMaybe f (Just v0)   (Just v1) = f v0 v1
 
 
+-- | Delete the submap under the given key.
+deleteSubmap :: ByteString -> Trie a -> Trie a
+{-# INLINE deleteSubmap #-}
+deleteSubmap _ Empty            = Empty
+deleteSubmap q t@(Branch p m l r)
+    | nomatch qh p m  = t
+    | zero qh m       = branch p m (deleteSubmap q l) r
+    | otherwise       = branch p m l (deleteSubmap q r)
+    where
+    qh = errorLogHead "deleteSubmap" q
+deleteSubmap q (Arc k mv t) =
+    let (_,_,q') = breakMaximalPrefix k q in
+    case S.null q' of
+    True  -> -- Partially, or completely match the Prefix
+            Empty
+    False -> -- Have different Prefix yet, do nothing
+            arc k mv (deleteSubmap q' t)
+
+-- Inefficient implementation which is equivalent of `deleteSubmap`
+deleteSubmap' :: ByteString -> Trie a -> Trie a
+{-# INLINE deleteSubmap' #-}
+deleteSubmap' key trie =
+    foldr
+        (\k t -> alterBy (\_ _ _ -> Nothing) k (error "delete") t)
+        trie
+        (toListBy const $ submap key trie)
+
+
 {-----------------------------------------------------------
 -- Priority-queue functions
 -----------------------------------------------------------}

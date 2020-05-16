@@ -54,6 +54,10 @@ module Data.Trie.Internal
     , contextualFilterMap
     , contextualMapBy
 
+    -- * Something else
+    , deleteSubmap
+    , deleteSubmap'
+
     -- * Priority-queue functions
     , minAssoc, maxAssoc
     , updateMinViewBy, updateMaxViewBy

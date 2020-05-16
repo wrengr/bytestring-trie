@@ -49,6 +49,10 @@ module Data.Trie
     
     -- * Single-value modification
     , alterBy, insert, adjust, delete
+
+    -- * Something else
+    , deleteSubmap
+    , deleteSubmap'
     
     -- * Combining tries
     , mergeBy, unionL, unionR

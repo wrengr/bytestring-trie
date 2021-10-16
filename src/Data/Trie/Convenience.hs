@@ -24,19 +24,19 @@ module Data.Trie.Convenience
       fromListL, fromListR, fromListS
     , fromListWith,  fromListWith'
     , fromListWithL, fromListWithL'
-    
+
     -- * Query functions ('lookupBy' variants)
     , lookupWithDefault
-    
+
     -- * Inserting values ('alterBy' variants)
     , insertIfAbsent
     , insertWith,    insertWith'
     , insertWithKey, insertWithKey'
-    
+
     -- * Updating and adjusting values ('alterBy' and 'adjustBy' variants)
     , adjustWithKey
     , update, updateWithKey
-    
+
     -- * Combining tries ('mergeBy' variants)
     , disunion
     , unionWith, unionWith'
@@ -92,7 +92,7 @@ fromListS = fromListR . sortBy (comparing fst)
 
 -- | A variant of 'fromListR' that takes a function for combining
 -- values on conflict. The first argument to the combining function
--- is the ``new'' value from the initial portion of the list; the
+-- is the \"new\" value from the initial portion of the list; the
 -- second argument is the value that has been accumulated into the
 -- trie from the tail of the list (just like the first argument to
 -- 'foldr'). Thus, @fromList = fromListWith const@.
@@ -120,7 +120,7 @@ fromListWith' f = foldr (uncurry $ alterBy g') empty
 -- | A left-fold variant of 'fromListWith'. Note that the arguments
 -- to the combining function are swapped: the first is the value
 -- in the trie which has been accumulated from the initial part of
--- the list; the second argument is the ``new'' value from the
+-- the list; the second argument is the \"new\" value from the
 -- remaining tail of the list (just like the first argument to
 -- 'foldl'). Thus, @fromListL = fromListWithL const@.
 fromListWithL :: (a -> a -> a) -> [(ByteString,a)] -> Trie a

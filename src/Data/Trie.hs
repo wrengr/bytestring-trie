@@ -37,22 +37,22 @@ module Data.Trie
     (
     -- * Data type
       Trie()
-    
+
     -- * Basic functions
     , empty, null, singleton, size
-    
+
     -- * Conversion functions
     , fromList, toListBy, toList, keys, elems
-    
+
     -- * Query functions
     , lookupBy, lookup, member, submap, match, matches
-    
+
     -- * Single-value modification
     , alterBy, insert, adjust, delete
-    
+
     -- * Combining tries
     , mergeBy, unionL, unionR
-    
+
     -- * Mapping functions
     , mapBy, filterMap
     ) where
@@ -71,7 +71,7 @@ import Control.Monad      (liftM)
 
 
 {---------------------------------------------------------------
--- Conversion functions 
+-- Conversion functions
 ---------------------------------------------------------------}
 
 -- | Convert association list into a trie. On key conflict, values

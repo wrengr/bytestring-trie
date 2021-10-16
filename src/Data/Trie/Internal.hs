@@ -66,7 +66,7 @@ import qualified Data.ByteString as S
 import Data.Trie.ByteStringInternal
 import Data.Trie.BitTwiddle
 
-import Data.Binary
+import Data.Binary         (Binary(..), Get, Word8)
 #if MIN_VERSION_base(4,9,0)
 import Data.Semigroup      (Semigroup(..))
 #endif
@@ -993,6 +993,9 @@ mergeMaybe f (Just v0)   (Just v1) = f v0 v1
 -- Priority-queue functions
 -----------------------------------------------------------}
 
+-- | Return the lexicographically smallest 'ByteString' and the
+-- value it's mapped to; or 'Nothing' for the empty trie.  When one
+-- entry is a prefix of another, the prefix will be returned.
 minAssoc :: Trie a -> Maybe (ByteString, a)
 minAssoc = go S.empty
     where
@@ -1002,6 +1005,9 @@ minAssoc = go S.empty
     go q (Branch _ _ l _)   = go q l
 
 
+-- | Return the lexicographically largest 'ByteString' and the
+-- value it's mapped to; or 'Nothing' for the empty trie.  When one
+-- entry is a prefix of another, the longer one will be returned.
 maxAssoc :: Trie a -> Maybe (ByteString, a)
 maxAssoc = go S.empty
     where
@@ -1017,6 +1023,7 @@ mapView _ Nothing        = Nothing
 mapView f (Just (k,v,t)) = Just (k,v, f t)
 
 
+-- | Update the 'minAssoc' and return the old 'minAssoc'.
 updateMinViewBy :: (ByteString -> a -> Maybe a)
                 -> Trie a -> Maybe (ByteString, a, Trie a)
 updateMinViewBy f = go S.empty
@@ -1028,6 +1035,7 @@ updateMinViewBy f = go S.empty
     go q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
 
 
+-- | Update the 'maxAssoc' and return the old 'maxAssoc'.
 updateMaxViewBy :: (ByteString -> a -> Maybe a)
                 -> Trie a -> Maybe (ByteString, a, Trie a)
 updateMaxViewBy f = go S.empty

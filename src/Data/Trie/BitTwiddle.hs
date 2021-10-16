@@ -16,8 +16,8 @@
 -- Functions to treat 'Word' as a bit-vector for big-endian patricia
 -- trees. This code is duplicated from "Data.IntMap". The only
 -- differences are that some of the conversion functions are
--- specialized to 'Word8' for bytestrings, instead of being specialized
--- to 'Int'.
+-- specialized to 'Data.Word.Word8' for bytestrings, instead of
+-- being specialized to 'Int'.
 ----------------------------------------------------------------
 
 module Data.Trie.BitTwiddle
@@ -41,9 +41,9 @@ import Data.Word (Word)
 
 ----------------------------------------------------------------
 
-type KeyElem = ByteStringElem 
-type Prefix  = KeyElem 
-type Mask    = KeyElem 
+type KeyElem = ByteStringElem
+type Prefix  = KeyElem
+type Mask    = KeyElem
 
 elemToNat :: KeyElem -> Word
 {-# INLINE elemToNat #-}
@@ -159,11 +159,11 @@ branchMask p1 p2
 highestBitMask :: Word -> Word
 {-# INLINE highestBitMask #-}
 highestBitMask x
-    = case (x .|. shiftRL x 1) of 
-       x -> case (x .|. shiftRL x 2) of 
-        x -> case (x .|. shiftRL x 4) of 
-         x -> case (x .|. shiftRL x 8) of 
-          x -> case (x .|. shiftRL x 16) of 
+    = case (x .|. shiftRL x 1) of
+       x -> case (x .|. shiftRL x 2) of
+        x -> case (x .|. shiftRL x 4) of
+         x -> case (x .|. shiftRL x 8) of
+          x -> case (x .|. shiftRL x 16) of
            x -> case (x .|. shiftRL x 32) of   -- for 64 bit platforms
             x -> (x `xor` shiftRL x 1)
 

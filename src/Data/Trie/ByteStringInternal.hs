@@ -62,7 +62,7 @@ breakMaximalPrefix
             return $! (,,) !$ pre !$ s1' !$ s2'
 
 -- | Get the 'sizeOf' the type, without requiring @-XScopedTypeVariables@
--- nor making a spurious call to 'unsafePerformIO' or similar.
+-- nor making a spurious call to 'System.IO.Unsafe.unsafePerformIO' or similar.
 sizeOfPtr :: Storable a => Ptr a -> Int
 sizeOfPtr = sizeOf . (undefined :: Ptr a -> a)
 {-# INLINE sizeOfPtr #-}

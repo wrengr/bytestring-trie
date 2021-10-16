@@ -1,5 +1,7 @@
+0.2.5.2 (2021.10.16):
+    - Increasing upper bounds to Hackage latest, instead of just GHC 9.0.1
 0.2.5.1 (2021.10.16):
-    - Fixing things to compile under GHC 9.0
+    - Fixing things to compile under GHC 9.0.1
 0.2.5.0 (2019.02.25):
     - Fixing things to compile under GHC 8.4 and 8.6.
 	- Adds Semigroup (Trie a) instance

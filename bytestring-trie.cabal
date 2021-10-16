@@ -7,7 +7,7 @@ Cabal-Version:  >= 1.10
 Build-Type:     Simple
 
 Name:           bytestring-trie
-Version:        0.2.5.1
+Version:        0.2.5.2
 Stability:      provisional
 Homepage:       http://wrengr.org
 Author:         wren gayle romano

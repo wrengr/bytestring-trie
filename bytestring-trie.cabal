@@ -72,8 +72,8 @@ Library
     -- But then, we don't maintain any CI tests for older
     -- versions, so these are the lowest bounds we've verified.
     Build-Depends: base       >= 4.5   && < 4.16
-                 , bytestring >= 0.9.2 && < 0.11
-                 , binary     >= 0.5.1 && < 0.8.9
+                 , bytestring >= 0.9.2 && < 0.12
+                 , binary     >= 0.5.1 && < 0.11
     
 ------------------------------------------------------------
 ------------------------------------------------------- fin.

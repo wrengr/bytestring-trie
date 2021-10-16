@@ -1,0 +1,10 @@
+# Use Dependabot to automatically generate PRs if the dependencies
+# of our GitHub Actions scripts get out of date.  For more info, see:
+# <https://github.blog/2020-06-01-keep-all-your-packages-up-to-date-with-dependabot/>
+# <https://docs.github.com/en/github/administering-a-repository/enabling-and-disabling-version-updates>
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "daily"

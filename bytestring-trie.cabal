@@ -43,16 +43,15 @@ Description:    An efficient finite map from (byte)strings to values.
 Extra-source-files:
     AUTHORS, CHANGELOG, README.md
 
--- Cf., <https://travis-ci.org/wrengr/bytestring-lexing>
+-- This should work as far back as GHC 7.4.1, but we don't verify that by CI.
+-- TODO: add the github-actions link.
 Tested-With:
-    GHC ==7.4.1, GHC ==7.4.2,
-    GHC ==7.6.1, GHC ==7.6.2, GHC ==7.6.3,
-    GHC ==7.8.1, GHC ==7.8.2, GHC ==7.8.3, GHC ==7.8.4,
-    GHC ==7.10.1, GHC ==7.10.2, GHC ==7.10.3,
-    GHC ==8.0.1, GHC ==8.0.2,
-    GHC ==8.2.1, GHC ==8.2.2,
-    GHC ==8.4.1, GHC ==8.4.2, GHC ==8.4.3,
-    GHC ==8.6.1, GHC ==8.6.2,
+    GHC ==8.0.2,
+    GHC ==8.2.2,
+    GHC ==8.4.4,
+    GHC ==8.6.5,
+    GHC ==8.8.4,
+    GHC ==8.10.3,
     GHC ==9.0.1
 
 Source-Repository head

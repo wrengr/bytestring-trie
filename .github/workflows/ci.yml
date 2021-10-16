@@ -25,9 +25,7 @@ jobs:
       fail-fast: true
       matrix:
         os: [ubuntu-latest]
-        # BUG: versions 7.x are no longer available on GitHub (or at least not on ubuntu-latest).
-        # FIXME(2021.02.24): version 9.0.1 is not currently cached on GitHub
-        # FIXME(2021.10.16): trying it anyways.
+        # Note(2021.10.16): GitHub now has 9.0.1.
         ghc: ['8.0.2', '8.2.2', '8.4.4', '8.6.5', '8.8.4', '8.10.3', '9.0.1']
         include:
         - os: windows-latest
@@ -42,7 +40,7 @@ jobs:
         ghc-version: ${{ matrix.ghc }}
     - name: Update cabal package database
       run: cabal update
-    - uses: actions/cache@v2.1.4
+    - uses: actions/cache@v2.1.6
       name: Cache cabal stuff
       with:
         path: |

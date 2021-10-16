@@ -1,9 +1,8 @@
 bytestring-trie
 ===============
 [![Hackage version](https://img.shields.io/hackage/v/bytestring-trie.svg?style=flat)](https://hackage.haskell.org/package/bytestring-trie) 
-[![Hackage-Deps](https://img.shields.io/hackage-deps/v/bytestring-trie.svg?style=flat)](http://packdeps.haskellers.com/specific?package=bytestring-trie)
-[![TravisCI Build Status](https://img.shields.io/travis/wrengr/bytestring-trie.svg?style=flat)](https://travis-ci.org/wrengr/bytestring-trie) 
-[![CircleCI Build Status](https://circleci.com/gh/wrengr/bytestring-trie.svg?style=shield&circle-token=b57517657c556be6fd8fca92b843f9e4cffaf8d1)](https://circleci.com/gh/wrengr/bytestring-trie)
+[![Build Status](https://github.com/wrengr/bytestring-trie/workflows/ci/badge.svg)](https://github.com/wrengr/bytestring-trie/actions?query=workflow%3Aci)
+[![Dependencies](https://img.shields.io/hackage-deps/v/bytestring-trie.svg?style=flat)](http://packdeps.haskellers.com/specific?package=bytestring-trie)
 
 The bytestring-trie package provides an efficient implementation
 of tries mapping `ByteString` to values.  The implementation is

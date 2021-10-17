@@ -2,12 +2,12 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 ----------------------------------------------------------------
---                                                  ~ 2014.10.09
+--                                                  ~ 2021.10.17
 -- |
 -- Module      :  Data.Trie
--- Copyright   :  Copyright (c) 2008--2015 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
 -- License     :  BSD3
--- Maintainer  :  wren@community.haskell.org
+-- Maintainer  :  wren@cpan.org
 -- Stability   :  experimental
 -- Portability :  portable
 --

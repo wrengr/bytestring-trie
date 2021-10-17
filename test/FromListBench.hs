@@ -1,12 +1,12 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.04
+--                                                  ~ 2021.10.17
 -- |
 -- Module      :  Bench.FromList
--- Copyright   :  Copyright (c) 2008--2009 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
 -- License     :  BSD3
--- Maintainer  :  wren@community.haskell.org
+-- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
 -- Portability :  portable
 --
@@ -38,14 +38,14 @@ main  = do
     -- 100000 is large enough to trigger Microbench's stop condition,
     -- and small enough to not lock up the system in trying to create it.
     xs <- evaluate $ S.replicate 100000 (c2w 'a')
-    
+
     microbench "fromListR obverse" (T.null . fromListR . getList xs)
     microbench "fromListL obverse" (T.null . fromListL . getList xs)
-    
+
     putStrLn ""
     microbench "fromListR reverse" (T.null . fromListR . getList' xs)
     microbench "fromListL reverse" (T.null . fromListL . getList' xs)
-    
+
     -- Sorting forces it into the obverse order at O(n log n) cost
     putStrLn ""
     putStrLn ""

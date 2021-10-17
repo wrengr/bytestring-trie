@@ -6,10 +6,10 @@
 {-# LANGUAGE CPP #-}
 
 ------------------------------------------------------------
---                                              ~ 2019.02.24
+--                                              ~ 2021.10.17
 -- |
 -- Module      :  Data.Trie.Internal
--- Copyright   :  Copyright (c) 2008--2019 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional

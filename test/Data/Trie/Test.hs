@@ -7,12 +7,12 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2011.02.12
+--                                                  ~ 2021.10.17
 -- |
 -- Module      :  Data.Trie.Test
--- Copyright   :  Copyright (c) 2008--2011 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
 -- License     :  BSD3
--- Maintainer  :  wren@community.haskell.org
+-- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
 -- Portability :  semi-portable (MPTC,...)
 --
@@ -46,11 +46,11 @@ vocab2trie  = T.fromList . flip zip [0..] . map packC2W
 
 ----------------------------------------------------------------
 main :: IO ()
-main  = do 
+main  = do
     putStrLn ""
     putStrLn (replicate 80 '~')
-    
-    
+
+
     putStrLn "hunit:"
     _ <- HU.runTestTT $ HU.TestList
                  [ test_Union
@@ -59,7 +59,7 @@ main  = do
                  , test_Delete
                  ]
     putStrLn ""
-    
+
     putStrLn "quickcheck @ Int:"
     checkQuick 500  (prop_insert        :: Str -> Int -> T.Trie Int -> Bool)
     checkQuick 5000 (prop_singleton     :: Str -> Int -> Bool)
@@ -78,7 +78,7 @@ main  = do
     checkQuick 500  (prop_fromListWithConst_takes_first :: [(Str, Int)] -> Bool)
     checkQuick 500  (prop_fromListWithLConst_takes_first :: [(Str, Int)] -> Bool)
     putStrLn ""
-    
+
     putStrLn "smallcheck @ ():" -- Beware the exponential!
     checkSmall 3 (prop_insert        :: Str -> () -> T.Trie () -> Bool)
     checkSmall 7 (prop_singleton     :: Str -> () -> Bool)
@@ -104,7 +104,7 @@ main  = do
 #ifdef __USE_QUICKCHECK_1__
     checkQuick n =
         QC.check (QC.defaultConfig
-            { QC.configMaxTest = n 
+            { QC.configMaxTest = n
             , QC.configMaxFail = 1000 `max` 10*n
             })
 #else
@@ -134,7 +134,7 @@ test_Union = HU.TestLabel "epsilon union"
     where
     e1 = T.singleton S.empty (4::Int)
     e2 = T.singleton S.empty (2::Int)
-    
+
     -- Regression test against bug filed by Gregory Crosswhite on 2010.06.10 against version 0.2.1.1.
     a, b :: S.ByteString
     a = read "\"\231^\179\160Y\134Gr\158<)&\222\217#\156\""
@@ -162,7 +162,7 @@ test_Submap = HU.TestLabel "submap"
     food = packC2W "food"
     ba   = packC2W "ba"
     bag  = packC2W "bag"
-    
+
     nullSubmap s q b = testEqual s (T.null $ T.submap q t) b
 
 ----------------------------------------------------------------
@@ -177,7 +177,7 @@ test_Insert = HU.TestLabel "insert"
     where
     aba      = packC2W "aba"
     abaissed = packC2W "abaissed"
-    
+
     o = 0::Int
     i = 1::Int
 
@@ -193,7 +193,7 @@ test_Delete = HU.TestLabel "delete"
 
 ----------------------------------------------------------------
 -- TODO: we need a better instance of Arbitrary for lists to make them longer than our smallcheck depth.
--- 
+--
 -- I use strings with characters picked from a very restricted subset
 -- in order to have more labels with shared prefixes.
 newtype Letter = Letter { unLetter :: Char }
@@ -235,11 +235,11 @@ instance SC.Serial Letter where
     series      d = take (d+1) $ map Letter letters
     coseries rs d = do f <- SC.coseries rs d
                        return $ \c -> f (fromEnum (unLetter c) - fromEnum 'a')
-    
+
 instance SC.Serial Str where
     series      d = liftM (Str . packC2W . map unLetter)
                           (SC.series d :: [[Letter]])
-    
+
     coseries rs d = do y <- SC.alts0 rs d
                        f <- SC.alts2 rs d
                        return $ \(Str xs) ->
@@ -257,7 +257,7 @@ instance (Monoid a, SC.Serial a) => SC.Serial (T.Trie a) where
            arcHACK (Str k) Nothing  t = T.singleton k () >> t
            arcHACK (Str k) (Just v) t = T.singleton k v
                                          >>= T.unionR t . T.singleton S.empty
-    
+
     -- coseries :: Series b -> Series (Trie a -> b)
     coseries = error "coseries@Trie: not implemented"
 

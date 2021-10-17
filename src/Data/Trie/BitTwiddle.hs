@@ -4,12 +4,12 @@
 {-# LANGUAGE CPP, MagicHash #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.01.05
+--                                                  ~ 2021.10.17
 -- |
 -- Module      :  Data.Trie.BitTwiddle
 -- Copyright   :  Copyright (c) 2002 Daan Leijen
 -- License     :  BSD3
--- Maintainer  :  libraries@haskell.org, wren@community.haskell.org
+-- Maintainer  :  libraries@haskell.org, wren@cpan.org
 -- Stability   :  stable
 -- Portability :  portable (with CPP)
 --

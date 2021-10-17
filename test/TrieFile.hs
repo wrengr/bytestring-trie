@@ -1,12 +1,12 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2009.02.12
+--                                                  ~ 2021.10.17
 -- |
 -- Module      :  Bench.TrieFile
--- Copyright   :  Copyright (c) 2008--2009 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
 -- License     :  BSD3
--- Maintainer  :  wren@community.haskell.org
+-- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
 -- Portability :  portable
 --
@@ -50,35 +50,35 @@ main :: IO ()
 main  = do
     [file] <- getArgs
     t <- readTrieFromFile file -- >>= evaluate
-    
+
     -- `sort`
     -- S.putStrLn . S.unlines . T.keys $ t
-    
+
     -- `wc -l`
     -- putStrLn . show . T.size $ t
-    
-    
+
+
     {- -- Tests for comparing inferred foldl/foldr vs hand-written version
     microbench "List.foldr elems" $ do
         vs <- return $! T.elems t
         n  <- return $! foldr (\v r -> v `seq` (1+) $! r) (0::Int) vs
         n `seq` (return () :: IO ())
-        
+
     microbench "Trie.foldr @elems" $ do
         t' <- return $! t
         n  <- return $! F.foldr (\v r -> v `seq` (1+) $! r) (0::Int) t'
         n `seq` (return () :: IO ())
-        
+
     microbench "Trie.foldl @elems" $ do
         t' <- return $! t
         n  <- return $! F.foldl (\r v -> v `seq` (1+) $! r) (0::Int) t'
         n `seq` (return () :: IO ())
     -- -}
-    
+
     -- {- -- verify associativity of folds
     putStrLn . show . take 20 . F.foldr (:) [] $ t
     putStrLn . show . take 20 . T.foldrWithKey (const (:)) [] $ t
-    
+
     putStrLn . show . take 20 . F.foldl (flip (:)) [] $ t
     -- -}
 

@@ -25,24 +25,9 @@ and maximum keys, etc.)
 ## Install
 
 This is a simple package and should be easy to install.  You should
-be able to use one of the following standard methods to install it.
+be able to use the standard:
 
-    -- With cabal-install and without the source:
     $> cabal install bytestring-trie
-    
-    -- With cabal-install and with the source already:
-    $> cd bytestring-trie
-    $> cabal install
-    
-    -- Without cabal-install, but with the source already:
-    $> cd bytestring-trie
-    $> runhaskell Setup.hs configure --user
-    $> runhaskell Setup.hs build
-    $> runhaskell Setup.hs haddock --hyperlink-source
-    $> runhaskell Setup.hs copy
-    $> runhaskell Setup.hs register
-
-The Haddock step is optional.
 
 
 ## Portability

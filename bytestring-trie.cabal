@@ -40,7 +40,6 @@ Description:    An efficient finite map from (byte)strings to values.
                 contextual mapping, extracting the minimum and
                 maximum keys, etc.)
 
-
 Extra-source-files:
     AUTHORS, CHANGELOG, README.md
 

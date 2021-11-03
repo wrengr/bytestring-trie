@@ -1,11 +1,13 @@
+0.2.5.3 (2021.11.02):
+    - Increasing upper bounds for GHC 9.2.1
 0.2.5.2 (2021.10.16):
     - Increasing upper bounds to Hackage latest, instead of just GHC 9.0.1
 0.2.5.1 (2021.10.16):
     - Fixing things to compile under GHC 9.0.1
 0.2.5.0 (2019.02.25):
     - Fixing things to compile under GHC 8.4 and 8.6.
-	- Adds Semigroup (Trie a) instance
-	- Removed the obsolete/unused "useCinternal" Cabal flag
+    - Adds Semigroup (Trie a) instance
+    - Removed the obsolete/unused "useCinternal" Cabal flag
 0.2.4.3 (2019.02.24):
     - Moved VERSION to CHANGELOG
     - Fixing things to compile under GHC 8.0 and 8.2.  N.B., still doesn't compile under 8.4 or 8.6, due to the version limit on `base`.

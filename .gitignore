@@ -2,20 +2,32 @@
 .DS_Store
 
 # Ignore Haskell building stuff
-.cabal-sandbox/
-cabal.sandbox.config
-cabal-dev/
-.hpc/
+## GHC itself.
 *.hi
 *.o
 *.p_hi
 *.prof
 *.tix
-cabal.config
-dist-sandbox
+.hpc/
+dist-install/
+## cabal-install classic.
 dist/
-dist-newstyle/
+## hsenv sandboxes.
 .hsenv/
+## cabal-dev sandboxes.
+cabal-dev/
+## cabal-install (>=1.18) sandboxes.
+cabal.config
+cabal.sandbox.config
+.cabal-sandbox/
+dist-sandbox
+## cabal-install (>=2.0 at least) nix-style builds.
+cabal.project.local
+cabal.project.freeze
+dist-newstyle/
+## Stack
+stack.yaml
+.stack-work
 
 # Ignore editor cruft
 .*.swp

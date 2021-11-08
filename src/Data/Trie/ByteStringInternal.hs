@@ -1,6 +1,6 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 ------------------------------------------------------------
---                                              ~ 2021.10.17
+--                                              ~ 2021.11.07
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -61,7 +61,7 @@ breakMaximalPrefix
 
             return $! (,,) !$ pre !$ s1' !$ s2'
 
--- | Get the 'sizeOf' the type, without requiring @-XScopedTypeVariables@
+-- | Get the 'sizeOf' type @a@, without requiring @-XScopedTypeVariables@
 -- nor making a spurious call to 'System.IO.Unsafe.unsafePerformIO' or similar.
 sizeOfPtr :: Storable a => Ptr a -> Int
 sizeOfPtr = sizeOf . (undefined :: Ptr a -> a)

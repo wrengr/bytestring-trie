@@ -7,7 +7,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.10.17
+--                                                  ~ 2021.11.07
 -- |
 -- Module      :  Data.Trie.Test
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -28,13 +28,12 @@ import qualified Data.ByteString.Internal as S (c2w, w2c)
 import qualified Test.HUnit          as HU
 import qualified Test.QuickCheck     as QC
 import qualified Test.SmallCheck     as SC
+import qualified Test.SmallCheck.Series as SC
 -- import qualified Test.LazySmallCheck as LSC
 -- import qualified Test.SparseCheck    as PC
 
-import Data.Monoid
-import Control.Monad (liftM)
-import Data.List     (nubBy, sortBy)
-import Data.Ord      (comparing)
+import Data.List (nubBy, sortBy)
+import Data.Ord  (comparing)
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
@@ -82,10 +81,10 @@ main  = do
     putStrLn "smallcheck @ ():" -- Beware the exponential!
     checkSmall 3 (prop_insert        :: Str -> () -> T.Trie () -> Bool)
     checkSmall 7 (prop_singleton     :: Str -> () -> Bool)
-    checkSmall 3 (prop_size_insert   :: Str -> () -> T.Trie () -> SC.Property)
-    checkSmall 3 (prop_size_delete   :: Str -> () -> T.Trie () -> SC.Property)
-    checkSmall 3 (prop_insert_delete :: Str -> () -> T.Trie () -> SC.Property)
-    checkSmall 3 (prop_delete_lookup :: Str -> T.Trie () -> SC.Property)
+    checkSmall 3 (prop_size_insert   :: Str -> () -> T.Trie () -> SC.Property IO)
+    checkSmall 3 (prop_size_delete   :: Str -> () -> T.Trie () -> SC.Property IO)
+    checkSmall 3 (prop_insert_delete :: Str -> () -> T.Trie () -> SC.Property IO)
+    checkSmall 3 (prop_delete_lookup :: Str -> T.Trie () -> SC.Property IO)
     checkSmall 3 (prop_submap1       :: Str -> T.Trie () -> Bool)
     checkSmall 3 (prop_submap2       :: Str -> T.Trie () -> Bool)
     -- checkSmall 3 (prop_submap3 :: Str -> T.Trie () -> Bool)
@@ -101,20 +100,16 @@ main  = do
     -}
     putStrLn ""
     where
-#ifdef __USE_QUICKCHECK_1__
-    checkQuick n =
-        QC.check (QC.defaultConfig
-            { QC.configMaxTest = n
-            , QC.configMaxFail = 1000 `max` 10*n
-            })
-#else
+    -- QuickCheck >=2.1.0 && <2.5.0 used 'maxDiscard' instead, which
+    -- has a different semantics and which we set to @max 1000 (10*n)@.
+    -- But since the cabal file lists QuickCheck-2.10 as the minimum
+    -- version, must switch to the new 'maxDiscardRatio' instead.
     checkQuick n =
         QC.quickCheckWith (QC.stdArgs
-            { QC.maxSize    = n
-            , QC.maxSuccess = n
-            , QC.maxDiscard = 1000 `max` 10*n
+            { QC.maxSize         = n
+            , QC.maxSuccess      = n
+            , QC.maxDiscardRatio = 10 `min` round (1000 / fromIntegral n :: Double)
             })
-#endif
     checkSmall d f = SC.smallCheck d f >> putStrLn ""
 
 testEqual ::  (Show a, Eq a) => String -> a -> a -> HU.Test
@@ -192,74 +187,89 @@ test_Delete = HU.TestLabel "delete"
     epsilon = packC2W ""
 
 ----------------------------------------------------------------
--- TODO: we need a better instance of Arbitrary for lists to make them longer than our smallcheck depth.
+-- TODO: we need a better instance of Arbitrary for lists to make
+-- them longer than our smallcheck depth.
 --
 -- I use strings with characters picked from a very restricted subset
 -- in order to have more labels with shared prefixes.
-newtype Letter = Letter { unLetter :: Char }
+newtype Letter = Letter Char
     deriving (Eq, Ord, Show)
-letters :: [Char]
-letters = ['a'..'m']
+
+-- Separated from the newtype definition so as not to pollute the
+-- derived 'Show' instance.
+unLetter :: Letter -> Char
+unLetter (Letter c) = c
+
+letters :: [Letter]
+letters = Letter <$> ['a'..'m']
 
 instance QC.Arbitrary Letter where
-    arbitrary = Letter `fmap` QC.elements letters
-    -- coarbitrary -- used in QCv1, separated in QCv2
+    arbitrary = QC.elements letters
 
+-- TODO: instance QC.CoArbitrary Letter
+
+instance Monad m => SC.Serial m Letter where
+    series = SC.generate $ \d -> take d letters
+
+instance Monad m => SC.CoSerial m Letter where
+    coseries rs =
+        SC.coseries rs SC.>>- \f ->
+        return $ \c -> f (unLetter c)
+
+----------------------------------------------------------------
 newtype Str = Str { unStr :: S.ByteString }
     deriving (Eq, Ord)
 
 instance Show Str where
-    show (Str s) = "Str {unStr = packC2W " ++ show s ++ " }"
+    show (Str s) = "Str " ++ show s
+
+packLetters :: [Letter] -> Str
+packLetters = Str . packC2W . map unLetter
 
 instance QC.Arbitrary Str where
     arbitrary = QC.sized $ \n -> do
         k <- QC.choose (0,n)
         s <- QC.vector k
         c <- QC.arbitrary -- We only want non-empty strings.
-        return . Str . packC2W $ map unLetter (c:s)
-    -- coarbitrary -- used in QCv1, separated in QCv2
+        return $ packLetters (c:s)
 
+-- TODO: instance QC.CoArbitrary Str
+
+instance Monad m => SC.Serial m Str where
+    series = packLetters <$> SC.series
+
+instance Monad m => SC.CoSerial m Str where
+    coseries rs =
+        SC.alts0 rs SC.>>- \z ->
+        SC.alts2 rs SC.>>- \f ->
+        return $ \(Str xs) ->
+            if S.null xs
+            then z
+            else f (Letter . S.w2c $ S.head xs) (Str $ S.tail xs)
+
+----------------------------------------------------------------
 instance (QC.Arbitrary a) => QC.Arbitrary (T.Trie a) where
     arbitrary = QC.sized $ \n -> do
         k      <- QC.choose (0,n)
-        labels <- map unStr `fmap` QC.vector k
+        labels <- map unStr <$> QC.vector k
         elems  <- QC.vector k
         return . T.fromList $ zip labels elems
-    -- coarbitrary -- used in QCv1, separated in QCv2
 
-----------------------------------------------------------------
--- cf <http://www.cs.york.ac.uk/fp/darcs/smallcheck/README>
--- type Series a = Int -> [a]
+-- TODO: instance QC.CoArbitrary (Trie a)
 
-instance SC.Serial Letter where
-    series      d = take (d+1) $ map Letter letters
-    coseries rs d = do f <- SC.coseries rs d
-                       return $ \c -> f (fromEnum (unLetter c) - fromEnum 'a')
+-- TODO: This instance really needs some work. The smart constructures
+-- ensure only valid values are generated, but there are redundancies
+-- and inefficiencies.
+instance (Monad m, Monoid a, SC.Serial m a) => SC.Serial m (T.Trie a) where
+    series =   SC.cons0 T.empty
+        SC.\/  SC.cons3 arcHACK
+        SC.\/  SC.cons2 mappend
+        where
+        arcHACK (Str k) Nothing  t = T.singleton k () >> t
+        arcHACK (Str k) (Just v) t = T.singleton k v
+                                        >>= T.unionR t . T.singleton S.empty
 
-instance SC.Serial Str where
-    series      d = liftM (Str . packC2W . map unLetter)
-                          (SC.series d :: [[Letter]])
-
-    coseries rs d = do y <- SC.alts0 rs d
-                       f <- SC.alts2 rs d
-                       return $ \(Str xs) ->
-                           if S.null xs
-                           then y
-                           else f (Letter . S.w2c $ S.head xs)
-                                  (Str $ S.tail xs)
-
--- TODO: This instance really needs some work. The smart constructures ensure only valid values are generated, but there are redundancies and inefficiencies.
-instance (Monoid a, SC.Serial a) => SC.Serial (T.Trie a) where
-    series =      SC.cons0 T.empty
-           SC.\/  SC.cons3 arcHACK
-           SC.\/  SC.cons2 mappend
-           where
-           arcHACK (Str k) Nothing  t = T.singleton k () >> t
-           arcHACK (Str k) (Just v) t = T.singleton k v
-                                         >>= T.unionR t . T.singleton S.empty
-
-    -- coseries :: Series b -> Series (Trie a -> b)
-    coseries = error "coseries@Trie: not implemented"
+-- TODO: instance Monad m => SC.CoSerial m (T.Trie a)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
@@ -281,7 +291,7 @@ class CheckGuard a b where
 instance (QC.Testable a) => CheckGuard a QC.Property where
     (==>) = (QC.==>)
 
-instance (SC.Testable a) => CheckGuard a SC.Property where
+instance (Monad m, SC.Testable m a) => CheckGuard a (SC.Property m) where
     (==>) = (SC.==>)
 
 prop_size_insert :: (Eq a, CheckGuard Bool b) => Str -> a -> T.Trie a -> b

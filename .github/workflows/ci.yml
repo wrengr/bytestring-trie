@@ -70,9 +70,16 @@ jobs:
       run: cabal build all --only-dependencies
     - name: Build
       run: cabal build all
-    ## TODO: Add a test suite!
-    #- name: Test
-    #  run: cabal test all -j1
+    # TODO(2021-10-23): if we run into issues with Windows builds
+    # being flaky, then we should use Bytestring's hack of:
+    #   ```
+    #   bld() { cabal build .:tests; }
+    #   bld || bld || bld
+    #   ```
+    # to try building the tests a few times before admitting failure.
+    # <https://github.com/haskell/actions/issues/36>
+    - name: Test
+      run: cabal test all -j1
     ## TODO: Add benchmarks!
     #- name: Bench
     #  run: cabal bench --benchmark-option=-l all

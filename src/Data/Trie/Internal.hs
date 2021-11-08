@@ -6,7 +6,7 @@
 {-# LANGUAGE CPP #-}
 
 ------------------------------------------------------------
---                                              ~ 2021.10.17
+--                                              ~ 2021.11.07
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -72,7 +72,6 @@ import Data.Semigroup      (Semigroup(..))
 #endif
 import Data.Monoid         (Monoid(..))
 import Control.Monad       (liftM, liftM3, liftM4)
-import Control.Monad       (ap)
 import Control.Applicative (Applicative(..), (<$>))
 import Data.Foldable       (Foldable(foldMap))
 import Data.Traversable    (Traversable(traverse))
@@ -276,8 +275,8 @@ instance Traversable Trie where
         go (Branch p m l r)   = Branch p m <$> go l <*> go r
 
 instance Applicative Trie where
-    pure  = return
-    (<*>) = ap
+    pure    = singleton S.empty
+    m <*> n = m >>= (<$> n)
 
 -- Does this even make sense? It's not nondeterminism like lists
 -- and sets. If no keys were prefixes of other keys it'd make sense
@@ -290,7 +289,15 @@ instance Applicative Trie where
 --  2. m >>= return    == m
 --  3. (m >>= f) >>= g == m >>= (\x -> f x >>= g)
 instance Monad Trie where
-    return = singleton S.empty
+-- Since base-4.8 (ghc-7.10.1) we have the default @return = pure@.
+-- Since ghc-9.2.1 we get a warning about providing any other
+-- definition, and should instead define both 'pure' and @(*>)@
+-- directly, leaving 'return' and @(>>)@ as their defaults so they
+-- can eventually be removed from the class.
+-- <https://gitlab.haskell.org/ghc/ghc/-/wikis/proposal/monad-of-no-return>
+#if (!(MIN_VERSION_base(4,8,0)))
+    return = pure
+#endif
 
     (>>=) Empty              _ = empty
     (>>=) (Branch p m l r)   f = branch p m (l >>= f) (r >>= f)
@@ -314,7 +321,9 @@ instance (Semigroup a) => Semigroup (Trie a) where
 -- This instance is more sensible than Data.IntMap and Data.Map's
 instance (Monoid a) => Monoid (Trie a) where
     mempty  = empty
+#if (!(MIN_VERSION_base(4,11,0)))
     mappend = mergeBy $ \x y -> Just (x `mappend` y)
+#endif
 
 
 -- Since the Monoid instance isn't natural in @a@, I can't think

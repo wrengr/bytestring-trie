@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 ----------------------------------------------------------------
---                                                  ~ 2021.10.17
+--                                                  ~ 2021.11.13
 -- |
 -- Module      :  Data.Trie
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -121,8 +121,8 @@ member q = isJust . lookup q
 
 
 -- | Given a query, find the longest prefix with an associated value
--- in the trie, returning that prefix, it's value, and the remaining
--- string.
+-- in the trie, and return that prefix, it's value, and the remainder
+-- of the query.
 match :: Trie a -> ByteString -> Maybe (ByteString, a, ByteString)
 match t q =
     case match_ t q of
@@ -133,8 +133,9 @@ match t q =
 
 
 -- | Given a query, find all prefixes with associated values in the
--- trie, returning the prefixes, their values, and their remaining
--- strings. This function is a good producer for list fusion.
+-- trie, and return their (prefix, value, remainder) triples in
+-- order from shortest prefix to longest.  This function is a good
+-- producer for list fusion.
 matches :: Trie a -> ByteString -> [(ByteString, a, ByteString)]
 {-# INLINE matches #-}
 matches t q = map f (matches_ t q)

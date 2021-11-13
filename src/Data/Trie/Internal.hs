@@ -6,7 +6,7 @@
 {-# LANGUAGE CPP #-}
 
 ------------------------------------------------------------
---                                              ~ 2021.11.07
+--                                              ~ 2021.11.13
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -747,8 +747,9 @@ match_ = flip start
 
 
 -- | Given a query, find all prefixes with associated values in the
--- trie, returning their lengths and values. This function is a
--- good producer for list fusion.
+-- trie, and return the length of each prefix with their value, in
+-- order from shortest prefix to longest.  This function is a good
+-- producer for list fusion.
 --
 -- This function may not have the most useful return type. For a
 -- version that returns the prefix itself as well as the remaining

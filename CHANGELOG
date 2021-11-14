@@ -1,8 +1,11 @@
-0.2.6 (2021.11.07):
+0.2.6 (2021.11.13):
     - Adjusting the instances for Applicative/Monad and Monoid, to
       avoid warnings from GHC 9.2.1 regarding:
       <https://gitlab.haskell.org/ghc/ghc/-/wikis/proposal/monad-of-no-return>
       <https://gitlab.haskell.org/ghc/ghc/-/wikis/proposal/semigroup-monoid>
+    - Documented the order of results for `matches`/`matches_`
+    - Added Data.Trie.minMatch
+    - Added Data.Trie.Internal.{cata,cata_}
 0.2.5.3 (2021.11.02):
     - Increasing upper bounds for GHC 9.2.1
 0.2.5.2 (2021.10.16):

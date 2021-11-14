@@ -34,7 +34,7 @@ module Data.Trie.Internal
     , empty, null, singleton, size
 
     -- * Conversion and folding functions
-    , foldrWithKey, toListBy
+    , toListBy, foldrWithKey, cata_, cata
 
     -- * Query functions
     , lookupBy_, submap
@@ -562,6 +562,54 @@ foldrWithKey fcons nil = \t -> go S.empty t nil
         where
         rest = go k' t
         k'   = S.append q k
+
+
+-- | Catamorphism for tries.  Unlike most other functions (`mapBy`,
+-- `contextualMapBy`, `foldrWithKey`, etc), this function does *not*
+-- reconstruct the full `ByteString` for each value; instead it
+-- only returns the suffix since the previous value or branch point.
+--
+-- This function is a direct\/literal catamorphism of the implementation
+-- datatype, erasing only some bitmasking metadata for the branches.
+-- For a more semantic catamorphism, see `cata`.
+cata_
+    :: (ByteString -> Maybe a -> b -> b)
+    -> (b -> b -> b)
+    -> b
+    -> Trie a -> b
+cata_ a b e = go
+    where
+    go Empty            = e
+    go (Arc k mv t)     = a k mv (go t)
+    go (Branch _ _ l r) = b (go l) (go r)
+
+
+-- | Catamorphism for tries.  Unlike most other functions (`mapBy`,
+-- `contextualMapBy`, `foldrWithKey`, etc), this function does *not*
+-- reconstruct the full `ByteString` for each value; instead it
+-- only returns the suffix since the previous value or branch point.
+--
+-- This function is a semantic catamorphism; that is, it tries to
+-- express the invariants of the implementation, rather than exposing
+-- the literal structure of the implementation.  For a more literal
+-- catamorphism, see `cata_`.
+cata
+    :: (ByteString -> a -> b -> b)
+    -> (ByteString -> [b] -> b)
+    -> b
+    -> Trie a -> b
+cata a b e = start
+    where
+    start Empty            = e
+    start (Arc k mv t)     = step k mv t
+    start (Branch _ _ l r) = b S.empty (collect l (collect r []))
+
+    step k (Just v) t  = a k v (start t)
+    step k Nothing t   = b k (collect t [])
+
+    collect Empty            bs = bs
+    collect (Arc k mv t)     bs = step k mv t : bs
+    collect (Branch _ _ l r) bs = collect l (collect r bs)
 
 
 -- cf Data.ByteString.unpack

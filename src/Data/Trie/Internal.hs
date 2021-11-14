@@ -305,8 +305,8 @@ instance Monad Trie where
 
     (>>=) Empty              _ = empty
     (>>=) (Branch p m l r)   f = branch p m (l >>= f) (r >>= f)
-    (>>=) (Arc k Nothing  t) f = arc k Nothing (t >>= f)
-    (>>=) (Arc k (Just v) t) f = arc k Nothing (f v `unionL` (t >>= f))
+    (>>=) (Arc k Nothing  t) f = arc_ k (t >>= f)
+    (>>=) (Arc k (Just v) t) f = arc_ k (f v `unionL` (t >>= f))
                                where
                                unionL = mergeBy (\x _ -> Just x)
 
@@ -363,8 +363,8 @@ filterMap :: (a -> Maybe b) -> Trie a -> Trie b
 filterMap f = go
     where
     go Empty              = empty
-    go (Arc k Nothing  t) = arc k Nothing (go t)
-    go (Arc k (Just v) t) = arc k (f v)   (go t)
+    go (Arc k Nothing  t) = arc_ k       (go t)
+    go (Arc k (Just v) t) = arc  k (f v) (go t)
     go (Branch p m l r)   = branch p m (go l) (go r)
 
 
@@ -375,8 +375,8 @@ mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
 mapBy f = go S.empty
     where
     go _ Empty              = empty
-    go q (Arc k Nothing  t) = arc k Nothing  (go q' t) where q' = q <> k
-    go q (Arc k (Just v) t) = arc k (f q' v) (go q' t) where q' = q <> k
+    go q (Arc k Nothing  t) = arc_ k          (go q' t) where q' = q <> k
+    go q (Arc k (Just v) t) = arc  k (f q' v) (go q' t) where q' = q <> k
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
 
@@ -406,8 +406,8 @@ contextualFilterMap :: (a -> Trie a -> Maybe b) -> Trie a -> Trie b
 contextualFilterMap f = go
     where
     go Empty              = empty
-    go (Arc k Nothing  t) = arc k Nothing (go t)
-    go (Arc k (Just v) t) = arc k (f v t) (go t)
+    go (Arc k Nothing  t) = arc_ k         (go t)
+    go (Arc k (Just v) t) = arc  k (f v t) (go t)
     go (Branch p m l r)   = branch p m (go l) (go r)
 
 
@@ -417,8 +417,8 @@ contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
 contextualMapBy f = go S.empty
     where
     go _ Empty              = empty
-    go q (Arc k Nothing  t) = arc k Nothing    (go q' t) where q' = q <> k
-    go q (Arc k (Just v) t) = arc k (f q' v t) (go q' t) where q' = q <> k
+    go q (Arc k Nothing  t) = arc_ k            (go q' t) where q' = q <> k
+    go q (Arc k (Just v) t) = arc  k (f q' v t) (go q' t) where q' = q <> k
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
 
@@ -439,12 +439,15 @@ branch p m l     r     = Branch p m l r
 -- callers to ensure that invariant isn't broken.
 arc :: ByteString -> Maybe a -> Trie a -> Trie a
 {-# INLINE arc #-}
-arc k mv@(Just _)   t                            = Arc k mv t
-arc _    Nothing    Empty                        = Empty
-arc k    Nothing  t@(Branch _ _ _ _) | S.null k  = t
-                                     | otherwise = Arc k Nothing t
-arc k    Nothing    (Arc k' mv' t')              = Arc (k <> k') mv' t'
+arc k mv@(Just _) t = Arc k mv t
+arc k    Nothing  t = arc_ k t
 
+-- | Variant of `arc` smart constructor, for when we know there's no value.
+arc_ :: ByteString -> Trie a -> Trie a
+{-# INLINE arc_ #-}
+arc_ _   Empty            = Empty
+arc_ k t@(Branch _ _ _ _) = if S.null k then t else Arc k Nothing t
+arc_ k   (Arc k' mv' t')  = Arc (k <> k') mv' t'
 
 -- | Smart constructor to join two tries into a @Branch@ with maximal
 -- prefix sharing. Requires knowing the prefixes, but can combine
@@ -695,7 +698,7 @@ lookupBy_ f z a = lookupBy_'
 -- | Return the subtrie containing all keys beginning with a prefix.
 submap :: ByteString -> Trie a -> Trie a
 {-# INLINE submap #-}
-submap q = lookupBy_ (arc q) empty (arc q Nothing) q
+submap q = lookupBy_ (arc q) empty (arc_ q) q
 {-  -- Disable superfluous error checking.
     -- @submap'@ would replace the first argument to @lookupBy_@
     where
@@ -1064,17 +1067,17 @@ intersectBy f = intersectBy'
     intersectBy'
         t0_@(Arc k0 mv0 t0)
         t1_@(Arc k1 mv1 t1)
-        | S.null k0 && S.null k1 =  arc k0 (intersectMaybe f mv0 mv1) (go t0 t1)
-        | S.null k0              =  arc k0 Nothing (go t0 t1_)
-        |              S.null k1 =  arc k1 Nothing (go t0_ t1)
+        | S.null k0 && S.null k1 =  arc  k0 (intersectMaybe f mv0 mv1) (go t0 t1)
+        | S.null k0              =  arc_ k0 (go t0 t1_)
+        |              S.null k1 =  arc_ k1 (go t0_ t1)
     intersectBy'
         (Arc k0 (Just _) t0)
         t1_@(Branch _ _ _ _)
-        | S.null k0              =  arc k0 Nothing (go t0 t1_)
+        | S.null k0              =  arc_ k0 (go t0 t1_)
     intersectBy'
         t0_@(Branch _ _ _ _)
         (Arc k1 (Just _) t1)
-        | S.null k1              =  arc k1 Nothing (go t0_ t1)
+        | S.null k1              =  arc_ k1 (go t0_ t1)
     intersectBy' t0_ t1_         =  go t0_ t1_
 
 
@@ -1104,13 +1107,17 @@ intersectBy f = intersectBy'
             let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
             if S.null pre
             then error "intersectBy: no mask, but no prefix string"
-            else let {-# INLINE arcIntersect #-}
-                     arcIntersect mv' t1' t2' = arc pre mv' (go t1' t2')
-                    in case (S.null k0', S.null k1') of
-                        (True, True)  -> arcIntersect (intersectMaybe f mv0 mv1) t0 t1
-                        (True, False) -> arcIntersect Nothing t0 (Arc k1' mv1 t1)
-                        (False,True)  -> arcIntersect Nothing (Arc k0' mv0 t0) t1
-                        (False,False) -> arcIntersect Nothing (Arc k0' mv0 t0) (Arc k1' mv1 t1)
+            else
+                let {-# INLINE t0' #-}
+                    t0' = Arc k0' mv0 t0
+                    {-# INLINE t1' #-}
+                    t1' = Arc k1' mv1 t1
+                in
+                case (S.null k0', S.null k1') of
+                (True, True)  -> arc  pre (intersectMaybe f mv0 mv1) (go t0 t1)
+                (True, False) -> arc_ pre (go t0  t1')
+                (False,True)  -> arc_ pre (go t0' t1)
+                (False,False) -> arc_ pre (go t0' t1')
         where
         p0 = getPrefix t0_
         p1 = getPrefix t1_
@@ -1187,7 +1194,7 @@ updateMinViewBy f = go S.empty
     where
     go _ Empty              = Nothing
     go q (Arc k (Just v) t) = Just (q',v, arc k (f q' v) t) where q' = q <> k
-    go q (Arc k Nothing  t) = mapView (arc k Nothing) (go (q <> k) t)
+    go q (Arc k Nothing  t) = mapView (arc_ k) (go (q <> k) t)
     go q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
 
 

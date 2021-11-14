@@ -45,7 +45,7 @@ module Data.Trie
     , fromList, toListBy, toList, keys, elems
 
     -- * Query functions
-    , lookupBy, lookup, member, submap, match, matches
+    , lookupBy, lookup, member, submap, match, minMatch, matches
 
     -- * Single-value modification
     , alterBy, insert, adjust, delete
@@ -131,6 +131,14 @@ match t q =
         case S.splitAt n q of
         (p,q') -> Just (p, x, q')
 
+-- | Given a query, find the shortest prefix with an associated value
+-- in the trie, and return that prefix, it's value, and the remainder
+-- of the query.
+minMatch :: Trie a -> ByteString -> Maybe (ByteString, a, ByteString)
+minMatch t q =
+    case matches t q of
+    []  -> Nothing
+    x:_ -> Just x
 
 -- | Given a query, find all prefixes with associated values in the
 -- trie, and return their (prefix, value, remainder) triples in

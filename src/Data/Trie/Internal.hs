@@ -215,6 +215,7 @@ instance (Binary a) => Binary (Trie a) where
     put (Arc k m t)      = do put (1 :: Word8); put k; put m; put t
     put (Branch p m l r) = do put (2 :: Word8); put p; put m; put l; put r
 
+    -- BUG: need to verify the invariants!
     get = do tag <- get :: Get Word8
              case tag of
                  0 -> return Empty
@@ -432,7 +433,8 @@ branch p m l     r     = Branch p m l r
 
 
 -- | Smart constructor to prune @Arc@s that lead nowhere.
--- N.B if mv=Just then doesn't check whether t=epsilon. It's up to callers to ensure that invariant isn't broken.
+-- N.B if mv=Just then doesn't check whether t=epsilon. It's up to
+-- callers to ensure that invariant isn't broken.
 arc :: ByteString -> Maybe a -> Trie a -> Trie a
 {-# INLINE arc #-}
 arc k mv@(Just _)   t                            = Arc k mv t
@@ -475,7 +477,9 @@ getPrefix Empty                   = error "getPrefix: no Prefix of Empty"
 -- Error messages
 -----------------------------------------------------------}
 
--- TODO: shouldn't we inline the logic and just NOINLINE the string constant? There are only three use sites, which themselves aren't inlined...
+-- TODO: shouldn't we inline the logic and just NOINLINE the string
+-- constant? There are only three use sites, which themselves aren't
+-- inlined...
 errorLogHead :: String -> ByteString -> ByteStringElem
 {-# NOINLINE errorLogHead #-}
 errorLogHead fn q

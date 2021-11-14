@@ -254,7 +254,7 @@ intersectWith f = intersectBy (\x y -> Just (f x y))
 intersectWith' :: (a -> b -> c) -> Trie a -> Trie b -> Trie c
 intersectWith' f = intersectBy (\x y -> Just $! f x y)
 
--- TODO: difference (efficiently!)
+-- TODO(github#23): add `difference` (efficiently!)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

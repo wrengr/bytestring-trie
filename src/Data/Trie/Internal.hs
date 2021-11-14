@@ -69,6 +69,9 @@ import Data.Trie.BitTwiddle
 import Data.Binary         (Binary(..), Get, Word8)
 #if MIN_VERSION_base(4,9,0)
 import Data.Semigroup      (Semigroup(..))
+#else
+-- So we can abbreviate 'S.append'
+import Data.Monoid         ((<>))
 #endif
 import Data.Monoid         (Monoid(..))
 import Control.Monad       (liftM, liftM3, liftM4)
@@ -215,7 +218,7 @@ instance (Binary a) => Binary (Trie a) where
     put (Arc k m t)      = do put (1 :: Word8); put k; put m; put t
     put (Branch p m l r) = do put (2 :: Word8); put p; put m; put l; put r
 
-    -- BUG: need to verify the invariants!
+    -- BUG(github#21): need to verify the invariants!
     get = do tag <- get :: Get Word8
              case tag of
                  0 -> return Empty
@@ -372,8 +375,8 @@ mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
 mapBy f = go S.empty
     where
     go _ Empty              = empty
-    go q (Arc k Nothing  t) = arc k Nothing  (go q' t) where q' = S.append q k
-    go q (Arc k (Just v) t) = arc k (f q' v) (go q' t) where q' = S.append q k
+    go q (Arc k Nothing  t) = arc k Nothing  (go q' t) where q' = q <> k
+    go q (Arc k (Just v) t) = arc k (f q' v) (go q' t) where q' = q <> k
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
 
@@ -414,9 +417,8 @@ contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
 contextualMapBy f = go S.empty
     where
     go _ Empty              = empty
-    go q (Arc k Nothing  t) = arc k Nothing (go (S.append q k) t)
-    go q (Arc k (Just v) t) = let q' = S.append q k
-                              in arc k (f q' v t) (go q' t)
+    go q (Arc k Nothing  t) = arc k Nothing    (go q' t) where q' = q <> k
+    go q (Arc k (Just v) t) = arc k (f q' v t) (go q' t) where q' = q <> k
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
 
@@ -441,7 +443,7 @@ arc k mv@(Just _)   t                            = Arc k mv t
 arc _    Nothing    Empty                        = Empty
 arc k    Nothing  t@(Branch _ _ _ _) | S.null k  = t
                                      | otherwise = Arc k Nothing t
-arc k    Nothing    (Arc k' mv' t')              = Arc (S.append k k') mv' t'
+arc k    Nothing    (Arc k' mv' t')              = Arc (k <> k') mv' t'
 
 
 -- | Smart constructor to join two tries into a @Branch@ with maximal
@@ -561,7 +563,7 @@ foldrWithKey fcons nil = \t -> go S.empty t nil
         Just v  -> fcons k' v . rest
         where
         rest = go k' t
-        k'   = S.append q k
+        k'   = q <> k
 
 
 -- | Catamorphism for tries.  Unlike most other functions (`mapBy`,
@@ -1080,7 +1082,6 @@ intersectBy f = intersectBy'
     go Empty _    =  Empty
     go _    Empty =  Empty
 
-    -- mergeBy had /O(n+m)/ for this part where /n/ and /m/ are sizes of the branchings
     go  t0@(Branch p0 m0 l0 r0)
         t1@(Branch p1 m1 l1 r1)
         | shorter m0 m1  =  intersection0
@@ -1138,8 +1139,11 @@ intersectBy f = intersectBy'
 
 intersectMaybe :: (a -> b -> Maybe c) -> Maybe a -> Maybe b -> Maybe c
 {-# INLINE intersectMaybe #-}
-intersectMaybe f (Just v0)   (Just v1) = f v0 v1
-intersectMaybe _ _            _        = Nothing
+intersectMaybe f (Just v0) (Just v1) = f v0 v1
+intersectMaybe _ _         _         = Nothing
+
+
+-- TODO(github#23): add `differenceBy`
 
 
 {-----------------------------------------------------------
@@ -1153,8 +1157,8 @@ minAssoc :: Trie a -> Maybe (ByteString, a)
 minAssoc = go S.empty
     where
     go _ Empty              = Nothing
-    go q (Arc k (Just v) _) = Just (S.append q k,v)
-    go q (Arc k Nothing  t) = go   (S.append q k) t
+    go q (Arc k (Just v) _) = Just (q <> k, v)
+    go q (Arc k Nothing  t) = go   (q <> k) t
     go q (Branch _ _ l _)   = go q l
 
 
@@ -1165,8 +1169,8 @@ maxAssoc :: Trie a -> Maybe (ByteString, a)
 maxAssoc = go S.empty
     where
     go _ Empty                  = Nothing
-    go q (Arc k (Just v) Empty) = Just (S.append q k,v)
-    go q (Arc k _        t)     = go   (S.append q k) t
+    go q (Arc k (Just v) Empty) = Just (q <> k, v)
+    go q (Arc k _        t)     = go   (q <> k) t
     go q (Branch _ _ _ r)       = go q r
 
 
@@ -1182,9 +1186,8 @@ updateMinViewBy :: (ByteString -> a -> Maybe a)
 updateMinViewBy f = go S.empty
     where
     go _ Empty              = Nothing
-    go q (Arc k (Just v) t) = let q' = S.append q k
-                              in Just (q',v, arc k (f q' v) t)
-    go q (Arc k Nothing  t) = mapView (arc k Nothing) (go (S.append q k) t)
+    go q (Arc k (Just v) t) = Just (q',v, arc k (f q' v) t) where q' = q <> k
+    go q (Arc k Nothing  t) = mapView (arc k Nothing) (go (q <> k) t)
     go q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
 
 
@@ -1194,9 +1197,8 @@ updateMaxViewBy :: (ByteString -> a -> Maybe a)
 updateMaxViewBy f = go S.empty
     where
     go _ Empty                  = Nothing
-    go q (Arc k (Just v) Empty) = let q' = S.append q k
-                                  in Just (q',v, arc k (f q' v) Empty)
-    go q (Arc k mv       t)     = mapView (arc k mv) (go (S.append q k) t)
+    go q (Arc k (Just v) Empty) = Just (q',v, arc k (f q' v) Empty) where q' = q <> k
+    go q (Arc k mv       t)     = mapView (arc k mv) (go (q <> k) t)
     go q (Branch p m l r)       = mapView (branch p m l) (go q r)
 
 ------------------------------------------------------------

@@ -7,7 +7,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.07
+--                                                  ~ 2021.11.14
 -- |
 -- Module      :  Data.Trie.Test
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -69,6 +69,9 @@ main  = do
     checkQuick 500  (prop_submap1       :: Str -> T.Trie Int -> Bool)
     checkQuick 500  (prop_submap2       :: Str -> T.Trie Int -> Bool)
     checkQuick 500  (prop_submap3       :: Str -> T.Trie Int -> Bool)
+    checkQuick 500  (prop_intersectL    :: T.Trie Int -> T.Trie Int -> Bool)
+    checkQuick 500  (prop_intersectR    :: T.Trie Int -> T.Trie Int -> Bool)
+    checkQuick 500  (prop_intersectPlus :: T.Trie Int -> T.Trie Int -> Bool)
     checkQuick 500  (prop_toList        :: T.Trie Int -> Bool)
     checkQuick 500  (prop_fromList_takes_first :: [(Str, Int)] -> Bool)
     checkQuick 500  (prop_fromListR_takes_first :: [(Str, Int)] -> Bool)
@@ -88,6 +91,10 @@ main  = do
     checkSmall 3 (prop_submap1       :: Str -> T.Trie () -> Bool)
     checkSmall 3 (prop_submap2       :: Str -> T.Trie () -> Bool)
     -- checkSmall 3 (prop_submap3 :: Str -> T.Trie () -> Bool)
+    {- -- BUG: requires (Monoid Int)
+    checkSmall 3 (prop_intersectL    :: T.Trie Int -> T.Trie Int -> Bool)
+    checkSmall 3 (prop_intersectR    :: T.Trie Int -> T.Trie Int -> Bool)
+    -}
     {- -- BUG: Needs both instances of Monoid and SC.Serial...
     putStrLn "smallcheck @ Letter:"
     checkSmall 4 (prop_toList        :: T.Trie Letter -> Bool)
@@ -329,6 +336,22 @@ prop_submap3 :: (Eq a) => Str -> T.Trie a -> Bool
 prop_submap3 (Str k) t =
     (\q -> T.lookup q t' == T.lookup q t) `all` T.keys t'
     where t' = T.submap k t
+
+prop_intersectL :: (Eq a) => T.Trie a -> T.Trie a -> Bool
+prop_intersectL t0 t1 =
+    T.intersectL t0 t1 == TC.disunion (T.unionL t0 t1) (TC.disunion t0 t1)
+
+prop_intersectR :: (Eq a) => T.Trie a -> T.Trie a -> Bool
+prop_intersectR t0 t1 =
+    T.intersectR t0 t1 == TC.disunion (T.unionL t0 t1) (TC.disunion t1 t0)
+
+prop_intersectPlus :: (Eq a, Num a) => T.Trie a -> T.Trie a -> Bool
+prop_intersectPlus t0 t1 =
+    T.intersectBy plus t0 t1
+    == (T.mergeBy plus t0 t1 `TC.disunion` TC.disunion t1 t0)
+    where
+    plus x y = Just (x + y)
+
 
 -- | Keys are ordered when converting to a list
 prop_toList :: T.Trie a -> Bool

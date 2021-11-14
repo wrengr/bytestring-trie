@@ -6,6 +6,7 @@
     - Documented the order of results for `matches`/`matches_`
     - Added Data.Trie.minMatch
     - Added Data.Trie.Internal.{cata,cata_}
+    - Added intersection functions (HT: Kevin Brubeck Unhammer)
 0.2.5.3 (2021.11.02):
     - Increasing upper bounds for GHC 9.2.1
 0.2.5.2 (2021.10.16):

@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.10.17
+--                                                  ~ 2021.11.14
 -- |
 -- Module      :  Data.Trie.Convenience
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -37,9 +37,10 @@ module Data.Trie.Convenience
     , adjustWithKey
     , update, updateWithKey
 
-    -- * Combining tries ('mergeBy' variants)
+    -- * Combining tries ('mergeBy' and 'intersectBy' variants)
     , disunion
     , unionWith, unionWith'
+    , intersectWith, intersectWith'
     ) where
 
 import Data.Trie
@@ -227,18 +228,33 @@ updateLookupWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> (
 disunion :: Trie a -> Trie a -> Trie a
 disunion = mergeBy (\_ _ -> Nothing)
 
--- | Combine two tries, using a function to resolve conflicts.
+-- | Take the union of two tries, using a function to resolve
+-- conflicts.  The resulting trie is constructed strictly, but the
+-- results of the combining function are evaluated lazily.
 unionWith :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
 unionWith f = mergeBy (\x y -> Just (f x y))
 
--- | A variant of 'unionWith' which applies the combining function
+-- | A variant of 'unionWith' which evaluates the combining function
 -- strictly.
 unionWith' :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
 unionWith' f = mergeBy (\x y -> Just $! f x y)
 
-{- TODO: (efficiently)
-difference, intersection
--}
+-- | Take the intersection of two tries, with a function to resolve
+-- the values.  The resulting trie is constructed strictly, bit the
+-- results of the combining function are evaluated lazily.
+--
+-- /Since: 0.2.6/
+intersectWith :: (a -> b -> c) -> Trie a -> Trie b -> Trie c
+intersectWith f = intersectBy (\x y -> Just (f x y))
+
+-- | A variant of 'intersectWith' which evaluates the combining
+-- function strictly.
+--
+-- /Since: 0.2.6/
+intersectWith' :: (a -> b -> c) -> Trie a -> Trie b -> Trie c
+intersectWith' f = intersectBy (\x y -> Just $! f x y)
+
+-- TODO: difference (efficiently!)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

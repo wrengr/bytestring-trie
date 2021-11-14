@@ -6,7 +6,7 @@
 {-# LANGUAGE CPP #-}
 
 ------------------------------------------------------------
---                                              ~ 2021.11.13
+--                                              ~ 2021.11.14
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -959,7 +959,7 @@ adjustBy f_ q_ x_
 --    where t = map (\s -> (pk s, 0))
 --                  ["heat","hello","hoi","apple","appa","hell","appb","appc"]
 --
--- | Combine two tries, using a function to resolve collisions.
+-- | Take the union of two tries, using a function to resolve collisions.
 -- This can only define the space of functions between union and
 -- symmetric difference but, with those two, all set operations can
 -- be defined (albeit inefficiently).
@@ -1050,7 +1050,12 @@ mergeMaybe _ Nothing mv1@(Just _)  = mv1
 mergeMaybe _ mv0@(Just _) Nothing  = mv0
 mergeMaybe f (Just v0)   (Just v1) = f v0 v1
 
-intersectBy :: (a -> a -> Maybe a) -> Trie a -> Trie a -> Trie a
+
+-- | Take the intersection of two tries, using a function to resolve
+-- collisions.
+--
+-- /Since: 0.2.6/
+intersectBy :: (a -> b -> Maybe c) -> Trie a -> Trie b -> Trie c
 intersectBy f = intersectBy'
     where
     -- | Deals with epsilon entries, before recursing into @go@
@@ -1058,16 +1063,16 @@ intersectBy f = intersectBy'
         t0_@(Arc k0 mv0 t0)
         t1_@(Arc k1 mv1 t1)
         | S.null k0 && S.null k1 =  arc k0 (intersectMaybe f mv0 mv1) (go t0 t1)
-        | S.null k0              =  arc k0 mv0 (go t0 t1_)
-        |              S.null k1 =  arc k1 mv1 (go t1 t0_)
+        | S.null k0              =  arc k0 Nothing (go t0 t1_)
+        |              S.null k1 =  arc k1 Nothing (go t0_ t1)
     intersectBy'
-        (Arc k0 mv0@(Just _) t0)
+        (Arc k0 (Just _) t0)
         t1_@(Branch _ _ _ _)
-        | S.null k0              =  arc k0 mv0 (go t0 t1_)
+        | S.null k0              =  arc k0 Nothing (go t0 t1_)
     intersectBy'
         t0_@(Branch _ _ _ _)
-        (Arc k1 mv1@(Just _) t1)
-        | S.null k1              =  arc k1 mv1 (go t1 t0_)
+        (Arc k1 (Just _) t1)
+        | S.null k1              =  arc k1 Nothing (go t0_ t1)
     intersectBy' t0_ t1_         =  go t0_ t1_
 
 
@@ -1078,18 +1083,19 @@ intersectBy f = intersectBy'
     -- mergeBy had /O(n+m)/ for this part where /n/ and /m/ are sizes of the branchings
     go  t0@(Branch p0 m0 l0 r0)
         t1@(Branch p1 m1 l1 r1)
-        | shorter m0 m1  =  union0
-        | shorter m1 m0  =  union1
+        | shorter m0 m1  =  intersection0
+        | shorter m1 m0  =  intersection1
         | p0 == p1       =  branch p0 m0 (go l0 l1) (go r0 r1)
         | otherwise      =  Empty
         where
-        union0  | nomatch p1 p0 m0  = Empty
-                | zero p1 m0        = branch p0 m0 (go l0 t1) Empty
-                | otherwise         = branch p0 m0 Empty (go r0 t1)
-
-        union1  | nomatch p0 p1 m1  = Empty
-                | zero p0 m1        = branch p1 m1 (go t0 l1) Empty
-                | otherwise         = branch p1 m1 Empty (go t0 r1)
+        intersection0
+            | nomatch p1 p0 m0  = Empty
+            | zero p1 m0        = branch p0 m0 (go l0 t1) Empty
+            | otherwise         = branch p0 m0 Empty (go r0 t1)
+        intersection1
+            | nomatch p0 p1 m1  = Empty
+            | zero p0 m1        = branch p1 m1 (go t0 l1) Empty
+            | otherwise         = branch p1 m1 Empty (go t0 r1)
 
     go t0_@(Arc k0 mv0 t0)
        t1_@(Arc k1 mv1 t1)
@@ -1130,12 +1136,10 @@ intersectBy f = intersectBy'
     go _ _ =  Empty
 
 
-intersectMaybe :: (a -> a -> Maybe a) -> Maybe a -> Maybe a -> Maybe a
+intersectMaybe :: (a -> b -> Maybe c) -> Maybe a -> Maybe b -> Maybe c
 {-# INLINE intersectMaybe #-}
 intersectMaybe f (Just v0)   (Just v1) = f v0 v1
 intersectMaybe _ _            _        = Nothing
-
-
 
 
 {-----------------------------------------------------------

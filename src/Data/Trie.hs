@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 ----------------------------------------------------------------
---                                                  ~ 2021.11.13
+--                                                  ~ 2021.11.14
 -- |
 -- Module      :  Data.Trie
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -52,6 +52,7 @@ module Data.Trie
 
     -- * Combining tries
     , mergeBy, unionL, unionR
+    , intersectBy, intersectL, intersectR
 
     -- * Mapping functions
     , mapBy, filterMap
@@ -179,17 +180,31 @@ delete q = alterBy (\_ _ _ -> Nothing) q (impossible "delete")
 -- Trie-combining functions
 ---------------------------------------------------------------}
 
--- | Combine two tries, resolving conflicts by choosing the value
--- from the left trie.
+-- | Take the union of two tries, resolving conflicts by choosing
+-- the value from the left trie.
 unionL :: Trie a -> Trie a -> Trie a
 {-# INLINE unionL #-}
 unionL = mergeBy (\x _ -> Just x)
 
--- | Combine two tries, resolving conflicts by choosing the value
--- from the right trie.
+-- | Take the union of two tries, resolving conflicts by choosing
+-- the value from the right trie.
 unionR :: Trie a -> Trie a -> Trie a
 {-# INLINE unionR #-}
 unionR = mergeBy (\_ y -> Just y)
+
+-- | Take the intersection of two tries, with values from the left trie.
+--
+-- /Since: 0.2.6/
+intersectL :: Trie a -> Trie b -> Trie a
+{-# INLINE intersectL #-}
+intersectL = intersectBy (\x _ -> Just x)
+
+-- | Take the intersection of two tries, with values from the right trie.
+--
+-- /Since: 0.2.6/
+intersectR :: Trie a -> Trie b -> Trie b
+{-# INLINE intersectR #-}
+intersectR = intersectBy (\_ y -> Just y)
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

@@ -7,7 +7,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.14
+--                                                  ~ 2021.11.15
 -- |
 -- Module      :  test/Utils.hs
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -31,6 +31,8 @@ module Utils
 import qualified Data.Trie                as T
 import qualified Data.ByteString          as S
 import qualified Data.ByteString.Internal as S (c2w, w2c)
+import           Data.ByteString.Internal (ByteString(PS))
+import           Control.Monad            ((<=<))
 
 -- N.B., "Test.Tasty.HUnit" does not in fact depend on "Test.HUnit";
 -- hence using the longer alias.
@@ -69,6 +71,7 @@ vocab2trie  = T.fromList . flip zip [0..] . map packC2W
 --
 --  * 'QC.maxShrinks' because 'TastyQC.QuickCheckMaxShrinks' is not
 --    exported for some strange reason.
+--    <https://github.com/UnkindPartition/tasty/issues/316>
 --  * 'QC.chatty' because Tasty always ignores this setting.
 --  * 'QC.replay' because of technical difficulty with inverting
 --    @Test.QuickCheck.Random.mkQCGen :: Int -> QCGen@
@@ -144,10 +147,16 @@ instance Bounded Letter where
     minBound = Letter 'a'
     maxBound = Letter 'm'
 
+-- TODO: ensure that these have good bit-patterns for covering corner cases.
 -- | All the possible 'Letter' values.
 letters :: [Letter]
 letters = Letter <$> ['a'..'m']
 
+-- TODO: optimize QC.shrink by doing arithmetic on the 'Char.ord'
+-- and then using plain old 'take'. (Also, benchmark to see if that
+-- actually optimizes things.)
+-- TODO: consider using @takeWhile (/= l)@ instead, to be more
+-- robust against callers wrapping some other 'Char'.
 instance QC.Arbitrary Letter where
     arbitrary = QC.elements letters
     shrink l  = takeWhile (< l) letters
@@ -182,13 +191,19 @@ packLetters = Str . packC2W . map unLetter
 unpackLetters :: Str -> [Letter]
 unpackLetters = map Letter . unpackW2C . unStr
 
+-- | Like @reverse . 'S.inits'@ but halving at each step rather
+-- than just dropping one.
+prefixes :: Str -> [Str]
+prefixes (Str (PS x s l)) =
+    [Str (PS x s n) | n <- takeWhile (> 0) (iterate (`div` 2) l)]
+
 instance QC.Arbitrary Str where
     arbitrary = QC.sized $ \n -> do
         k <- QC.choose (0,n)
         s <- QC.vector k
         c <- QC.arbitrary -- We only want non-empty strings.
         return $ packLetters (c:s)
-    shrink = map packLetters . QC.shrink . unpackLetters
+    shrink = (map packLetters . QC.shrink . unpackLetters) <=< prefixes
 
 instance QC.CoArbitrary Str where
     coarbitrary = QC.coarbitrary . unpackLetters
@@ -206,13 +221,24 @@ instance Monad m => SC.CoSerial m Str where
             else f (Letter . S.w2c $ S.head xs) (Str $ S.tail xs)
 
 ----------------------------------------------------------------
--- TODO: should we use a newtype to avoid the orphan-instance warnings?
+-- TODO: should we use a newtype to avoid the orphan-instance
+-- warnings?  Either that or give GHC a pragma to silence them; so
+-- that our CI summary is clean enough to find actual warnings.
 instance (QC.Arbitrary a) => QC.Arbitrary (T.Trie a) where
     arbitrary = QC.sized $ \n -> do
         k      <- QC.choose (0,n)
         labels <- map unStr <$> QC.vector k
         elems  <- QC.vector k
         return . T.fromList $ zip labels elems
+    -- Extremely inefficient, but should be effective at least.
+    shrink
+        = map (T.fromList . map (first unStr))
+        . QC.shrink
+        . map (first Str)
+        . T.toList
+        where
+        first :: (b -> c) -> (b,d) -> (c,d)
+        first f (x,y) = (f x, y)
 
 -- TODO: instance QC.CoArbitrary (Trie a)
 

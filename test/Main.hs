@@ -7,7 +7,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.14
+--                                                  ~ 2021.11.15
 -- |
 -- Module      :  test/Main
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -380,6 +380,12 @@ prop_intersectPlus x y =
     where
     plus a b = Just (a + b)
 
+-- TODO: actually use this somewhere, or give GHC a pragma to silence
+-- the unused-warning; so that out CI summary is clean enough to
+-- find real warnings.
+-- TODO: Can we effectively generate interesting enough functions
+-- to make this worth using?
+--
 -- | Arbitrary @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
 prop_intersectBy :: (Eq a) => (a -> a -> Maybe a) -> T.Trie a -> T.Trie a -> Bool
 prop_intersectBy f x y =

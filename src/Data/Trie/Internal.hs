@@ -1025,14 +1025,17 @@ mergeBy f = mergeBy'
                 let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
                 if S.null pre
                 then error "mergeBy: no mask, but no prefix string"
-                else let {-# INLINE arcMerge #-}
-                         arcMerge mv' t1' t2' = arc pre mv' (go t1' t2')
-                     in case (S.null k0', S.null k1') of
-                         (True, True)  -> arcMerge (mergeMaybe f mv0 mv1) t0 t1
-                         (True, False) -> arcMerge mv0 t0 (Arc k1' mv1 t1)
-                         (False,True)  -> arcMerge mv1 (Arc k0' mv0 t0) t1
-                         (False,False) -> arcMerge Nothing (Arc k0' mv0 t0)
-                                                           (Arc k1' mv1 t1)
+                else
+                    let {-# INLINE t0' #-}
+                        t0' = Arc k0' mv0 t0
+                        {-# INLINE t1' #-}
+                        t1' = Arc k1' mv1 t1
+                    in
+                    case (S.null k0', S.null k1') of
+                    (True, True)  -> arc  pre (mergeMaybe f mv0 mv1) (go t0 t1)
+                    (True, False) -> arc  pre mv0 (go t0  t1')
+                    (False,True)  -> arc  pre mv1 (go t0' t1)
+                    (False,False) -> arc_ pre     (go t0' t1')
         go' (Arc{})
             (Branch _p1 m1 l r)
             | nomatch p0 p1 m1 = branchMerge p1 t1_  p0 t0_

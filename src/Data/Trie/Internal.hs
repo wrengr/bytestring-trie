@@ -446,7 +446,7 @@ arc k    Nothing  t = arc_ k t
 arc_ :: ByteString -> Trie a -> Trie a
 {-# INLINE arc_ #-}
 arc_ _   Empty            = Empty
-arc_ k t@(Branch _ _ _ _) = if S.null k then t else Arc k Nothing t
+arc_ k t@(Branch{})       = if S.null k then t else Arc k Nothing t
 arc_ k   (Arc k' mv' t')  = Arc (k <> k') mv' t'
 
 -- | Smart constructor to join two tries into a @Branch@ with maximal
@@ -659,8 +659,8 @@ lookupBy_ :: (Maybe a -> Trie a -> b) -> b -> (Trie a -> b)
 lookupBy_ f z a = lookupBy_'
     where
     -- | Deal with epsilon query (when there is no epsilon value)
-    lookupBy_' q t@(Branch _ _ _ _) | S.null q = f Nothing t
-    lookupBy_' q t                             = go q t
+    lookupBy_' q t@(Branch{}) | S.null q = f Nothing t
+    lookupBy_' q t                       = go q t
 
     -- | The main recursion
     go _    Empty       = z
@@ -673,7 +673,7 @@ lookupBy_ f z a = lookupBy_'
                 (False, True)  -> f mv t
                 (False, False) -> go q' t
 
-    go q t_@(Branch _ _ _ _) = findArc t_
+    go q t_@(Branch{}) = findArc t_
         where
         qh = errorLogHead "lookupBy_" q
 
@@ -683,7 +683,7 @@ lookupBy_ f z a = lookupBy_'
             | nomatch qh p m  = z
             | zero qh m       = findArc l
             | otherwise       = findArc r
-        findArc t@(Arc _ _ _) = go q t
+        findArc t@(Arc{})     = go q t
         findArc Empty         = z
 
 
@@ -702,9 +702,9 @@ submap q = lookupBy_ (arc q) empty (arc_ q) q
 {-  -- Disable superfluous error checking.
     -- @submap'@ would replace the first argument to @lookupBy_@
     where
-    submap' Nothing Empty       = errorEmptyAfterNothing "submap"
-    submap' Nothing (Arc _ _ _) = errorArcAfterNothing   "submap"
-    submap' mx      t           = Arc q mx t
+    submap' Nothing Empty   = errorEmptyAfterNothing "submap"
+    submap' Nothing (Arc{}) = errorArcAfterNothing   "submap"
+    submap' mx      t       = Arc q mx t
 
 errorInvariantBroken :: String -> String -> a
 {-# NOINLINE errorInvariantBroken #-}
@@ -736,8 +736,9 @@ match_ :: Trie a -> ByteString -> Maybe (Int, a)
 match_ = flip start
     where
     -- | Deal with epsilon query (when there is no epsilon value)
-    start q (Branch _ _ _ _) | S.null q = Nothing
-    start q t                           = goNothing 0 q t
+    start q (Branch{}) | S.null q = Nothing
+    start q t                     = goNothing 0 q t
+        -- TODO: for the non-null Branch case, maybe we should jump directly to 'findArc' (i.e., inline that case of 'goNothing')
 
     -- | The initial recursion
     goNothing _ _    Empty       = Nothing
@@ -756,7 +757,7 @@ match_ = flip start
                     Just v  -> goJust n' v n' q' t
             else Nothing
 
-    goNothing n q t_@(Branch _ _ _ _) = findArc t_
+    goNothing n q t_@(Branch{}) = findArc t_
         where
         qh = errorLogHead "match_" q
 
@@ -766,7 +767,7 @@ match_ = flip start
             | nomatch qh p m  = Nothing
             | zero qh m       = findArc l
             | otherwise       = findArc r
-        findArc t@(Arc _ _ _) = goNothing n q t
+        findArc t@(Arc{})     = goNothing n q t
         findArc Empty         = Nothing
 
     -- | The main recursion
@@ -789,7 +790,7 @@ match_ = flip start
                     Just v  -> goJust n' v  n' q' t
             else Just (n0,v0)
 
-    goJust n0 v0 n q t_@(Branch _ _ _ _) = findArc t_
+    goJust n0 v0 n q t_@(Branch{}) = findArc t_
         where
         qh = errorLogHead "match_" q
 
@@ -799,7 +800,7 @@ match_ = flip start
             | nomatch qh p m  = Just (n0,v0)
             | zero qh m       = findArc l
             | otherwise       = findArc r
-        findArc t@(Arc _ _ _) = goJust n0 v0 n q t
+        findArc t@(Arc{})     = goJust n0 v0 n q t
         findArc Empty         = Just (n0,v0)
 
 
@@ -826,8 +827,8 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
     matchFB_' cons = start
         where
         -- | Deal with epsilon query (when there is no epsilon value)
-        start q (Branch _ _ _ _) | S.null q = id
-        start q t                           = go 0 q t
+        start q (Branch{}) | S.null q = id
+        start q t                     = go 0 q t
 
         -- | The main recursion
         go _ _    Empty       = id
@@ -843,7 +844,7 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
                     if S.null q' then id else go n' q' t
                 else id
 
-        go n q t_@(Branch _ _ _ _) = findArc t_
+        go n q t_@(Branch{}) = findArc t_
             where
             qh = errorLogHead "matches_" q
 
@@ -853,7 +854,7 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
                 | nomatch qh p m  = id
                 | zero qh m       = findArc l
                 | otherwise       = findArc r
-            findArc t@(Arc _ _ _) = go n q t
+            findArc t@(Arc{})     = go n q t
             findArc Empty         = id
 
 
@@ -887,7 +888,7 @@ alterBy_ f_ q_ x_
     nothing q = uncurry (arc q) (f Nothing Empty)
 
     alterEpsilon t_@Empty                    = uncurry (arc q_) (f Nothing t_)
-    alterEpsilon t_@(Branch _ _ _ _)         = uncurry (arc q_) (f Nothing t_)
+    alterEpsilon t_@(Branch{})               = uncurry (arc q_) (f Nothing t_)
     alterEpsilon t_@(Arc k mv t) | S.null k  = uncurry (arc q_) (f mv      t)
                                  | otherwise = uncurry (arc q_) (f Nothing t_)
 
@@ -980,10 +981,10 @@ mergeBy f = mergeBy'
         |              S.null k1 = arc k1 mv1 (go t1 t0_)
     mergeBy'
         (Arc k0 mv0@(Just _) t0)
-        t1_@(Branch _ _ _ _)
+        t1_@(Branch{})
         | S.null k0              = arc k0 mv0 (go t0 t1_)
     mergeBy'
-        t0_@(Branch _ _ _ _)
+        t0_@(Branch{})
         (Arc k1 mv1@(Just _) t1)
         | S.null k1              = arc k1 mv1 (go t1 t0_)
     mergeBy' t0_ t1_             = go t0_ t1_
@@ -1032,13 +1033,13 @@ mergeBy f = mergeBy'
                          (False,True)  -> arcMerge mv1 (Arc k0' mv0 t0) t1
                          (False,False) -> arcMerge Nothing (Arc k0' mv0 t0)
                                                            (Arc k1' mv1 t1)
-        go' (Arc _ _ _)
+        go' (Arc{})
             (Branch _p1 m1 l r)
             | nomatch p0 p1 m1 = branchMerge p1 t1_  p0 t0_
             | zero p0 m1       = branch p1 m1 (go t0_ l) r
             | otherwise        = branch p1 m1 l (go t0_ r)
         go' (Branch _p0 m0 l r)
-            (Arc _ _ _)
+            (Arc{})
             | nomatch p1 p0 m0 = branchMerge p0 t0_  p1 t1_
             | zero p1 m0       = branch p0 m0 (go l t1_) r
             | otherwise        = branch p0 m0 l (go r t1_)
@@ -1072,10 +1073,10 @@ intersectBy f = intersectBy'
         |              S.null k1 =  arc_ k1 (go t0_ t1)
     intersectBy'
         (Arc k0 (Just _) t0)
-        t1_@(Branch _ _ _ _)
+        t1_@(Branch{})
         | S.null k0              =  arc_ k0 (go t0 t1_)
     intersectBy'
-        t0_@(Branch _ _ _ _)
+        t0_@(Branch{})
         (Arc k1 (Just _) t1)
         | S.null k1              =  arc_ k1 (go t0_ t1)
     intersectBy' t0_ t1_         =  go t0_ t1_
@@ -1123,7 +1124,7 @@ intersectBy f = intersectBy'
         p1 = getPrefix t1_
         m' = branchMask p0 p1
 
-    go t0_@(Arc _ _ _)
+    go t0_@(Arc{})
        t1_@(Branch _p1 m1 l r)
         | nomatch p0 p1 m1 = Empty
         | zero p0 m1       = branch p1 m1 (go t0_ l) Empty
@@ -1133,7 +1134,7 @@ intersectBy f = intersectBy'
         p1 = getPrefix t1_
 
     go t0_@(Branch _p0 m0 l r)
-       t1_@(Arc _ _ _)
+       t1_@(Arc{})
         | nomatch p1 p0 m0 = Empty
         | zero p1 m0       = branch p0 m0 (go l t1_) Empty
         | otherwise        = branch p0 m0 Empty (go r t1_)

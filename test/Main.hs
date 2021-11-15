@@ -362,20 +362,28 @@ prop_submap3 (Str k) t =
     (\q -> T.lookup q t' == T.lookup q t) `all` T.keys t'
     where t' = T.submap k t
 
+-- | Left-biased @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
 prop_intersectL :: (Eq a) => T.Trie a -> T.Trie a -> Bool
-prop_intersectL t0 t1 =
-    T.intersectL t0 t1 == TC.disunion (T.unionL t0 t1) (TC.disunion t0 t1)
+prop_intersectL x y =
+    T.intersectL x y == (T.unionL x y `TC.disunion` TC.disunion x y)
 
+-- | Right-biased @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
 prop_intersectR :: (Eq a) => T.Trie a -> T.Trie a -> Bool
-prop_intersectR t0 t1 =
-    T.intersectR t0 t1 == TC.disunion (T.unionL t0 t1) (TC.disunion t1 t0)
+prop_intersectR x y =
+    T.intersectR x y == (T.unionR x y `TC.disunion` TC.disunion x y)
 
+-- | Additive @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
 prop_intersectPlus :: (Eq a, Num a) => T.Trie a -> T.Trie a -> Bool
-prop_intersectPlus t0 t1 =
-    T.intersectBy plus t0 t1
-    == (T.mergeBy plus t0 t1 `TC.disunion` TC.disunion t1 t0)
+prop_intersectPlus x y =
+    T.intersectBy plus x y
+    == (T.mergeBy plus x y `TC.disunion` TC.disunion x y)
     where
-    plus x y = Just (x + y)
+    plus a b = Just (a + b)
+
+-- | Arbitrary @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
+prop_intersectBy :: (Eq a) => (a -> a -> Maybe a) -> T.Trie a -> T.Trie a -> Bool
+prop_intersectBy f x y =
+    T.intersectBy f x y == (T.mergeBy f x y `TC.disunion` TC.disunion x y)
 
 
 -- | Keys are ordered when converting to a list

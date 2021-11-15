@@ -1,9 +1,9 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.10.17
+--                                                  ~ 2021.11.14
 -- |
--- Module      :  Data.Trie.ByteStringInternal.Test
+-- Module      :  test/ByteStringInternal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
@@ -13,10 +13,10 @@
 -- Testing helper functions on 'ByteString's.
 ----------------------------------------------------------------
 
+module ByteStringInternal where
 
-module Data.Trie.ByteStringInternal.Test where
+import Utils (packC2W)
 import Data.Trie.ByteStringInternal
-import Data.Trie.Test (packC2W)
 
 import Data.List (unfoldr)
 ----------------------------------------------------------------

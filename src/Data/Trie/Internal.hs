@@ -69,7 +69,7 @@ import Data.Trie.BitTwiddle
 import Data.Binary         (Binary(..), Get, Word8)
 #if MIN_VERSION_base(4,9,0)
 import Data.Semigroup      (Semigroup(..))
-#else
+#elif MIN_VERSION_base(4,5,0)
 -- So we can abbreviate 'S.append'
 import Data.Monoid         ((<>))
 #endif
@@ -85,6 +85,13 @@ import GHC.Exts (build)
 ------------------------------------------------------------
 ------------------------------------------------------------
 
+#if (!(MIN_VERSION_base(4,5,0)))
+infixr 6 <>
+-- Only ever used to abbreviate 'S.append'
+(<>) :: Monoid m => m -> m -> m
+(<>) = mappend
+{-# INLINE (<>) #-}
+#endif
 
 {-----------------------------------------------------------
 -- ByteString Big-endian Patricia Trie datatype

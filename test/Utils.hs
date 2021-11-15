@@ -50,6 +50,9 @@ import qualified Test.SmallCheck.Series as SC
 packC2W :: String -> S.ByteString
 packC2W  = S.pack . map S.c2w
 
+unpackW2C :: S.ByteString -> String
+unpackW2C = map S.w2c . S.unpack
+
 -- | Construct a trie via 'packC2W' giving each key a unique value
 -- (namely its position in the list).
 vocab2trie :: [String] -> T.Trie Int
@@ -137,14 +140,20 @@ newtype Letter = Letter { unLetter :: Char }
 instance Show Letter where
     showsPrec p (Letter c) = showsPrec p c
 
+instance Bounded Letter where
+    minBound = Letter 'a'
+    maxBound = Letter 'm'
+
 -- | All the possible 'Letter' values.
 letters :: [Letter]
 letters = Letter <$> ['a'..'m']
 
 instance QC.Arbitrary Letter where
     arbitrary = QC.elements letters
+    shrink l  = takeWhile (< l) letters
 
--- TODO: instance QC.CoArbitrary Letter
+instance QC.CoArbitrary Letter where
+    coarbitrary = QC.coarbitrary . unLetter
 
 instance Monad m => SC.Serial m Letter where
     series = SC.generate $ \d -> take d letters
@@ -170,14 +179,19 @@ instance Show Str where
 packLetters :: [Letter] -> Str
 packLetters = Str . packC2W . map unLetter
 
+unpackLetters :: Str -> [Letter]
+unpackLetters = map Letter . unpackW2C . unStr
+
 instance QC.Arbitrary Str where
     arbitrary = QC.sized $ \n -> do
         k <- QC.choose (0,n)
         s <- QC.vector k
         c <- QC.arbitrary -- We only want non-empty strings.
         return $ packLetters (c:s)
+    shrink = map packLetters . QC.shrink . unpackLetters
 
--- TODO: instance QC.CoArbitrary Str
+instance QC.CoArbitrary Str where
+    coarbitrary = QC.coarbitrary . unpackLetters
 
 instance Monad m => SC.Serial m Str where
     series = packLetters <$> SC.series

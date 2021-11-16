@@ -243,7 +243,7 @@ instance (QC.Arbitrary a) => QC.Arbitrary (WTrie a) where
 -- TODO: This instance really needs some work. The smart constructures
 -- ensure only valid values are generated, but there are redundancies
 -- and inefficiencies.
-instance (Monad m, Monoid a, SC.Serial m a) => SC.Serial m (WTrie a) where
+instance (Monad m, SC.Serial m a) => SC.Serial m (WTrie a) where
     series =   SC.cons0 (WT T.empty)
         SC.\/  SC.cons3 arcHACK
         SC.\/  SC.cons2 branch
@@ -253,7 +253,7 @@ instance (Monad m, Monoid a, SC.Serial m a) => SC.Serial m (WTrie a) where
             Nothing -> WT (T.singleton k () >> t)
             Just v  -> WT (T.singleton k v >>= T.unionR t . T.singleton S.empty)
 
-        branch (WT t0) (WT t1) = WT (t0 `mappend` t1)
+        branch (WT t0) (WT t1) = WT (t0 `T.unionR` t1)
 
 -- TODO: instance Monad m => SC.CoSerial m (WTrie a)
 

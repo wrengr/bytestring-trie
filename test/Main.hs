@@ -59,16 +59,23 @@ hunitTests =
   ]
 
 {-
--- TODO: make this work
-data Prop :: * -> * where
-    Prop :: (QC.Testable a, SC.Testable IO a) => String -> a -> Prop a
+TODO: see if we can't figure out some way of wrapping our properties
+so that we can just write this list once and then pass in a token
+for which checker to resolve to; something like:
 
-data PropChecker = QuickCheck | SmallCheck
-    deriving (Eq, Show)
+    data Prop a = Prop String a
 
-testProp :: PropChecker -> Prop a -> Tasty.TestTree
-testProp QuickCheck (Prop name a) = QC.testProperty name a
-testProp SmallCheck (Prop name a) = SC.testProperty name a
+    data PropChecker = QuickCheck | SmallCheck
+        deriving (Eq, Show)
+
+    testProp :: (QC.Testable a, SC.Testable IO a) => PropChecker -> Prop a -> Tasty.TestTree
+    testProp QuickCheck (Prop name a) = QC.testProperty name a
+    testProp SmallCheck (Prop name a) = SC.testProperty name a
+
+Of course, the problem with that implementation is that we need to
+have the Prop remain polymorphic in the CheckGuard type, and have
+testProp resole it depending on the PropChecker.  So is there a way
+to do that without GADTs or impredicativity?
 -}
 
 quickcheckTests :: Tasty.TestTree
@@ -82,7 +89,6 @@ quickcheckTests
         "prop_insert"
         (prop_insert        :: WS -> Int -> WTrie Int -> Bool)
     , QC.testProperty
-        -- TODO: this one needs a bigger budget to be effective.
         "prop_singleton"
         (prop_singleton     :: WS -> Int -> Bool)
     , QC.testProperty
@@ -178,7 +184,6 @@ smallcheckTests
         (prop_submap3       :: WS -> WTrie () -> Bool)
     -}
     ]
-  {- -- BUG: requires (Monoid Int) because of our (SC.Serial m (WTrie a)) instance.
   , Tasty.testGroup "@Int"
     [ SC.testProperty
         "prop_intersectL"
@@ -190,8 +195,6 @@ smallcheckTests
         "prop_intersectPlus"
         (prop_intersectPlus :: WTrie Int -> WTrie Int -> Bool)
     ]
-  -}
-  {- -- BUG: requires (Monoid W) because of our (SC.Serial m (WTrie a)) instance.
   , Tasty.testGroup "@W"
     [ SC.testProperty
         "prop_toList"
@@ -215,7 +218,6 @@ smallcheckTests
         "prop_fromListWithLConst_takes_first"
         (prop_fromListWithLConst_takes_first :: [(WS, W)] -> Bool)
     ]
-    -}
   ]
 
 

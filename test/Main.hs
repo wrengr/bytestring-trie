@@ -80,64 +80,64 @@ quickcheckTests
   [ Tasty.testGroup "@Int"
     [ QC.testProperty
         "prop_insert"
-        (prop_insert        :: Str -> Int -> T.Trie Int -> Bool)
+        (prop_insert        :: WS -> Int -> WTrie Int -> Bool)
     , QC.testProperty
         -- TODO: this one needs a bigger budget to be effective.
         "prop_singleton"
-        (prop_singleton     :: Str -> Int -> Bool)
+        (prop_singleton     :: WS -> Int -> Bool)
     , QC.testProperty
         "prop_size_insert"
-        (prop_size_insert   :: Str -> Int -> T.Trie Int -> QC.Property)
+        (prop_size_insert   :: WS -> Int -> WTrie Int -> QC.Property)
     , QC.testProperty
         "prop_size_delete"
-        (prop_size_delete   :: Str -> Int -> T.Trie Int -> QC.Property)
+        (prop_size_delete   :: WS -> Int -> WTrie Int -> QC.Property)
     , QC.testProperty
         "prop_insert_delete"
-        (prop_insert_delete :: Str -> Int -> T.Trie Int -> QC.Property)
+        (prop_insert_delete :: WS -> Int -> WTrie Int -> QC.Property)
     , QC.testProperty
         "prop_delete_lookup"
-        (prop_delete_lookup :: Str -> T.Trie Int -> QC.Property)
+        (prop_delete_lookup :: WS -> WTrie Int -> QC.Property)
     , QC.testProperty
         "prop_submap1"
-        (prop_submap1       :: Str -> T.Trie Int -> Bool)
+        (prop_submap1       :: WS -> WTrie Int -> Bool)
     , QC.testProperty
         "prop_submap2"
-        (prop_submap2       :: Str -> T.Trie Int -> Bool)
+        (prop_submap2       :: WS -> WTrie Int -> Bool)
     , QC.testProperty
         "prop_submap3"
-        (prop_submap3       :: Str -> T.Trie Int -> Bool)
+        (prop_submap3       :: WS -> WTrie Int -> Bool)
     --
     , QC.testProperty
         "prop_intersectL"
-        (prop_intersectL    :: T.Trie Int -> T.Trie Int -> Bool)
+        (prop_intersectL    :: WTrie Int -> WTrie Int -> Bool)
     , QC.testProperty
         "prop_intersectR"
-        (prop_intersectR    :: T.Trie Int -> T.Trie Int -> Bool)
+        (prop_intersectR    :: WTrie Int -> WTrie Int -> Bool)
     , QC.testProperty
         "prop_intersectPlus"
-        (prop_intersectPlus :: T.Trie Int -> T.Trie Int -> Bool)
+        (prop_intersectPlus :: WTrie Int -> WTrie Int -> Bool)
     --
     , QC.testProperty
         "prop_toList"
-        (prop_toList        :: T.Trie Int -> Bool)
+        (prop_toList        :: WTrie Int -> Bool)
     , QC.testProperty
         "prop_fromList_takes_first"
-        (prop_fromList_takes_first :: [(Str, Int)] -> Bool)
+        (prop_fromList_takes_first :: [(WS, Int)] -> Bool)
     , QC.testProperty
         "prop_fromListR_takes_first"
-        (prop_fromListR_takes_first :: [(Str, Int)] -> Bool)
+        (prop_fromListR_takes_first :: [(WS, Int)] -> Bool)
     , QC.testProperty
         "prop_fromListL_takes_first"
-        (prop_fromListL_takes_first :: [(Str, Int)] -> Bool)
+        (prop_fromListL_takes_first :: [(WS, Int)] -> Bool)
     , QC.testProperty
         "prop_fromListS_takes_first"
-        (prop_fromListS_takes_first :: [(Str, Int)] -> Bool)
+        (prop_fromListS_takes_first :: [(WS, Int)] -> Bool)
     , QC.testProperty
         "prop_fromListWithConst_takes_first"
-        (prop_fromListWithConst_takes_first :: [(Str, Int)] -> Bool)
+        (prop_fromListWithConst_takes_first :: [(WS, Int)] -> Bool)
     , QC.testProperty
         "prop_fromListWithLConst_takes_first"
-        (prop_fromListWithLConst_takes_first :: [(Str, Int)] -> Bool)
+        (prop_fromListWithLConst_takes_first :: [(WS, Int)] -> Bool)
     ]
   ]
 
@@ -149,71 +149,71 @@ smallcheckTests
     -- These use @()@ to reduce the problem of exponential growth.
     [ SC.testProperty
         "prop_insert"
-        (prop_insert        :: Str -> () -> T.Trie () -> Bool)
+        (prop_insert        :: WS -> () -> WTrie () -> Bool)
     , Tasty.localOption (SC.SmallCheckDepth 7)
       $ SC.testProperty
         "prop_singleton"
-        (prop_singleton     :: Str -> () -> Bool)
+        (prop_singleton     :: WS -> () -> Bool)
     , SC.testProperty
         "prop_size_insert"
-        (prop_size_insert   :: Str -> () -> T.Trie () -> SC.Property IO)
+        (prop_size_insert   :: WS -> () -> WTrie () -> SC.Property IO)
     , SC.testProperty
         "prop_size_delete"
-        (prop_size_delete   :: Str -> () -> T.Trie () -> SC.Property IO)
+        (prop_size_delete   :: WS -> () -> WTrie () -> SC.Property IO)
     , SC.testProperty
         "prop_insert_delete"
-        (prop_insert_delete :: Str -> () -> T.Trie () -> SC.Property IO)
+        (prop_insert_delete :: WS -> () -> WTrie () -> SC.Property IO)
     , SC.testProperty
         "prop_delete_lookup"
-        (prop_delete_lookup :: Str -> T.Trie () -> SC.Property IO)
+        (prop_delete_lookup :: WS -> WTrie () -> SC.Property IO)
     , SC.testProperty
         "prop_submap1"
-        (prop_submap1       :: Str -> T.Trie () -> Bool)
+        (prop_submap1       :: WS -> WTrie () -> Bool)
     , SC.testProperty
         "prop_submap2"
-        (prop_submap2       :: Str -> T.Trie () -> Bool)
+        (prop_submap2       :: WS -> WTrie () -> Bool)
     {- -- Was commented out for some reason...
     , SC.testProperty
         "prop_submap3"
-        (prop_submap3       :: Str -> T.Trie () -> Bool)
+        (prop_submap3       :: WS -> WTrie () -> Bool)
     -}
     ]
-  {- -- BUG: requires (Monoid Int) because of our (SC.Serial m (T.Trie a)) instance.
+  {- -- BUG: requires (Monoid Int) because of our (SC.Serial m (WTrie a)) instance.
   , Tasty.testGroup "@Int"
     [ SC.testProperty
         "prop_intersectL"
-        (prop_intersectL    :: T.Trie Int -> T.Trie Int -> Bool)
+        (prop_intersectL    :: WTrie Int -> WTrie Int -> Bool)
     , SC.testProperty
         "prop_intersectR"
-        (prop_intersectR    :: T.Trie Int -> T.Trie Int -> Bool)
+        (prop_intersectR    :: WTrie Int -> WTrie Int -> Bool)
     , SC.testProperty
         "prop_intersectPlus"
-        (prop_intersectPlus :: T.Trie Int -> T.Trie Int -> Bool)
+        (prop_intersectPlus :: WTrie Int -> WTrie Int -> Bool)
     ]
   -}
-  {- -- BUG: requires (Monoid Letter) because of our (SC.Serial m (T.Trie a)) instance.
-  , Tasty.testGroup "@Letter"
+  {- -- BUG: requires (Monoid W) because of our (SC.Serial m (WTrie a)) instance.
+  , Tasty.testGroup "@W"
     [ SC.testProperty
         "prop_toList"
-        (prop_toList        :: T.Trie Letter -> Bool)
+        (prop_toList        :: WTrie W -> Bool)
     , SC.testProperty
         "prop_fromList_takes_first"
-        (prop_fromList_takes_first :: [(Str, Letter)] -> Bool)
+        (prop_fromList_takes_first :: [(WS, W)] -> Bool)
     , SC.testProperty
         "prop_fromListR_takes_first"
-        (prop_fromListR_takes_first :: [(Str, Letter)] -> Bool)
+        (prop_fromListR_takes_first :: [(WS, W)] -> Bool)
     , SC.testProperty
         "prop_fromListL_takes_first"
-        (prop_fromListL_takes_first :: [(Str, Letter)] -> Bool)
+        (prop_fromListL_takes_first :: [(WS, W)] -> Bool)
     , SC.testProperty
         "prop_fromListS_takes_first"
-        (prop_fromListS_takes_first :: [(Str, Letter)] -> Bool)
+        (prop_fromListS_takes_first :: [(WS, W)] -> Bool)
     , SC.testProperty
         "prop_fromListWithConst_takes_first"
-        (prop_fromListWithConst_takes_first :: [(Str, Letter)] -> Bool)
+        (prop_fromListWithConst_takes_first :: [(WS, W)] -> Bool)
     , SC.testProperty
         "prop_fromListWithLConst_takes_first"
-        (prop_fromListWithLConst_takes_first :: [(Str, Letter)] -> Bool)
+        (prop_fromListWithLConst_takes_first :: [(WS, W)] -> Bool)
     ]
     -}
   ]
@@ -317,64 +317,60 @@ test_Delete =
 ----------------------------------------------------------------
 
 -- | If you insert a value, you can look it up
-prop_insert :: (Eq a) => Str -> a -> T.Trie a -> Bool
-prop_insert (Str k) v t =
+prop_insert :: (Eq a) => WS -> a -> WTrie a -> Bool
+prop_insert (WS k) v (WT t) =
     (T.lookup k . T.insert k v $ t) == Just v
 
 -- | A singleton, is.
-prop_singleton :: (Eq a) => Str -> a -> Bool
-prop_singleton (Str k) v =
+prop_singleton :: (Eq a) => WS -> a -> Bool
+prop_singleton (WS k) v =
     T.insert k v T.empty == T.singleton k v
 
-prop_size_insert :: (Eq a, CheckGuard Bool b) => Str -> a -> T.Trie a -> b
-prop_size_insert (Str k) v t = not (k `T.member` t) ==> (
-    (T.size . T.insert k v) === ((1+) . T.size)
-    $ t)
+prop_size_insert :: (Eq a, CheckGuard Bool b) => WS -> a -> WTrie a -> b
+prop_size_insert (WS k) v =
+    ((not . T.member k) .==>. (T.size . T.insert k v) .==. ((1+) . T.size)) . unWT
 
-prop_size_delete :: (Eq a, CheckGuard Bool b) => Str -> a -> T.Trie a -> b
-prop_size_delete (Str k) v t = not (k `T.member` t) ==> (
-    (T.size . T.delete k . T.insert k v) === T.size
-    $ t)
+prop_size_delete :: (Eq a, CheckGuard Bool b) => WS -> a -> WTrie a -> b
+prop_size_delete (WS k) v =
+    ((not . T.member k) .==>. (T.size . T.delete k . T.insert k v) .==. T.size) . unWT
 
-prop_insert_delete :: (Eq a, CheckGuard Bool b) => Str -> a -> T.Trie a -> b
-prop_insert_delete (Str k) v t = not (k `T.member` t) ==> (
-    (T.delete k . T.insert k v) === id
-    $ t)
+prop_insert_delete :: (Eq a, CheckGuard Bool b) => WS -> a -> WTrie a -> b
+prop_insert_delete (WS k) v =
+    ((not . T.member k) .==>. (T.delete k . T.insert k v) .==. id) . unWT
 
-prop_delete_lookup :: (Eq a, CheckGuard Bool b) => Str -> T.Trie a -> b
-prop_delete_lookup (Str k) t = not (k `T.member` t) ==> (
-    (T.lookup k . T.delete k) === const Nothing
-    $ t)
+prop_delete_lookup :: (Eq a, CheckGuard Bool b) => WS -> WTrie a -> b
+prop_delete_lookup (WS k) =
+    ((not . T.member k) .==>. (T.lookup k . T.delete k) .==. const Nothing) . unWT
 
 -- | All keys in a submap are keys in the supermap
-prop_submap1 :: Str -> T.Trie a -> Bool
-prop_submap1 (Str k) t =
+prop_submap1 :: WS -> WTrie a -> Bool
+prop_submap1 (WS k) (WT t) =
     all (`T.member` t) . T.keys . T.submap k $ t
 
 -- | All keys in a submap have the query as a prefix
-prop_submap2 :: Str -> T.Trie a -> Bool
-prop_submap2 (Str k) t =
+prop_submap2 :: WS -> WTrie a -> Bool
+prop_submap2 (WS k) (WT t) =
     all (S.isPrefixOf k) . T.keys . T.submap k $ t
 
 -- | All values in a submap are the same in the supermap
-prop_submap3 :: (Eq a) => Str -> T.Trie a -> Bool
-prop_submap3 (Str k) t =
-    (\q -> T.lookup q t' == T.lookup q t) `all` T.keys t'
+prop_submap3 :: (Eq a) => WS -> WTrie a -> Bool
+prop_submap3 (WS k) (WT t) =
+    ((`T.lookup` t') .==. (`T.lookup` t)) `all` T.keys t'
     where t' = T.submap k t
 
 -- | Left-biased @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
-prop_intersectL :: (Eq a) => T.Trie a -> T.Trie a -> Bool
-prop_intersectL x y =
+prop_intersectL :: (Eq a) => WTrie a -> WTrie a -> Bool
+prop_intersectL (WT x) (WT y) =
     T.intersectL x y == (T.unionL x y `TC.disunion` TC.disunion x y)
 
 -- | Right-biased @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
-prop_intersectR :: (Eq a) => T.Trie a -> T.Trie a -> Bool
-prop_intersectR x y =
+prop_intersectR :: (Eq a) => WTrie a -> WTrie a -> Bool
+prop_intersectR (WT x) (WT y) =
     T.intersectR x y == (T.unionR x y `TC.disunion` TC.disunion x y)
 
 -- | Additive @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
-prop_intersectPlus :: (Eq a, Num a) => T.Trie a -> T.Trie a -> Bool
-prop_intersectPlus x y =
+prop_intersectPlus :: (Eq a, Num a) => WTrie a -> WTrie a -> Bool
+prop_intersectPlus (WT x) (WT y) =
     T.intersectBy plus x y
     == (T.mergeBy plus x y `TC.disunion` TC.disunion x y)
     where
@@ -387,20 +383,22 @@ prop_intersectPlus x y =
 -- to make this worth using?
 --
 -- | Arbitrary @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
-prop_intersectBy :: (Eq a) => (a -> a -> Maybe a) -> T.Trie a -> T.Trie a -> Bool
-prop_intersectBy f x y =
+prop_intersectBy :: (Eq a) => (a -> a -> Maybe a) -> WTrie a -> WTrie a -> Bool
+prop_intersectBy f (WT x) (WT y) =
     T.intersectBy f x y == (T.mergeBy f x y `TC.disunion` TC.disunion x y)
 
 
 -- | Keys are ordered when converting to a list
-prop_toList :: T.Trie a -> Bool
-prop_toList t = ordered (T.keys t)
+prop_toList :: WTrie a -> Bool
+prop_toList = ordered . T.keys . unWT
     where ordered xs = and (zipWith (<=) xs (drop 1 xs))
 
-_takes_first :: (Eq c) => ([(S.ByteString, c)] -> T.Trie c) -> [(Str, c)] -> Bool
+-- | If there are duplicate keys in the @assocs@, then @f@ will
+-- take the first value.
+_takes_first :: (Eq c) => ([(S.ByteString, c)] -> T.Trie c) -> [(WS, c)] -> Bool
 _takes_first f assocs =
-    (T.toList . f) === (nubBy (apFst (==)) . sortBy (comparing fst))
-    $ map (first unStr) assocs
+    (T.toList . f) .==. (nubBy (apFst (==)) . sortBy (comparing fst))
+    $ map (first unWS) assocs
 
 -- | Lift a function to apply to the first of pairs, retaining the second.
 first :: (a -> b) -> (a,c) -> (b,c)
@@ -410,28 +408,28 @@ first f (x,y) = (f x, y)
 apFst :: (a -> b -> c) -> ((a,d) -> (b,e) -> c)
 apFst f (x,_) (y,_) = f x y
 
--- | 'fromList' takes the first value for a given key
-prop_fromList_takes_first :: (Eq a) => [(Str, a)] -> Bool
+-- | 'T.fromList' takes the first value for a given key.
+prop_fromList_takes_first :: (Eq a) => [(WS, a)] -> Bool
 prop_fromList_takes_first = _takes_first T.fromList
 
--- | 'fromListR' takes the first value for a given key
-prop_fromListR_takes_first :: (Eq a) => [(Str, a)] -> Bool
+-- | 'T.fromListR' takes the first value for a given key.
+prop_fromListR_takes_first :: (Eq a) => [(WS, a)] -> Bool
 prop_fromListR_takes_first = _takes_first TC.fromListR
 
--- | 'fromListL' takes the first value for a given key
-prop_fromListL_takes_first :: (Eq a) => [(Str, a)] -> Bool
+-- | 'T.fromListL' takes the first value for a given key.
+prop_fromListL_takes_first :: (Eq a) => [(WS, a)] -> Bool
 prop_fromListL_takes_first = _takes_first TC.fromListL
 
--- | 'fromListS' takes the first value for a given key
-prop_fromListS_takes_first :: (Eq a) => [(Str, a)] -> Bool
+-- | 'T.fromListS' takes the first value for a given key.
+prop_fromListS_takes_first :: (Eq a) => [(WS, a)] -> Bool
 prop_fromListS_takes_first = _takes_first TC.fromListS
 
--- | @('fromListWith' const)@ takes the first value for a given key
-prop_fromListWithConst_takes_first :: (Eq a) => [(Str, a)] -> Bool
+-- | @('TC.fromListWith' const)@ takes the first value for a given key.
+prop_fromListWithConst_takes_first :: (Eq a) => [(WS, a)] -> Bool
 prop_fromListWithConst_takes_first = _takes_first (TC.fromListWith const)
 
--- | @('fromListWithL' const)@ takes the first value for a given key
-prop_fromListWithLConst_takes_first :: (Eq a) => [(Str, a)] -> Bool
+-- | @('TC.fromListWithL' const)@ takes the first value for a given key.
+prop_fromListWithLConst_takes_first :: (Eq a) => [(WS, a)] -> Bool
 prop_fromListWithLConst_takes_first = _takes_first (TC.fromListWithL const)
 
 ----------------------------------------------------------------

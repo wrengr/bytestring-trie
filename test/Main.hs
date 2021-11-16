@@ -81,7 +81,7 @@ to do that without GADTs or impredicativity?
 quickcheckTests :: Tasty.TestTree
 quickcheckTests
   = Tasty.localOption (QC.QuickCheckTests    500) -- QC.Args.maxSuccess
-  . Tasty.localOption (QC.QuickCheckMaxSize  500) -- QC.Args.maxSize
+  . Tasty.localOption (QC.QuickCheckMaxSize  400) -- QC.Args.maxSize
   . Tasty.localOption (QC.QuickCheckMaxRatio 10)  -- QC.Args.maxDiscardRatio
   $ Tasty.testGroup "QuickCheck"
   [ Tasty.testGroup "@Int"
@@ -378,9 +378,9 @@ prop_intersectPlus (WT x) (WT y) =
     where
     plus a b = Just (a + b)
 
--- TODO: actually use this somewhere, or give GHC a pragma to silence
--- the unused-warning; so that out CI summary is clean enough to
--- find real warnings.
+{-
+-- TODO: actually use this. Until then, commented out to silence
+-- the warnings from out CI summary.
 -- TODO: Can we effectively generate interesting enough functions
 -- to make this worth using?
 --
@@ -388,6 +388,7 @@ prop_intersectPlus (WT x) (WT y) =
 prop_intersectBy :: (Eq a) => (a -> a -> Maybe a) -> WTrie a -> WTrie a -> Bool
 prop_intersectBy f (WT x) (WT y) =
     T.intersectBy f x y == (T.mergeBy f x y `TC.disunion` TC.disunion x y)
+-}
 
 
 -- | Keys are ordered when converting to a list

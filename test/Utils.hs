@@ -7,7 +7,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.15
+--                                                  ~ 2021.11.20
 -- |
 -- Module      :  test/Utils.hs
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -16,7 +16,7 @@
 -- Stability   :  provisional
 -- Portability :  semi-portable (MPTC,...)
 --
--- Testing 'Trie's.
+-- Utilities for testing 'Trie's.
 ----------------------------------------------------------------
 module Utils
     ( packC2W, vocab2trie
@@ -64,11 +64,11 @@ vocab2trie  = T.fromList . flip zip [0..] . map packC2W
 -- But since the cabal file lists QuickCheck-2.10 as the minimum
 -- version, must switch to the new 'maxDiscardRatio' instead.
 
--- | Convert most of 'QC.Args' into Tasty.  There are three QuickCheck
+-- | Convert most of 'QC.Args' into Tasty.  There are a few QuickCheck
 -- args which are not handled:
 --
---  * 'QC.maxShrinks' because 'TastyQC.QuickCheckMaxShrinks' is not
---    exported for some strange reason.
+--  * 'QC.maxShrinks' if tasty<1.4.3, because
+--    'TastyQC.QuickCheckMaxShrinks' is not exported.
 --    <https://github.com/UnkindPartition/tasty/issues/316>
 --  * 'QC.chatty' because Tasty always ignores this setting.
 --  * 'QC.replay' because of technical difficulty with inverting
@@ -81,11 +81,11 @@ localQuickCheckOptions args
     = Tasty.localOption (TastyQC.QuickCheckTests      $ QC.maxSuccess      args)
     . Tasty.localOption (TastyQC.QuickCheckMaxSize    $ QC.maxSize         args)
     . Tasty.localOption (TastyQC.QuickCheckMaxRatio   $ QC.maxDiscardRatio args)
-    {-
-    -- BUG: although this option is defined and everything, for
-    -- some reason tasty-quickcheck-0.10.1.2 doesn't export it!
+#if MIN_VERSION_tasty(1,4,3)
+    -- Actually that should be tasty-1.4.2.1 per the bug ticket;
+    -- but cabal cpp macros can't say that.
     . Tasty.localOption (TastyQC.QuickCheckMaxShrinks $ QC.maxShrinks      args)
-    -}
+#endif
 {-
 Tasty lacks some options that QC.Args has:
     * (QC.chatty Bool{default=True}), though 'TastyQC.optionSetToArgs'

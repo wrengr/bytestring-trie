@@ -84,7 +84,7 @@ quickcheckTests
   . Tasty.localOption (QC.QuickCheckMaxSize  400) -- QC.Args.maxSize
   . Tasty.localOption (QC.QuickCheckMaxRatio 10)  -- QC.Args.maxDiscardRatio
   $ Tasty.testGroup "QuickCheck"
-  [ Tasty.testGroup "@Int"
+  [ Tasty.testGroup "Trivial properties (@Int)"
     [ QC.testProperty
         "prop_insert"
         (prop_insert        :: WS -> Int -> WTrie Int -> Bool)
@@ -103,23 +103,27 @@ quickcheckTests
     , QC.testProperty
         "prop_delete_lookup"
         (prop_delete_lookup :: WS -> WTrie Int -> QC.Property)
+    ]
+  , Tasty.testGroup "Submap properties (@Int)"
+    [ QC.testProperty
+        "prop_submap_keysAreMembers"
+        (prop_submap_keysAreMembers :: WS -> WTrie Int -> Bool)
     , QC.testProperty
-        "prop_submap1"
-        (prop_submap1       :: WS -> WTrie Int -> Bool)
+        "prop_submap_keysHavePrefix"
+        (prop_submap_keysHavePrefix :: WS -> WTrie Int -> Bool)
     , QC.testProperty
-        "prop_submap2"
-        (prop_submap2       :: WS -> WTrie Int -> Bool)
-    , QC.testProperty
-        "prop_submap3"
-        (prop_submap3       :: WS -> WTrie Int -> Bool)
+        "prop_submap_valuesEq"
+        (prop_submap_valuesEq       :: WS -> WTrie Int -> Bool)
     , QC.testProperty
         "prop_deleteSubmapL"
         (prop_deleteSubmapL :: WS -> WTrie Int -> Bool)
     , QC.testProperty
         "prop_deleteSubmapR"
         (prop_deleteSubmapR :: WS -> WTrie Int -> Bool)
-    --
-    , QC.testProperty
+    ]
+  , Tasty.localOption (QC.QuickCheckMaxSize 300)
+  $ Tasty.testGroup "Intersection properties (@Int)"
+    [ QC.testProperty
         "prop_intersectL"
         (prop_intersectL    :: WTrie Int -> WTrie Int -> Bool)
     , QC.testProperty
@@ -128,8 +132,9 @@ quickcheckTests
     , QC.testProperty
         "prop_intersectPlus"
         (prop_intersectPlus :: WTrie Int -> WTrie Int -> Bool)
-    --
-    , QC.testProperty
+    ]
+  , Tasty.testGroup "List-conversion properties (@Int)"
+    [ QC.testProperty
         "prop_toList"
         (prop_toList        :: WTrie Int -> Bool)
     , QC.testProperty
@@ -157,7 +162,7 @@ smallcheckTests :: Tasty.TestTree
 smallcheckTests
   = Tasty.localOption (SC.SmallCheckDepth 3)
   $ Tasty.testGroup "SmallCheck"
-  [ Tasty.testGroup "@()"
+  [ Tasty.testGroup "Trivial properties (@())"
     -- These use @()@ to reduce the problem of exponential growth.
     [ SC.testProperty
         "prop_insert"
@@ -178,16 +183,18 @@ smallcheckTests
     , SC.testProperty
         "prop_delete_lookup"
         (prop_delete_lookup :: WS -> WTrie () -> SC.Property IO)
+    ]
+  , Tasty.testGroup "Submap properties (@())"
+    [ SC.testProperty
+        "prop_submap_keysAreMembers"
+        (prop_submap_keysAreMembers :: WS -> WTrie () -> Bool)
     , SC.testProperty
-        "prop_submap1"
-        (prop_submap1       :: WS -> WTrie () -> Bool)
-    , SC.testProperty
-        "prop_submap2"
-        (prop_submap2       :: WS -> WTrie () -> Bool)
+        "prop_submap_keysHavePrefix"
+        (prop_submap_keysHavePrefix :: WS -> WTrie () -> Bool)
     {- -- Trivial because all values are ()
     , SC.testProperty
-        "prop_submap3"
-        (prop_submap3       :: WS -> WTrie () -> Bool)
+        "prop_submap_valuesEq"
+        (prop_submap_valuesEq       :: WS -> WTrie () -> Bool)
     -}
     , SC.testProperty
         "prop_deleteSubmapL"
@@ -196,7 +203,7 @@ smallcheckTests
         "prop_deleteSubmapR"
         (prop_deleteSubmapR :: WS -> WTrie () -> Bool)
     ]
-  , Tasty.testGroup "@Int"
+  , Tasty.testGroup "Intersection properties (@Int)"
     [ SC.testProperty
         "prop_intersectL"
         (prop_intersectL    :: WTrie Int -> WTrie Int -> Bool)
@@ -207,7 +214,7 @@ smallcheckTests
         "prop_intersectPlus"
         (prop_intersectPlus :: WTrie Int -> WTrie Int -> Bool)
     ]
-  , Tasty.testGroup "@W"
+  , Tasty.testGroup "List-conversion properties (@W)"
     [ SC.testProperty
         "prop_toList"
         (prop_toList        :: WTrie W -> Bool)
@@ -268,7 +275,6 @@ test_Intersect =
     ]
     where
     -- Trivial regression example
-    -- BUG: why doesn't this catch that same minimal error that QuickCheck originally gave us?
     a, b, c :: S.ByteString
     a = packC2W "a"
     b = packC2W "b"
@@ -357,18 +363,18 @@ prop_delete_lookup (WS k) =
     ((not . T.member k) .==>. (T.lookup k . T.delete k) .==. const Nothing) . unWT
 
 -- | All keys in a submap are keys in the supermap
-prop_submap1 :: WS -> WTrie a -> Bool
-prop_submap1 (WS k) (WT t) =
+prop_submap_keysAreMembers :: WS -> WTrie a -> Bool
+prop_submap_keysAreMembers (WS k) (WT t) =
     all (`T.member` t) . T.keys . T.submap k $ t
 
 -- | All keys in a submap have the query as a prefix
-prop_submap2 :: WS -> WTrie a -> Bool
-prop_submap2 (WS k) (WT t) =
+prop_submap_keysHavePrefix :: WS -> WTrie a -> Bool
+prop_submap_keysHavePrefix (WS k) (WT t) =
     all (S.isPrefixOf k) . T.keys . T.submap k $ t
 
 -- | All values in a submap are the same in the supermap
-prop_submap3 :: (Eq a) => WS -> WTrie a -> Bool
-prop_submap3 (WS k) (WT t) =
+prop_submap_valuesEq :: (Eq a) => WS -> WTrie a -> Bool
+prop_submap_valuesEq (WS k) (WT t) =
     ((`T.lookup` t') .==. (`T.lookup` t)) `all` T.keys t'
     where t' = T.submap k t
 

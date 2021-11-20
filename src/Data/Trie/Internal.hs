@@ -584,6 +584,8 @@ foldrWithKey fcons nil = \t -> go S.empty t nil
 -- This function is a direct\/literal catamorphism of the implementation
 -- datatype, erasing only some bitmasking metadata for the branches.
 -- For a more semantic catamorphism, see `cata`.
+--
+-- /Since: 0.2.6/
 cata_
     :: (ByteString -> Maybe a -> b -> b)
     -> (b -> b -> b)
@@ -605,6 +607,8 @@ cata_ a b e = go
 -- express the invariants of the implementation, rather than exposing
 -- the literal structure of the implementation.  For a more literal
 -- catamorphism, see `cata_`.
+--
+-- /Since: 0.2.6/
 cata
     :: (ByteString -> a -> b -> b)
     -> (ByteString -> [b] -> b)

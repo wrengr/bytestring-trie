@@ -135,6 +135,8 @@ match t q =
 -- | Given a query, find the shortest prefix with an associated value
 -- in the trie, and return that prefix, it's value, and the remainder
 -- of the query.
+--
+-- /Since: 0.2.6/
 minMatch :: Trie a -> ByteString -> Maybe (ByteString, a, ByteString)
 minMatch t q =
     case matches t q of
@@ -176,6 +178,8 @@ delete :: ByteString -> Trie a -> Trie a
 delete q = alterBy (\_ _ _ -> Nothing) q (impossible "delete")
 
 -- | Remove all keys beginning with a prefix.
+--
+-- /Since: 0.2.6/
 deleteSubmap :: ByteString -> Trie a -> Trie a
 {-# INLINE deleteSubmap #-}
 deleteSubmap q = alterBy_ (\_ _ _ t -> (Nothing, t)) q (impossible "deleteSubmap")

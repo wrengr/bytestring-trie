@@ -873,7 +873,8 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
 -- to resolve conflicts (or non-conflicts).
 alterBy :: (ByteString -> a -> Maybe a -> Maybe a)
          -> ByteString -> a -> Trie a -> Trie a
-alterBy f = alterBy_ (\k v mv t -> (f k v mv, t))
+alterBy f q x = alterBy_ (\mv t -> (f q x mv, t)) q
+
 -- TODO: use GHC's 'inline' function so that this gets specialized away.
 -- TODO: benchmark to be sure that this doesn't introduce unforseen
 --  performance costs because of the uncurrying etc.
@@ -881,19 +882,16 @@ alterBy f = alterBy_ (\k v mv t -> (f k v mv, t))
 --  depend on any internals (unless we actually do the CPS optimization).
 
 
--- TODO: Change this to take separate functions for the @Nothing@
--- vs truly @Maybe@ cases; also that doesn't necessarily thread
--- through the @q_@ and @x_@.  Or if we want to preserve the API,
--- then build this from a variant that does so.
---
 -- | A variant of 'alterBy' which also allows modifying the sub-trie.
-alterBy_ :: (ByteString -> a -> Maybe a -> Trie a -> (Maybe a, Trie a))
-         -> ByteString -> a -> Trie a -> Trie a
-alterBy_ f_ q_ x_
+--
+-- /Type changed in 0.2.6/
+alterBy_
+    :: (Maybe a -> Trie a -> (Maybe a, Trie a))
+    -> ByteString -> Trie a -> Trie a
+alterBy_ f q_
     | S.null q_ = alterEpsilon
     | otherwise = go q_
     where
-    f         = f_ q_ x_
     nothing q = uncurry (arc q) (f Nothing Empty)
 
     alterEpsilon t_@Empty                    = uncurry (arc q_) (f Nothing t_)

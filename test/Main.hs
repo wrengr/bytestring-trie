@@ -115,11 +115,14 @@ quickcheckTests
         "prop_submap_valuesEq"
         (prop_submap_valuesEq       :: WS -> WTrie Int -> Bool)
     , QC.testProperty
-        "prop_deleteSubmapL"
-        (prop_deleteSubmapL :: WS -> WTrie Int -> Bool)
+        "prop_deleteSubmap_keysAreMembers"
+        (prop_deleteSubmap_keysAreMembers :: WS -> WTrie Int -> Bool)
     , QC.testProperty
-        "prop_deleteSubmapR"
-        (prop_deleteSubmapR :: WS -> WTrie Int -> Bool)
+        "prop_deleteSubmap_keysLackPrefix"
+        (prop_deleteSubmap_keysLackPrefix :: WS -> WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_deleteSubmap_disunion"
+        (prop_deleteSubmap_disunion :: WS -> WTrie Int -> Bool)
     ]
   , Tasty.localOption (QC.QuickCheckMaxSize 300)
   $ Tasty.testGroup "Intersection properties (@Int)"
@@ -197,11 +200,14 @@ smallcheckTests
         (prop_submap_valuesEq       :: WS -> WTrie () -> Bool)
     -}
     , SC.testProperty
-        "prop_deleteSubmapL"
-        (prop_deleteSubmapL :: WS -> WTrie () -> Bool)
+        "prop_deleteSubmap_keysAreMembers"
+        (prop_deleteSubmap_keysAreMembers :: WS -> WTrie () -> Bool)
     , SC.testProperty
-        "prop_deleteSubmapR"
-        (prop_deleteSubmapR :: WS -> WTrie () -> Bool)
+        "prop_deleteSubmap_keysLackPrefix"
+        (prop_deleteSubmap_keysLackPrefix :: WS -> WTrie () -> Bool)
+    , SC.testProperty
+        "prop_deleteSubmap_disunion"
+        (prop_deleteSubmap_disunion :: WS -> WTrie () -> Bool)
     ]
   , Tasty.testGroup "Intersection properties (@Int)"
     [ SC.testProperty
@@ -378,13 +384,20 @@ prop_submap_valuesEq (WS k) (WT t) =
     ((`T.lookup` t') .==. (`T.lookup` t)) `all` T.keys t'
     where t' = T.submap k t
 
-prop_deleteSubmapL :: (Eq a) => WS -> WTrie a -> Bool
-prop_deleteSubmapL (WS k) (WT t) =
-    t == T.unionL (T.submap k t) (T.deleteSubmap k t)
+-- | All keys in the result are keys in the supermap
+prop_deleteSubmap_keysAreMembers :: WS -> WTrie a -> Bool
+prop_deleteSubmap_keysAreMembers (WS k) (WT t) =
+    all (`T.member` t) . T.keys . T.deleteSubmap k $ t
 
-prop_deleteSubmapR :: (Eq a) => WS -> WTrie a -> Bool
-prop_deleteSubmapR (WS k) (WT t) =
-    t == T.unionR (T.submap k t) (T.deleteSubmap k t)
+-- | All keys in a submap lack the query as a prefix
+prop_deleteSubmap_keysLackPrefix :: WS -> WTrie a -> Bool
+prop_deleteSubmap_keysLackPrefix (WS k) (WT t) =
+    all (not . S.isPrefixOf k) . T.keys . T.deleteSubmap k $ t
+
+-- | `T.submap` and `T.deleteSubmap` partition every trie for every key.
+prop_deleteSubmap_disunion :: (Eq a) => WS -> WTrie a -> Bool
+prop_deleteSubmap_disunion (WS k) (WT t) =
+    t == (T.submap k t `TC.disunion` T.deleteSubmap k t)
 
 -- | Left-biased @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
 prop_intersectL :: (Eq a) => WTrie a -> WTrie a -> Bool

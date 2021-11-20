@@ -175,14 +175,14 @@ adjust f q = adjustBy (\_ _ -> f) q (impossible "adjust")
 -- | Remove the value stored at a key.
 delete :: ByteString -> Trie a -> Trie a
 {-# INLINE delete #-}
-delete q = alterBy (\_ _ _ -> Nothing) q (impossible "delete")
+delete = alterBy_ (\_ t -> (Nothing, t))
 
 -- | Remove all keys beginning with a prefix.
 --
 -- /Since: 0.2.6/
 deleteSubmap :: ByteString -> Trie a -> Trie a
 {-# INLINE deleteSubmap #-}
-deleteSubmap q = alterBy_ (\_ _ _ t -> (Nothing, t)) q (impossible "deleteSubmap")
+deleteSubmap = alterBy_ (\_ _ -> (Nothing, empty))
 
 
 {---------------------------------------------------------------

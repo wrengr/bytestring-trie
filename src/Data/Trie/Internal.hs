@@ -455,6 +455,11 @@ arc_ :: ByteString -> Trie a -> Trie a
 arc_ _   Empty            = Empty
 arc_ k t@(Branch{})       = if S.null k then t else Arc k Nothing t
 arc_ k   (Arc k' mv' t')  = Arc (k <> k') mv' t'
+-- TODO: perhaps we should hoist the @S.null k@ check above the
+-- case on @t@, like for the @arc'@ in 'alterBy_' (circa line 918).
+-- It would increase the cost of the Empty case, but it would
+-- simplify the Arc case (both avoiding the append, and allowing
+-- sharing of the original Arc).
 
 -- | Smart constructor to join two tries into a @Branch@ with maximal
 -- prefix sharing. Requires knowing the prefixes, but can combine
@@ -489,6 +494,7 @@ getPrefix Empty                   = error "getPrefix: no Prefix of Empty"
 -- Error messages
 -----------------------------------------------------------}
 
+-- TODO: move off to "Data.Trie.Errors"?
 -- TODO: shouldn't we inline the logic and just NOINLINE the string
 -- constant? There are only three use sites, which themselves aren't
 -- inlined...
@@ -616,12 +622,12 @@ cata
     -> Trie a -> b
 cata a b e = start
     where
-    start Empty            = e
-    start (Arc k mv t)     = step k mv t
-    start (Branch _ _ l r) = b S.empty (collect l (collect r []))
+    start Empty                 = e
+    start (Arc k mv t)          = step k mv t
+    start (Branch _ _ l r)      = b S.empty (collect l (collect r []))
 
-    step k (Just v) t  = a k v (start t)
-    step k Nothing t   = b k (collect t [])
+    step k (Just v) t           = a k v (start t)
+    step k Nothing  t           = b k (collect t [])
 
     collect Empty            bs = bs
     collect (Arc k mv t)     bs = step k mv t : bs
@@ -664,7 +670,7 @@ toListByFB f t cons nil = foldrWithKey ((cons .) . f) nil t
 -- an arc is reached, the second function argument is used.
 --
 -- This function is intended for internal use. For the public-facing
--- version, see @lookupBy@ in "Data.Trie".
+-- version, see 'Data.Trie.lookupBy'.
 lookupBy_ :: (Maybe a -> Trie a -> b) -> b -> (Trie a -> b)
           -> ByteString -> Trie a -> b
 lookupBy_ f z a = lookupBy_'
@@ -675,19 +681,16 @@ lookupBy_ f z a = lookupBy_'
 
     -- | The main recursion
     go _    Empty       = z
-
     go q   (Arc k mv t) =
         let (_,k',q')   = breakMaximalPrefix k q
-        in case (not $ S.null k', S.null q') of
-                (True,  True)  -> a (Arc k' mv t)
-                (True,  False) -> z
-                (False, True)  -> f mv t
-                (False, False) -> go q' t
-
+        in case (S.null k', S.null q') of
+                (False, True)  -> a (Arc k' mv t)
+                (False, False) -> z
+                (True,  True)  -> f mv t
+                (True,  False) -> go q' t
     go q t_@(Branch{}) = findArc t_
         where
         qh = errorLogHead "lookupBy_" q
-
         -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
         -- branching, and /W/ is the word size of the Prefix,Mask type.
         findArc (Branch p m l r)
@@ -742,7 +745,7 @@ errorEmptyAfterNothing s = errorInvariantBroken s "Empty after Nothing"
 --
 -- This function may not have the most useful return type. For a
 -- version that returns the prefix itself as well as the remaining
--- string, see @match@ in "Data.Trie".
+-- string, see 'Data.Trie.match'.
 match_ :: Trie a -> ByteString -> Maybe (Int, a)
 match_ = flip start
     where
@@ -753,25 +756,20 @@ match_ = flip start
 
     -- | The initial recursion
     goNothing _ _    Empty       = Nothing
-
     goNothing n q   (Arc k mv t) =
         let (p,k',q') = breakMaximalPrefix k q
             n'        = n + S.length p
         in n' `seq`
-            if S.null k'
-            then
-                if S.null q'
-                then (,) n' <$> mv
-                else
-                    case mv of
-                    Nothing -> goNothing   n' q' t
-                    Just v  -> goJust n' v n' q' t
-            else Nothing
-
+            case (S.null k', S.null q') of
+            (False, _)    -> Nothing
+            (True, True)  -> (,) n' <$> mv
+            (True, False) ->
+                case mv of
+                Nothing -> goNothing   n' q' t
+                Just v  -> goJust n' v n' q' t
     goNothing n q t_@(Branch{}) = findArc t_
         where
         qh = errorLogHead "match_" q
-
         -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
         -- branching, and /W/ is the word size of the Prefix,Mask type.
         findArc (Branch p m l r)
@@ -783,28 +781,23 @@ match_ = flip start
 
     -- | The main recursion
     goJust n0 v0 _ _    Empty       = Just (n0,v0)
-
     goJust n0 v0 n q   (Arc k mv t) =
         let (p,k',q') = breakMaximalPrefix k q
             n'        = n + S.length p
         in n' `seq`
-            if S.null k'
-            then
-                if S.null q'
-                then
-                    case mv of
-                    Nothing -> Just (n0,v0)
-                    Just v  -> Just (n',v)
-                else
-                    case mv of
-                    Nothing -> goJust n0 v0 n' q' t
-                    Just v  -> goJust n' v  n' q' t
-            else Just (n0,v0)
-
+            case (S.null k', S.null q') of
+            (False, _)   -> Just (n0,v0)
+            (True, True) ->
+                case mv of
+                Nothing -> Just (n0,v0)
+                Just v  -> Just (n',v)
+            (True, False) ->
+                case mv of
+                Nothing -> goJust n0 v0 n' q' t
+                Just v  -> goJust n' v  n' q' t
     goJust n0 v0 n q t_@(Branch{}) = findArc t_
         where
         qh = errorLogHead "match_" q
-
         -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
         -- branching, and /W/ is the word size of the Prefix,Mask type.
         findArc (Branch p m l r)
@@ -822,7 +815,7 @@ match_ = flip start
 --
 -- This function may not have the most useful return type. For a
 -- version that returns the prefix itself as well as the remaining
--- string, see @matches@ in "Data.Trie".
+-- string, see 'Data.Trie.matches'.
 matches_ :: Trie a -> ByteString -> [(Int,a)]
 matches_ t q =
 #if !defined(__GLASGOW_HASKELL__)
@@ -843,7 +836,6 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
 
         -- | The main recursion
         go _ _    Empty       = id
-
         go n q   (Arc k mv t) =
             let (p,k',q') = breakMaximalPrefix k q
                 n'        = n + S.length p
@@ -854,11 +846,9 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
                     .
                     if S.null q' then id else go n' q' t
                 else id
-
         go n q t_@(Branch{}) = findArc t_
             where
             qh = errorLogHead "matches_" q
-
             -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
             -- branching, and /W/ is the word size of the Prefix,Mask type.
             findArc (Branch p m l r)
@@ -891,6 +881,11 @@ alterBy f = alterBy_ (\k v mv t -> (f k v mv, t))
 --  depend on any internals (unless we actually do the CPS optimization).
 
 
+-- TODO: Change this to take separate functions for the @Nothing@
+-- vs truly @Maybe@ cases; also that doesn't necessarily thread
+-- through the @q_@ and @x_@.  Or if we want to preserve the API,
+-- then build this from a variant that does so.
+--
 -- | A variant of 'alterBy' which also allows modifying the sub-trie.
 alterBy_ :: (ByteString -> a -> Maybe a -> Trie a -> (Maybe a, Trie a))
          -> ByteString -> a -> Trie a -> Trie a
@@ -906,36 +901,34 @@ alterBy_ f_ q_ x_
     alterEpsilon t_@(Arc k mv t) | S.null k  = uncurry (arc q_) (f mv      t)
                                  | otherwise = uncurry (arc q_) (f Nothing t_)
 
-
     go q Empty            = nothing q
-
     go q t@(Branch p m l r)
         | nomatch qh p m  = branchMerge p t  qh (nothing q)
         | zero qh m       = branch p m (go q l) r
         | otherwise       = branch p m l (go q r)
         where
         qh = errorLogHead "alterBy" q
-
     go q t_@(Arc k mv t) =
         let (p,k',q') = breakMaximalPrefix k q in
-        case (not $ S.null k', S.null q') of
-        (True,  True)  -> -- add node to middle of arc
+        case (S.null k', S.null q') of
+        (False, True)  -> -- add node to middle of arc
                           uncurry (arc p) (f Nothing (Arc k' mv t))
-        (True,  False) ->
+        (False, False) ->
             case nothing q' of
             Empty -> t_ -- Nothing to add, reuse old arc
             l     -> arc' (branchMerge (getPrefix l) l (getPrefix r) r)
                     where
                     r = Arc k' mv t
-
-                    -- inlined version of 'arc'
+                    -- inlined variant of @arc_ p@
                     arc' | S.null p  = id
                          | otherwise = Arc p Nothing
+        (True, True)  -> uncurry (arc k) (f mv t)
+        (True, False) -> arc k mv (go q' t)
 
-        (False, True)  -> uncurry (arc k) (f mv t)
-        (False, False) -> arc k mv (go q' t)
 
-
+-- TODO: build this from a variant that doesn't need to thread the
+-- @q_@ and @x_@ through to the function.
+--
 -- | Alter the value associated with a given key. If the key is not
 -- present, then the trie is returned unaltered. See 'alterBy' if
 -- you are interested in inserting new keys or deleting old keys.
@@ -953,21 +946,19 @@ adjustBy f_ q_ x_
     adjustEpsilon t_                            = t_
 
     go _ Empty            = Empty
-
     go q t@(Branch p m l r)
         | nomatch qh p m  = t
         | zero qh m       = Branch p m (go q l) r
         | otherwise       = Branch p m l (go q r)
         where
         qh = errorLogHead "adjustBy" q
-
     go q t_@(Arc k mv t) =
         let (_,k',q') = breakMaximalPrefix k q in
-        case (not $ S.null k', S.null q') of
-        (True,  True)  -> t_ -- don't break arc inline
-        (True,  False) -> t_ -- don't break arc branching
-        (False, True)  -> Arc k (liftM f mv) t
-        (False, False) -> Arc k mv (go q' t)
+        case (S.null k', S.null q') of
+        (False, True)  -> t_ -- don't break arc inline
+        (False, False) -> t_ -- don't break arc branching
+        (True,  True)  -> Arc k (liftM f mv) t
+        (True,  False) -> Arc k mv (go q' t)
 
 
 {-----------------------------------------------------------
@@ -1003,11 +994,9 @@ mergeBy f = mergeBy'
         | S.null k1              = Arc k1 mv1 (go t1 t0_)
     mergeBy' t0_ t1_             = go t0_ t1_
 
-
     -- | The main recursion
     go Empty t1    = t1
     go t0    Empty = t0
-
     -- /O(n+m)/ for this part where /n/ and /m/ are sizes of the branchings
     go  t0@(Branch p0 m0 l0 r0)
         t1@(Branch p1 m1 l1 r1)
@@ -1019,13 +1008,14 @@ mergeBy f = mergeBy'
         union0  | nomatch p1 p0 m0  = branchMerge p0 t0 p1 t1
                 | zero p1 m0        = branch p0 m0 (go l0 t1) r0
                 | otherwise         = branch p0 m0 l0 (go r0 t1)
-
         union1  | nomatch p0 p1 m1  = branchMerge p0 t0 p1 t1
                 | zero p0 m1        = branch p1 m1 (go t0 l1) r1
                 | otherwise         = branch p1 m1 l1 (go t0 r1)
-
-    -- We combine these branches of 'go' in order to clarify where the definitions of 'p0', 'p1', 'm'', 'p'' are relevant. However, this may introduce inefficiency in the pattern matching automaton...
-    -- TODO: check. And get rid of 'go'' if it does.
+    -- We combine these branches of @go@ in order to clarify where
+    -- the definitions of @p0@, @p1@, @m'@, @p'@ are relevant.
+    -- However, this may introduce inefficiency in the pattern
+    -- matching automaton...
+    -- TODO: check; and get rid of @go'@ if it does.
     go t0_ t1_ = go' t0_ t1_
         where
         p0 = getPrefix t0_
@@ -1060,7 +1050,6 @@ mergeBy f = mergeBy'
             | nomatch p1 p0 m0 = branchMerge p0 t0_  p1 t1_
             | zero p1 m0       = branch p0 m0 (go l t1_) r
             | otherwise        = branch p0 m0 l (go r t1_)
-
         -- Inlined branchMerge. Both tries are disjoint @Arc@s now.
         go' _ _ | zero p0 m'   = Branch p' m' t0_ t1_
         go' _ _                = Branch p' m' t1_ t0_
@@ -1098,11 +1087,9 @@ intersectBy f = intersectBy'
         | S.null k1              =  arc_ k1 (go t0_ t1)
     intersectBy' t0_ t1_         =  go t0_ t1_
 
-
     -- | The main recursion
     go Empty _    =  Empty
     go _    Empty =  Empty
-
     go  t0@(Branch p0 m0 l0 r0)
         t1@(Branch p1 m1 l1 r1)
         | shorter m0 m1  =  intersection0
@@ -1118,7 +1105,6 @@ intersectBy f = intersectBy'
             | nomatch p0 p1 m1  = Empty
             | zero p0 m1        = branch p1 m1 (go t0 l1) Empty
             | otherwise         = branch p1 m1 Empty (go t0 r1)
-
     go t0_@(Arc k0 mv0 t0)
        t1_@(Arc k1 mv1 t1)
         | m' == 0 =
@@ -1140,7 +1126,6 @@ intersectBy f = intersectBy'
         p0 = getPrefix t0_
         p1 = getPrefix t1_
         m' = branchMask p0 p1
-
     go t0_@(Arc{})
        t1_@(Branch _p1 m1 l r)
         | nomatch p0 p1 m1 = Empty
@@ -1149,7 +1134,6 @@ intersectBy f = intersectBy'
         where
         p0 = getPrefix t0_
         p1 = getPrefix t1_
-
     go t0_@(Branch _p0 m0 l r)
        t1_@(Arc{})
         | nomatch p1 p0 m0 = Empty
@@ -1158,7 +1142,6 @@ intersectBy f = intersectBy'
         where
         p0 = getPrefix t0_
         p1 = getPrefix t1_
-
     go _ _ =  Empty
 
 
@@ -1201,6 +1184,7 @@ maxAssoc = go S.empty
 
 mapView :: (Trie a -> Trie a)
         -> Maybe (ByteString, a, Trie a) -> Maybe (ByteString, a, Trie a)
+{-# INLINE mapView #-}
 mapView _ Nothing        = Nothing
 mapView f (Just (k,v,t)) = Just (k,v, f t)
 

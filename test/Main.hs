@@ -7,7 +7,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.15
+--                                                  ~ 2021.11.20
 -- |
 -- Module      :  test/Main
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -112,6 +112,12 @@ quickcheckTests
     , QC.testProperty
         "prop_submap3"
         (prop_submap3       :: WS -> WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_deleteSubmapL"
+        (prop_deleteSubmapL :: WS -> WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_deleteSubmapR"
+        (prop_deleteSubmapR :: WS -> WTrie Int -> Bool)
     --
     , QC.testProperty
         "prop_intersectL"
@@ -178,11 +184,17 @@ smallcheckTests
     , SC.testProperty
         "prop_submap2"
         (prop_submap2       :: WS -> WTrie () -> Bool)
-    {- -- Was commented out for some reason...
+    {- -- Trivial because all values are ()
     , SC.testProperty
         "prop_submap3"
         (prop_submap3       :: WS -> WTrie () -> Bool)
     -}
+    , SC.testProperty
+        "prop_deleteSubmapL"
+        (prop_deleteSubmapL :: WS -> WTrie () -> Bool)
+    , SC.testProperty
+        "prop_deleteSubmapR"
+        (prop_deleteSubmapR :: WS -> WTrie () -> Bool)
     ]
   , Tasty.testGroup "@Int"
     [ SC.testProperty
@@ -359,6 +371,14 @@ prop_submap3 :: (Eq a) => WS -> WTrie a -> Bool
 prop_submap3 (WS k) (WT t) =
     ((`T.lookup` t') .==. (`T.lookup` t)) `all` T.keys t'
     where t' = T.submap k t
+
+prop_deleteSubmapL :: (Eq a) => WS -> WTrie a -> Bool
+prop_deleteSubmapL (WS k) (WT t) =
+    t == T.unionL (T.submap k t) (T.deleteSubmap k t)
+
+prop_deleteSubmapR :: (Eq a) => WS -> WTrie a -> Bool
+prop_deleteSubmapR (WS k) (WT t) =
+    t == T.unionR (T.submap k t) (T.deleteSubmap k t)
 
 -- | Left-biased @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
 prop_intersectL :: (Eq a) => WTrie a -> WTrie a -> Bool

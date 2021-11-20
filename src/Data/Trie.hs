@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 ----------------------------------------------------------------
---                                                  ~ 2021.11.14
+--                                                  ~ 2021.11.20
 -- |
 -- Module      :  Data.Trie
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -47,8 +47,8 @@ module Data.Trie
     -- * Query functions
     , lookupBy, lookup, member, submap, match, minMatch, matches
 
-    -- * Single-value modification
-    , alterBy, insert, adjust, delete
+    -- * Simple modification
+    , alterBy, insert, adjust, delete, deleteSubmap
 
     -- * Combining tries
     , mergeBy, unionL, unionR
@@ -155,7 +155,7 @@ matches t q = map f (matches_ t q)
 
 
 {---------------------------------------------------------------
--- Single-value modification functions (recurse and clone spine)
+-- Simple modification functions (recurse and clone spine)
 ---------------------------------------------------------------}
 
 -- | Insert a new key. If the key is already present, overrides the
@@ -174,6 +174,11 @@ adjust f q = adjustBy (\_ _ -> f) q (impossible "adjust")
 delete :: ByteString -> Trie a -> Trie a
 {-# INLINE delete #-}
 delete q = alterBy (\_ _ _ -> Nothing) q (impossible "delete")
+
+-- | Remove all keys beginning with a prefix.
+deleteSubmap :: ByteString -> Trie a -> Trie a
+{-# INLINE deleteSubmap #-}
+deleteSubmap q = alterBy_ (\_ _ _ t -> (Nothing, t)) q (impossible "deleteSubmap")
 
 
 {---------------------------------------------------------------

@@ -6,7 +6,7 @@
 {-# LANGUAGE CPP #-}
 
 ------------------------------------------------------------
---                                              ~ 2021.11.14
+--                                              ~ 2021.11.20
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -40,7 +40,7 @@ module Data.Trie.Internal
     , lookupBy_, submap
     , match_, matches_
 
-    -- * Single-value modification
+    -- * Simple modification
     , alterBy, alterBy_, adjustBy
 
     -- * Combining tries
@@ -866,7 +866,7 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
 
 
 {-----------------------------------------------------------
--- Single-value modification functions (recurse and clone spine)
+-- Simple modification functions (recurse and clone spine)
 -----------------------------------------------------------}
 
 -- TODO: We should CPS on Empty to avoid cloning spine if no change.
@@ -881,7 +881,10 @@ alterBy :: (ByteString -> a -> Maybe a -> Maybe a)
          -> ByteString -> a -> Trie a -> Trie a
 alterBy f = alterBy_ (\k v mv t -> (f k v mv, t))
 -- TODO: use GHC's 'inline' function so that this gets specialized away.
--- TODO: benchmark to be sure that this doesn't introduce unforseen performance costs because of the uncurrying etc.
+-- TODO: benchmark to be sure that this doesn't introduce unforseen
+--  performance costs because of the uncurrying etc.
+-- TODO: move to "Data.Trie" itself instead of here, since it doesn't
+--  depend on any internals (unless we actually do the CPS optimization).
 
 
 -- | A variant of 'alterBy' which also allows modifying the sub-trie.

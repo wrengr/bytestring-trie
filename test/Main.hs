@@ -200,57 +200,59 @@ quickcheckTests
 smallcheckTests :: Tasty.TestTree
 smallcheckTests
   = Tasty.testGroup "SmallCheck"
-  [ Tasty.testGroup "Trivial properties (@())"
+  [ Tasty.testGroup "Trivial properties (@W)"
     -- These use @()@ to reduce the problem of exponential growth.
+    -- Depth=4 is marginal here (takes about 2sec each)
     [ SC.testProperty
         "prop_insert"
-        (prop_insert        :: WS -> () -> WTrie () -> Bool)
+        (prop_insert        :: WS -> W -> WTrie W -> Bool)
     , SC.testProperty
         -- This one can easily handle depth=7 (takes about 0.15sec)
         "prop_singleton"
-        (prop_singleton     :: WS -> () -> Bool)
+        (prop_singleton     :: WS -> W -> Bool)
     , SC.testProperty
         "prop_size_insert"
-        (prop_size_insert   :: WS -> () -> WTrie () -> SC.Property IO)
+        (prop_size_insert   :: WS -> W -> WTrie W -> SC.Property IO)
     , SC.testProperty
         "prop_size_delete"
-        (prop_size_delete   :: WS -> () -> WTrie () -> SC.Property IO)
+        (prop_size_delete   :: WS -> W -> WTrie W -> SC.Property IO)
     , SC.testProperty
         "prop_insert_delete"
-        (prop_insert_delete :: WS -> () -> WTrie () -> SC.Property IO)
+        (prop_insert_delete :: WS -> W -> WTrie W -> SC.Property IO)
     , SC.testProperty
         "prop_delete_lookup"
-        (prop_delete_lookup :: WS -> WTrie () -> SC.Property IO)
+        (prop_delete_lookup :: WS -> WTrie W -> SC.Property IO)
     ]
-  , Tasty.testGroup "Submap properties (@())"
+  , Tasty.testGroup "Submap properties (@W)"
+    -- Depth=4 is okay here (takes about 0.5sec each)
     [ SC.testProperty
         "prop_submap_keysAreMembers"
-        (prop_submap_keysAreMembers :: WS -> WTrie () -> Bool)
+        (prop_submap_keysAreMembers :: WS -> WTrie W -> Bool)
     , SC.testProperty
         "prop_submap_keysHavePrefix"
-        (prop_submap_keysHavePrefix :: WS -> WTrie () -> Bool)
-    {- -- Trivial because all values are ()
+        (prop_submap_keysHavePrefix :: WS -> WTrie W -> Bool)
     , SC.testProperty
         "prop_submap_valuesEq"
-        (prop_submap_valuesEq       :: WS -> WTrie () -> Bool)
-    -}
+        (prop_submap_valuesEq       :: WS -> WTrie W -> Bool)
     , SC.testProperty
         "prop_deleteSubmap_keysAreMembers"
-        (prop_deleteSubmap_keysAreMembers :: WS -> WTrie () -> Bool)
+        (prop_deleteSubmap_keysAreMembers :: WS -> WTrie W -> Bool)
     , SC.testProperty
         "prop_deleteSubmap_keysLackPrefix"
-        (prop_deleteSubmap_keysLackPrefix :: WS -> WTrie () -> Bool)
+        (prop_deleteSubmap_keysLackPrefix :: WS -> WTrie W -> Bool)
     , SC.testProperty
         "prop_deleteSubmap_disunion"
-        (prop_deleteSubmap_disunion :: WS -> WTrie () -> Bool)
+        (prop_deleteSubmap_disunion :: WS -> WTrie W -> Bool)
     ]
-  , Tasty.testGroup "Intersection properties (@Int)"
+  , Tasty.testGroup "Intersection properties (@W/@Int)"
+    -- Warning: Using depth=4 here is bad (the first two take about
+    -- 26.43sec; the last one much longer).
     [ SC.testProperty
         "prop_intersectL"
-        (prop_intersectL    :: WTrie Int -> WTrie Int -> Bool)
+        (prop_intersectL    :: WTrie W -> WTrie W -> Bool)
     , SC.testProperty
         "prop_intersectR"
-        (prop_intersectR    :: WTrie Int -> WTrie Int -> Bool)
+        (prop_intersectR    :: WTrie W -> WTrie W -> Bool)
     , SC.testProperty
         "prop_intersectPlus"
         (prop_intersectPlus :: WTrie Int -> WTrie Int -> Bool)

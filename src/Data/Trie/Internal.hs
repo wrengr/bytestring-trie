@@ -330,10 +330,12 @@ instance Monad Trie where
 
     (>>=) Empty              _ = empty
     (>>=) (Branch p m l r)   f = branch p m (l >>= f) (r >>= f)
-    (>>=) (Arc k Nothing  t) f = arc_ k (t >>= f)
+    (>>=) (Arc k Nothing  t) f = prepend k (t >>= f)
     (>>=) (Arc k (Just v) t) f = arc_ k (f v `unionL` (t >>= f))
                                where
                                unionL = mergeBy (\x _ -> Just x)
+                               arc_ q | S.null q  = id
+                                      | otherwise = prepend q
 
 
 #if MIN_VERSION_base(4,9,0)
@@ -388,8 +390,8 @@ filterMap :: (a -> Maybe b) -> Trie a -> Trie b
 filterMap f = go
     where
     go Empty              = empty
-    go (Arc k Nothing  t) = arc_ k       (go t)
-    go (Arc k (Just v) t) = arc  k (f v) (go t)
+    go (Arc k Nothing  t) = prepend k   (go t)
+    go (Arc k (Just v) t) = arc k (f v) (go t)
     go (Branch p m l r)   = branch p m (go l) (go r)
 
 
@@ -400,8 +402,8 @@ mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
 mapBy f = go S.empty
     where
     go _ Empty              = empty
-    go q (Arc k Nothing  t) = arc_ k          (go q' t) where q' = q <> k
-    go q (Arc k (Just v) t) = arc  k (f q' v) (go q' t) where q' = q <> k
+    go q (Arc k Nothing  t) = prepend k      (go q' t) where q' = q <> k
+    go q (Arc k (Just v) t) = arc k (f q' v) (go q' t) where q' = q <> k
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
 
@@ -431,8 +433,8 @@ contextualFilterMap :: (a -> Trie a -> Maybe b) -> Trie a -> Trie b
 contextualFilterMap f = go
     where
     go Empty              = empty
-    go (Arc k Nothing  t) = arc_ k         (go t)
-    go (Arc k (Just v) t) = arc  k (f v t) (go t)
+    go (Arc k Nothing  t) = prepend k     (go t)
+    go (Arc k (Just v) t) = arc k (f v t) (go t)
     go (Branch p m l r)   = branch p m (go l) (go r)
 
 
@@ -442,8 +444,8 @@ contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
 contextualMapBy f = go S.empty
     where
     go _ Empty              = empty
-    go q (Arc k Nothing  t) = arc_ k            (go q' t) where q' = q <> k
-    go q (Arc k (Just v) t) = arc  k (f q' v t) (go q' t) where q' = q <> k
+    go q (Arc k Nothing  t) = prepend k        (go q' t) where q' = q <> k
+    go q (Arc k (Just v) t) = arc k (f q' v t) (go q' t) where q' = q <> k
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
 
@@ -460,34 +462,37 @@ branch p m l     r     = Branch p m l r
 
 
 -- | Smart constructor to prune @Arc@s that lead nowhere.
--- N.B if mv=Just then doesn't check that t /= (Arc S.empty (Just _) _).
--- It's up to callers to ensure that invariant isn't broken.
+-- N.B if mv=Just then doesn't check that t /= (Arc S.empty (Just _) _);
+-- it's up to callers to ensure that invariant isn't broken.
 arc :: ByteString -> Maybe a -> Trie a -> Trie a
 {-# INLINE arc #-}
-arc k mv@(Just _) t = Arc k mv t
-arc k    Nothing  t = arc_ k t
+arc k mv@(Just _) = Arc k mv
+arc k    Nothing
+    | S.null k  = id
+    | otherwise = prepend k
 
--- | Variant of `arc` smart constructor, for when we know there's no value.
-arc_ :: ByteString -> Trie a -> Trie a
-{-# INLINE arc_ #-}
-arc_ _   Empty            = Empty
-arc_ k t@(Branch{})       = if S.null k then t else Arc k Nothing t
-arc_ k   (Arc k' mv' t')  = Arc (k <> k') mv' t'
-{-
--- TODO: benchmark using this version instead.
--- Changes: Resolves the @S.null k@ check before case analysis on
--- @t@, and shares the Arc when @k@ is null.
-arc_ k t | S.null k    = t
-arc_ _ t@Empty         = t
-arc_ k t@(Branch{})    = Arc k Nothing t
-arc_ k (Arc k' mv' t') = Arc (k <> k') mv' t'
--}
--- TODO: that variant also raises the suggestion of defining two
--- further variants (one for Nothing and one for Maybe[1]) for when
--- we statically know the sring is non-null (e.g. all the @(Arc _ Nothing _)@
--- cases in the folds\/maps above; since we know Arc only allows
--- null when there's a value.
--- [1]: Though the majority of cases where this would apply are `arc_`; and vice-versa (there are very few places `arc_` is used where the nullity of the string is unknown; but some are: @(>>=)@, 'arc' itself, 'submap')
+-- | Variant of `arc` where the string is known to be non-null.
+arcNN :: ByteString -> Maybe a -> Trie a -> Trie a
+{-# INLINE arcNN #-}
+arcNN k mv@(Just _) = Arc k mv
+arcNN k    Nothing  = prepend k
+
+-- | Prepend a non-empty string to a trie.  Relies on the caller
+-- to ensure that the string is non-empty.
+prepend :: ByteString -> Trie a -> Trie a
+{-# INLINE prepend #-}
+prepend _ t@Empty         = t
+prepend k t@(Branch{})    = Arc k Nothing t
+prepend k (Arc k' mv' t') = Arc (k <> k') mv' t'
+
+-- | Variant of `arc` for when the string is known to be empty.
+-- Does not verify that the trie argument is not already contain
+-- an epsilon value; is up to the caller to ensure correctness.
+epsilon :: Maybe a -> Trie a -> Trie a
+{-# INLINE epsilon #-}
+epsilon Nothing     = id
+epsilon mv@(Just _) = Arc S.empty mv
+
 
 -- | Smart constructor to join two tries into a @Branch@ with maximal
 -- prefix sharing. Requires knowing the prefixes, but can combine
@@ -740,7 +745,9 @@ lookupBy_ f z a = lookupBy_'
 -- | Return the subtrie containing all keys beginning with a prefix.
 submap :: ByteString -> Trie a -> Trie a
 {-# INLINE submap #-}
-submap q = lookupBy_ (arc q) empty (arc_ q) q
+submap q
+    | S.null q  = id
+    | otherwise = lookupBy_ (arcNN q) empty (prepend q) q
 {-  -- Disable superfluous error checking.
     -- @submap'@ would replace the first argument to @lookupBy_@
     where
@@ -913,21 +920,24 @@ alterBy f q x = alterBy_ (\mv t -> (f q x mv, t)) q
 
 
 -- | A variant of 'alterBy' which also allows modifying the sub-trie.
+-- If the function returns @(Just v, t)@ and @lookup S.empty t ==
+-- Just w@, then the @w@ will be overwritten by @v@.
 --
 -- /Type changed in 0.2.6/
 alterBy_
     :: (Maybe a -> Trie a -> (Maybe a, Trie a))
     -> ByteString -> Trie a -> Trie a
-alterBy_ f q_
-    | S.null q_ = alterEpsilon
-    | otherwise = go q_
+alterBy_ f = start
     where
-    nothing q = uncurry (arc q) (f Nothing Empty)
+    start q
+        | S.null q  = alterEpsilon
+        | otherwise = go q
 
-    alterEpsilon t_@Empty                    = uncurry (arc q_) (f Nothing t_)
-    alterEpsilon t_@(Branch{})               = uncurry (arc q_) (f Nothing t_)
-    alterEpsilon t_@(Arc k mv t) | S.null k  = uncurry (arc q_) (f mv      t)
-                                 | otherwise = uncurry (arc q_) (f Nothing t_)
+    alterEpsilon (Arc k mv t) | S.null k = uncurry epsilon (f mv      t)
+    alterEpsilon t_                      = uncurry epsilon (f Nothing t_)
+
+    -- @go@ is always called with non-null @q@, therefore @nothing@ is too.
+    nothing q = uncurry (arcNN q) (f Nothing Empty)
 
     go q Empty            = nothing q
     go q t@(Branch p m l r)
@@ -939,15 +949,15 @@ alterBy_ f q_
     go q t_@(Arc k mv t) =
         let (p,k',q') = breakMaximalPrefix k q in
         case (S.null k', S.null q') of
-        (False, True)  -> -- add node to middle of arc
-                          uncurry (arc p) (f Nothing (Arc k' mv t))
+        (False, True)  -> -- add node to middle of Arc
+                          uncurry (arcNN p) (f Nothing (Arc k' mv t))
         (False, False) ->
             case nothing q' of
-            Empty -> t_ -- Nothing to add, reuse old arc
+            Empty -> t_ -- Nothing to add, reuse old Arc
             l     -> arc' (branchMerge (getPrefix l) l (getPrefix r) r)
                     where
                     r = Arc k' mv t
-                    -- inlined variant of @arc_ p@, which captures
+                    -- inlined variant of @arc p Nothing@, which captures
                     -- the invariant that the result of 'branchMerge'
                     -- above must be a Branch (because neither @l@ nor
                     -- @r@ are Empty)
@@ -981,8 +991,8 @@ adjust f = start
     go q t_@(Arc k mv t) =
         let (_,k',q') = breakMaximalPrefix k q in
         case (S.null k', S.null q') of
-        (False, True)  -> t_ -- don't break arc inline
-        (False, False) -> t_ -- don't break arc branching
+        (False, True)  -> t_ -- don't break Arc inline
+        (False, False) -> t_ -- don't break Arc branching
         (True,  True)  -> Arc k (liftM f mv) t
         (True,  False) -> Arc k mv (go q' t)
 
@@ -1007,9 +1017,9 @@ mergeBy f = mergeBy'
     mergeBy'
         t0_@(Arc k0 mv0 t0)
         t1_@(Arc k1 mv1 t1)
-        | S.null k0 && S.null k1 = arc k0 (mergeMaybe f mv0 mv1) (go t0 t1)
-        | S.null k0              = arc k0 mv0 (go t0 t1_)
-        |              S.null k1 = arc k1 mv1 (go t1 t0_)
+        | S.null k0 && S.null k1 = epsilon (mergeMaybe f mv0 mv1) (go t0 t1)
+        | S.null k0              = epsilon mv0 (go t0 t1_)
+        |              S.null k1 = epsilon mv1 (go t1 t0_)
     mergeBy'
         (Arc k0 mv0@(Just _) t0)
         t1_@(Branch{})
@@ -1062,10 +1072,10 @@ mergeBy f = mergeBy'
                         t1' = Arc k1' mv1 t1
                     in
                     case (S.null k0', S.null k1') of
-                    (True, True)  -> arc  pre (mergeMaybe f mv0 mv1) (go t0 t1)
-                    (True, False) -> arc  pre mv0 (go t0  t1')
-                    (False,True)  -> arc  pre mv1 (go t0' t1)
-                    (False,False) -> arc_ pre     (go t0' t1')
+                    (True, True)  -> arcNN pre (mergeMaybe f mv0 mv1) (go t0 t1)
+                    (True, False) -> arcNN pre mv0 (go t0  t1')
+                    (False,True)  -> arcNN pre mv1 (go t0' t1)
+                    (False,False) -> prepend pre (go t0' t1')
         go' (Arc{})
             (Branch _p1 m1 l r)
             | nomatch p0 p1 m1 = branchMerge p1 t1_  p0 t0_
@@ -1100,7 +1110,7 @@ intersectBy f = intersectBy'
     intersectBy'
         t0_@(Arc k0 mv0 t0)
         t1_@(Arc k1 mv1 t1)
-        | S.null k0 && S.null k1 = arc k0 (intersectMaybe f mv0 mv1) (go t0 t1)
+        | S.null k0 && S.null k1 = epsilon (intersectMaybe f mv0 mv1) (go t0 t1)
         | S.null k0              = go t0 t1_
         |              S.null k1 = go t0_ t1
     intersectBy'
@@ -1144,10 +1154,10 @@ intersectBy f = intersectBy'
                     t1' = Arc k1' mv1 t1
                 in
                 case (S.null k0', S.null k1') of
-                (True, True)  -> arc  pre (intersectMaybe f mv0 mv1) (go t0 t1)
-                (True, False) -> arc_ pre (go t0  t1')
-                (False,True)  -> arc_ pre (go t0' t1)
-                (False,False) -> arc_ pre (go t0' t1')
+                (True, True)  -> arcNN pre (intersectMaybe f mv0 mv1) (go t0 t1)
+                (True, False) -> prepend pre (go t0  t1')
+                (False,True)  -> prepend pre (go t0' t1)
+                (False,False) -> prepend pre (go t0' t1')
         where
         p0 = getPrefix t0_
         p1 = getPrefix t1_
@@ -1222,7 +1232,7 @@ updateMinViewBy f = go S.empty
     where
     go _ Empty              = Nothing
     go q (Arc k (Just v) t) = Just (q',v, arc k (f q' v) t) where q' = q <> k
-    go q (Arc k Nothing  t) = mapView (arc_ k) (go (q <> k) t)
+    go q (Arc k Nothing  t) = mapView (prepend k) (go (q <> k) t)
     go q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
 
 

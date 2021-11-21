@@ -26,6 +26,11 @@ import qualified Data.Trie              as T
 import qualified Data.Trie.Convenience  as TC
 import qualified Data.ByteString        as S
 
+import qualified System.Exit            as System (exitSuccess, exitFailure)
+import qualified System.IO              as System (hPutStrLn, stderr)
+import qualified Test.Tasty.Ingredients as Tasty (tryIngredients)
+import qualified Test.Tasty.Options     as Tasty (singleOption, OptionSet)
+import qualified Test.Tasty.Runners     as Tasty (installSignalHandlers, parseOptions)
 import qualified Test.Tasty             as Tasty
 import qualified Test.Tasty.SmallCheck  as SC
 import qualified Test.Tasty.QuickCheck  as QC
@@ -35,8 +40,41 @@ import Data.Ord  (comparing)
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
+-- We can't use 'Tasty.defaultMain' together with 'Tasty.localOption',
+-- because what we want to do is to set new defaults but still allow
+-- the commandline to override those defaults, and I don't see any
+-- way to do that with 'Tasty.defaultMain'.
+--
+-- TODO: Still need some way to remove the few remaining
+-- 'Tasty.localOption' calls that aren't global...
 main :: IO ()
-main = Tasty.defaultMain tests
+main = do
+  let ins = Tasty.defaultIngredients
+  Tasty.installSignalHandlers
+  opts <- Tasty.parseOptions ins tests
+  case Tasty.tryIngredients ins (globalOptions <> opts) tests of
+    Nothing -> do
+      System.hPutStrLn System.stderr
+        "No ingredients agreed to run. Something is wrong."
+      System.exitFailure
+    Just act -> do
+      ok <- act
+      if ok
+        then System.exitSuccess
+        else System.exitFailure
+
+-- We add the timeout for the sake of GithubActions CI, so we don't
+-- accidentally blow our budget.  Since 'tests' actually runs in
+-- around 7~8sec normally (or 10sec with HPC enabled), allowing
+-- 30sec is more than generous.
+globalOptions :: Tasty.OptionSet
+globalOptions = mconcat
+    [ Tasty.singleOption (Tasty.mkTimeout 30000000)  -- 30sec; in microsecs
+    , Tasty.singleOption (QC.QuickCheckTests    500) -- QC.Args.maxSuccess
+    , Tasty.singleOption (QC.QuickCheckMaxSize  400) -- QC.Args.maxSize
+    , Tasty.singleOption (QC.QuickCheckMaxRatio 10)  -- QC.Args.maxDiscardRatio
+    , Tasty.singleOption (SC.SmallCheckDepth    3)
+    ]
 
 tests :: Tasty.TestTree
 tests =
@@ -80,10 +118,7 @@ to do that without GADTs or impredicativity?
 
 quickcheckTests :: Tasty.TestTree
 quickcheckTests
-  = Tasty.localOption (QC.QuickCheckTests    500) -- QC.Args.maxSuccess
-  . Tasty.localOption (QC.QuickCheckMaxSize  400) -- QC.Args.maxSize
-  . Tasty.localOption (QC.QuickCheckMaxRatio 10)  -- QC.Args.maxDiscardRatio
-  $ Tasty.testGroup "QuickCheck"
+  = Tasty.testGroup "QuickCheck"
   [ Tasty.testGroup "Trivial properties (@Int)"
     [ QC.testProperty
         "prop_insert"
@@ -125,6 +160,7 @@ quickcheckTests
         (prop_deleteSubmap_disunion :: WS -> WTrie Int -> Bool)
     ]
   , Tasty.localOption (QC.QuickCheckMaxSize 300)
+    -- BUG: fix that 'Tasty.localOption'
   $ Tasty.testGroup "Intersection properties (@Int)"
     [ QC.testProperty
         "prop_intersectL"
@@ -163,15 +199,14 @@ quickcheckTests
 
 smallcheckTests :: Tasty.TestTree
 smallcheckTests
-  = Tasty.localOption (SC.SmallCheckDepth 3)
-  $ Tasty.testGroup "SmallCheck"
+  = Tasty.testGroup "SmallCheck"
   [ Tasty.testGroup "Trivial properties (@())"
     -- These use @()@ to reduce the problem of exponential growth.
     [ SC.testProperty
         "prop_insert"
         (prop_insert        :: WS -> () -> WTrie () -> Bool)
-    , Tasty.localOption (SC.SmallCheckDepth 7)
-      $ SC.testProperty
+    , SC.testProperty
+        -- This one can easily handle depth=7 (takes about 0.15sec)
         "prop_singleton"
         (prop_singleton     :: WS -> () -> Bool)
     , SC.testProperty

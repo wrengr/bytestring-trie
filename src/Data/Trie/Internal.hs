@@ -1019,7 +1019,7 @@ mergeBy f = mergeBy'
         t1_@(Arc k1 mv1 t1)
         | S.null k0 && S.null k1 = epsilon (mergeMaybe f mv0 mv1) (go t0 t1)
         | S.null k0              = epsilon mv0 (go t0 t1_)
-        |              S.null k1 = epsilon mv1 (go t1 t0_)
+        |              S.null k1 = epsilon mv1 (go t0_ t1)
     mergeBy'
         (Arc k0 mv0@(Just _) t0)
         t1_@(Branch{})
@@ -1027,7 +1027,7 @@ mergeBy f = mergeBy'
     mergeBy'
         t0_@(Branch{})
         (Arc k1 mv1@(Just _) t1)
-        | S.null k1              = Arc k1 mv1 (go t1 t0_)
+        | S.null k1              = Arc k1 mv1 (go t0_ t1)
     mergeBy' t0_ t1_             = go t0_ t1_
 
     -- | The main recursion

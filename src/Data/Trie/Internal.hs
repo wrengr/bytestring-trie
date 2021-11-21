@@ -455,11 +455,20 @@ arc_ :: ByteString -> Trie a -> Trie a
 arc_ _   Empty            = Empty
 arc_ k t@(Branch{})       = if S.null k then t else Arc k Nothing t
 arc_ k   (Arc k' mv' t')  = Arc (k <> k') mv' t'
--- TODO: perhaps we should hoist the @S.null k@ check above the
--- case on @t@, like for the @arc'@ in 'alterBy_' (circa line 918).
--- It would increase the cost of the Empty case, but it would
--- simplify the Arc case (both avoiding the append, and allowing
--- sharing of the original Arc).
+{-
+-- TODO: benchmark using this version instead.
+-- Changes: Resolves the @S.null k@ check before case analysis on
+-- @t@, and shares the Arc when @k@ is null.
+arc_ k t | S.null k    = t
+arc_ _ t@Empty         = t
+arc_ k t@(Branch{})    = Arc k Nothing t
+arc_ k (Arc k' mv' t') = Arc (k <> k') mv' t'
+-}
+-- TODO: that variant also raises the suggestion of defining a
+-- further specialized variant for when we statically know the sring
+-- is non-null (e.g. all the @(Arc _ Nothing_)@ cases in the
+-- folds\/maps above; since we know Arc only allows null when there's
+-- a value.
 
 -- | Smart constructor to join two tries into a @Branch@ with maximal
 -- prefix sharing. Requires knowing the prefixes, but can combine
@@ -919,7 +928,10 @@ alterBy_ f q_
             l     -> arc' (branchMerge (getPrefix l) l (getPrefix r) r)
                     where
                     r = Arc k' mv t
-                    -- inlined variant of @arc_ p@
+                    -- inlined variant of @arc_ p@, which captures
+                    -- the invariant that the result of 'branchMerge'
+                    -- above must be a Branch (because neither @l@ nor
+                    -- @r@ are Empty)
                     arc' | S.null p  = id
                          | otherwise = Arc p Nothing
         (True, True)  -> uncurry (arc k) (f mv t)

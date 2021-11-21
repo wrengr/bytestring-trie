@@ -1135,12 +1135,12 @@ intersectBy f = intersectBy'
         where
         intersection0
             | nomatch p1 p0 m0  = Empty
-            | zero p1 m0        = branch p0 m0 (go l0 t1) Empty
-            | otherwise         = branch p0 m0 Empty (go r0 t1)
+            | zero p1 m0        = go l0 t1
+            | otherwise         = go r0 t1
         intersection1
             | nomatch p0 p1 m1  = Empty
-            | zero p0 m1        = branch p1 m1 (go t0 l1) Empty
-            | otherwise         = branch p1 m1 Empty (go t0 r1)
+            | zero p0 m1        = go t0 l1
+            | otherwise         = go t0 r1
     go t0_@(Arc k0 mv0 t0)
        t1_@(Arc k1 mv1 t1)
         | m' == 0 =
@@ -1165,16 +1165,16 @@ intersectBy f = intersectBy'
     go t0_@(Arc{})
        t1_@(Branch _p1 m1 l r)
         | nomatch p0 p1 m1 = Empty
-        | zero p0 m1       = branch p1 m1 (go t0_ l) Empty
-        | otherwise        = branch p1 m1 Empty (go t0_ r)
+        | zero p0 m1       = go t0_ l
+        | otherwise        = go t0_ r
         where
         p0 = getPrefix t0_
         p1 = getPrefix t1_
     go t0_@(Branch _p0 m0 l r)
        t1_@(Arc{})
         | nomatch p1 p0 m0 = Empty
-        | zero p1 m0       = branch p0 m0 (go l t1_) Empty
-        | otherwise        = branch p0 m0 Empty (go r t1_)
+        | zero p1 m0       = go l t1_
+        | otherwise        = go r t1_
         where
         p0 = getPrefix t0_
         p1 = getPrefix t1_

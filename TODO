@@ -6,6 +6,25 @@
 * Also, tell Setup.hs so that `cabal test` and `runhaskell Setup.hs
   test` call the test suite.
 
+Coverage:
+* Data.Trie:
+    elems, lookupBy, match, minMatch, matches, adjustBy
+* Data.Trie.ByteStringInternal:
+    breakMaximalPrefix: evaluate the prefix when either of the arguments is null
+        (Just for the nice HPC numbers)
+* Data.Trie.Convenience:
+    fromListWith', fromListWithL', lookupWithDefault, insertWith, insertWith', insertWithKey, insertWithKey', adjustWithKey, update, updateWithKey, unionWith, unionWith', intersectWith, intersectWith'
+    fromListWith, fromListWithL: use @f@ that evaluates the second argument
+* Data.Trie.Internal:
+    showsPrec, showTrie, put, get, fmap, foldMap, traverse, pure, (<*>), (<>), mempty, filterMap, mapBy, contextualMap, contextualMap', contextualFilterMap, contextualMapBy, cata_, cata, match_, matches_, matchFB_, adjust, minAssoc, maxAssoc, updateMinViewBy, updateMaxViewBy
+    (>>=): bits and pieces.
+    arc:    is never called with null @k@... (failing to capture invariants? or not enough testing?)
+    getPrefix: (Arc S.empty _ _)
+    lookupBy_: null query
+    mergeBy: either argument has epsilon value
+    intersectBy: either argument has epsilon value; Arc/Arc/prepend cases
+
+
 
 Data.Trie.Internal:
 * shouldn't the smart constructors be INLINE-ed?

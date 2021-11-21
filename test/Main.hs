@@ -286,10 +286,10 @@ test_Intersect =
     b = packC2W "b"
     c = packC2W "c"
     tLeft, tRight, tRightResult, tLeftResult :: T.Trie Int
-    tLeft        = T.fromList [(a,0), (b,2)]
-    tRight       = T.fromList [(a,1), (c,3)]
-    tLeftResult  = T.fromList [(a,0)]
-    tRightResult = T.fromList [(a,1)]
+    tLeft        = T.fromList [(S.empty,0), (a,1), (b,3)]
+    tRight       = T.fromList [             (a,2), (c,4)]
+    tLeftResult  = T.fromList [(a,1)]
+    tRightResult = T.fromList [(a,2)]
     -- TODO: better unit test for when one string is prefix of another.
 
 ----------------------------------------------------------------

@@ -33,11 +33,17 @@ be able to use the standard:
 ## Portability
 
 The implementation is quite portable, relying only on a few basic
-language extensions. The complete list of extensions used is:
+language extensions. The complete list of extensions used by the library is:
 
 * CPP
-* MagicHash 
+* MagicHash -- Only if using GHC
 * NoImplicitPrelude
+
+The test suite uses a few additional extensions:
+
+* MultiParamTypeClasses
+* FlexibleInstances
+* FlexibleContexts
 
 ## Links
 

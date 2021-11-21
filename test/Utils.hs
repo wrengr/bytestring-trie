@@ -3,7 +3,6 @@
            , MultiParamTypeClasses
            , FlexibleInstances
            , FlexibleContexts
-           , TypeSynonymInstances
            #-}
 
 ----------------------------------------------------------------

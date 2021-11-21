@@ -1,13 +1,11 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 {-# LANGUAGE CPP
            , MultiParamTypeClasses
-           , FlexibleInstances
            , FlexibleContexts
-           , TypeSynonymInstances
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.20
+--                                                  ~ 2021.11.21
 -- |
 -- Module      :  test/Main
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano

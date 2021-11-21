@@ -7,7 +7,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.20
+--                                                  ~ 2021.11.21
 -- |
 -- Module      :  test/Utils.hs
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -67,7 +67,7 @@ vocab2trie  = T.fromList . flip zip [0..] . map packC2W
 -- | Convert most of 'QC.Args' into Tasty.  There are a few QuickCheck
 -- args which are not handled:
 --
---  * 'QC.maxShrinks' if tasty<1.4.3, because
+--  * 'QC.maxShrinks' if tasty-quickcheck<0.10.2, because
 --    'TastyQC.QuickCheckMaxShrinks' is not exported.
 --    <https://github.com/UnkindPartition/tasty/issues/316>
 --  * 'QC.chatty' because Tasty always ignores this setting.
@@ -81,9 +81,7 @@ localQuickCheckOptions args
     = Tasty.localOption (TastyQC.QuickCheckTests      $ QC.maxSuccess      args)
     . Tasty.localOption (TastyQC.QuickCheckMaxSize    $ QC.maxSize         args)
     . Tasty.localOption (TastyQC.QuickCheckMaxRatio   $ QC.maxDiscardRatio args)
-#if MIN_VERSION_tasty(1,4,3)
-    -- Actually that should be tasty-1.4.2.1 per the bug ticket;
-    -- but cabal cpp macros can't say that.
+#if MIN_VERSION_tasty_quickcheck(0,10,2)
     . Tasty.localOption (TastyQC.QuickCheckMaxShrinks $ QC.maxShrinks      args)
 #endif
 {-

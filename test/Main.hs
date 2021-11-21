@@ -37,6 +37,13 @@ import qualified Test.Tasty.QuickCheck  as QC
 
 import Data.List (nubBy, sortBy)
 import Data.Ord  (comparing)
+#if MIN_VERSION_base(4,9,0)
+-- FIXME: we're getting warnings about this being unnecessary on
+-- GHC 9.2.1; which version re-exports this from the Prelude?
+import Data.Semigroup      ((<>))
+#elif MIN_VERSION_base(4,5,0)
+import Data.Monoid         ((<>))
+#endif
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 

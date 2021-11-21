@@ -103,62 +103,80 @@ outgoing arcs from a given Node we have ArcSet be a big-endian
 patricia tree like Data.IntMap. In order to simplify things we then
 go through a series of derivations.
 
-data Node a   = Accept a (ArcSet a)
-              | Reject   (Branch a)          -- Invariant: Must be Branch
-data Arc a    = Arc    ByteString (Node a)   -- Invariant: never empty string
-data ArcSet a = None
-              | One    {KeyElem} (Arc a)
-              | Branch {Prefix} {Mask} (ArcSet a) (ArcSet a)
-data Trie a   = Empty
-              | Start  ByteString (Node a)   -- Maybe empty string [1]
+    data Node a   = Accept a (ArcSet a)
+                  | Reject   (Branch a)
+    data Arc a    = Arc    ByteString (Node a)
+    data ArcSet a = None
+                  | One    KeyElem (Arc a)
+                  | Many           (Branch a)
+    data Branch a = Branch {Prefix} {Mask} (ArcSet a) (ArcSet a)
+    data Trie a   = Empty
+                  | Start  (Arc a)  -- [1]
 
-[1] If we maintain the invariants on how Nodes recurse, then we
-can't simply have Start(Node a) because we may have a shared prefix
-where the prefix itself is not Accept'ed.
+[1]: N.B., we must allow constructing @Start(Arc pre (Reject b))@
+for non-null @pre@, so that we can have a shared prefix even though
+that prefix itself doesn't have an associated value.
 
+** Squash Arc into One and Start:
+For One, this allows combining the initial KeyElem with the rest
+of the ByteString, which is purely beneficial.  However, it does
+introduce some invariants since now we must distinguish NonEmptyBS
+vs NullableBS.
 
--- Squash Arc into One:
--- (pure good)
-data Node a   = Accept a (ArcSet a)
-              | Reject   (Branch a)
-data ArcSet a = None
-              | Arc    ByteString (Node a)
-              | Branch {Prefix} {Mask} (ArcSet a) (ArcSet a)
-data Trie a   = Empty
-              | Start  ByteString (Node a)
+    newtype NonEmptyBS = NonEmptyBS ByteString  -- Invariant: never empty
+    newtype NullableBS = NullableBS Bytestring  -- May be empty.
 
+    data Node a   = Accept a (ArcSet a)
+                  | Reject   (Branch a)
+    data ArcSet a = None
+                  | Arc    NonEmptyBS (Node a)
+                  | Many              (Branch a)
+    data Branch a = Branch {Prefix} {Mask} (ArcSet a) (ArcSet a)
+    data Trie a   = Empty
+                  | Start  NullableBS (Node a)
 
--- Squash Node together:
--- (most likely good)
-data Node a   = Node (Maybe a) (ArcSet a)
-data ArcSet a = None
-              | Arc    ByteString (Node a)
-              | Branch {Prefix} {Mask} (ArcSet a) (ArcSet a)
-data Trie a   = Empty
-              | Start  ByteString (Node a)
+** Squash Accept and Reject together:
+Most likely beneficial, though it complicates stating the invariants
+about Node's recursion.
 
+    data Node a   = Node (Maybe a) (ArcSet a)
+                    -- Invariant: if Nothing then must be Branch
+    data ArcSet a = None
+                  | Arc    NonEmptyBS (Node a)
+                  | Many              (Branch a)
+    data Branch a = Branch {Prefix} {Mask} (ArcSet a) (ArcSet a)
+    data Trie a   = Empty
+                  | Start  NullableBS (Node a)
 
--- Squash Empty/None and Arc/Start together:
--- (This complicates invariants about non-empty strings and Node's
--- recursion, but those can be circumvented by using smart
--- constructors.)
-data Node a = Node (Maybe a) (ArcSet a)
-data Trie a = Empty
-            | Arc    ByteString (Node a)
-            | Branch {Prefix} {Mask} (Trie a) (Trie a)
+** Squash Branch into Many:
+Purely beneficial, since there's no point in keeping them distinct anymore.
 
+    data Node a   = Node (Maybe a) (ArcSet a)
+                    -- Invariant: if Nothing then must be Branch
+    data ArcSet a = None
+                  | Arc    NonEmptyBS (Node a)
+                  | Branch {Prefix} {Mask} (ArcSet a) (ArcSet a)
+    data Trie a   = Empty
+                  | Start  NullableBS (Node a)
 
--- Squash Node into Arc:
--- (By this point, pure good)
--- Unseen invariants:
--- * ByteString non-empty, unless Arc is absolute root of tree
--- * If (Maybe a) is Nothing, then (Trie a) is Branch
---   * With views, we could re-expand Arc into accepting and
---     nonaccepting variants
---
--- [2] Maybe we shouldn't unpack the ByteString. We could specialize
--- or inline the breakMaximalPrefix function to prevent constructing
--- a new ByteString from the parts...
+** Squash Empty/None and Arc/Start together:
+Alas, this complicates the invariants about non-empty strings.
+
+    data Node a = Node (Maybe a) (ArcSet a)
+                    -- Invariant: if Nothing then must be Branch
+    data Trie a = Empty
+                | Arc    ByteString (Node a)
+                    -- Invariant: empty string only allowed if both
+                    -- (a) the Arc is at the root, and
+                    -- (b) the Node has a value.
+                | Branch {Prefix} {Mask} (Trie a) (Trie a)
+
+** Squash Node into Arc:
+By this point, purely beneficial.  However, the two unseen invariants remain.
+
+[2] Maybe we shouldn't unpack the ByteString. We could specialize
+or inline the breakMaximalPrefix function to prevent constructing
+a new ByteString from the parts...
 -}
 -- | A map from 'ByteString's to @a@. For all the generic functions,
 -- note that tries are strict in the @Maybe@ but not in @a@.

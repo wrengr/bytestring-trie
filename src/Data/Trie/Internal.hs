@@ -460,8 +460,8 @@ branch p m l     r     = Branch p m l r
 
 
 -- | Smart constructor to prune @Arc@s that lead nowhere.
--- N.B if mv=Just then doesn't check whether t=epsilon. It's up to
--- callers to ensure that invariant isn't broken.
+-- N.B if mv=Just then doesn't check that t /= (Arc S.empty (Just _) _).
+-- It's up to callers to ensure that invariant isn't broken.
 arc :: ByteString -> Maybe a -> Trie a -> Trie a
 {-# INLINE arc #-}
 arc k mv@(Just _) t = Arc k mv t
@@ -482,11 +482,12 @@ arc_ _ t@Empty         = t
 arc_ k t@(Branch{})    = Arc k Nothing t
 arc_ k (Arc k' mv' t') = Arc (k <> k') mv' t'
 -}
--- TODO: that variant also raises the suggestion of defining a
--- further specialized variant for when we statically know the sring
--- is non-null (e.g. all the @(Arc _ Nothing_)@ cases in the
--- folds\/maps above; since we know Arc only allows null when there's
--- a value.
+-- TODO: that variant also raises the suggestion of defining two
+-- further variants (one for Nothing and one for Maybe[1]) for when
+-- we statically know the sring is non-null (e.g. all the @(Arc _ Nothing _)@
+-- cases in the folds\/maps above; since we know Arc only allows
+-- null when there's a value.
+-- [1]: Though the majority of cases where this would apply are `arc_`; and vice-versa (there are very few places `arc_` is used where the nullity of the string is unknown; but some are: @(>>=)@, 'arc' itself, 'submap')
 
 -- | Smart constructor to join two tries into a @Branch@ with maximal
 -- prefix sharing. Requires knowing the prefixes, but can combine
@@ -1099,18 +1100,18 @@ intersectBy f = intersectBy'
     intersectBy'
         t0_@(Arc k0 mv0 t0)
         t1_@(Arc k1 mv1 t1)
-        | S.null k0 && S.null k1 =  arc  k0 (intersectMaybe f mv0 mv1) (go t0 t1)
-        | S.null k0              =  arc_ k0 (go t0 t1_)
-        |              S.null k1 =  arc_ k1 (go t0_ t1)
+        | S.null k0 && S.null k1 = arc k0 (intersectMaybe f mv0 mv1) (go t0 t1)
+        | S.null k0              = go t0 t1_
+        |              S.null k1 = go t0_ t1
     intersectBy'
         (Arc k0 (Just _) t0)
         t1_@(Branch{})
-        | S.null k0              =  arc_ k0 (go t0 t1_)
+        | S.null k0              = go t0 t1_
     intersectBy'
         t0_@(Branch{})
         (Arc k1 (Just _) t1)
-        | S.null k1              =  arc_ k1 (go t0_ t1)
-    intersectBy' t0_ t1_         =  go t0_ t1_
+        | S.null k1              = go t0_ t1
+    intersectBy' t0_ t1_         = go t0_ t1_
 
     -- | The main recursion
     go Empty _    =  Empty

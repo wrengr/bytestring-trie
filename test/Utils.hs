@@ -146,6 +146,10 @@ instance Show W where
 everyW :: [W]
 everyW = (W . S.c2w) <$> ['a'..'m']
 
+-- TODO: if we define (Enum W) then we could use 'QC.chooseEnum'
+-- which is much faster than 'QC.elements'.  Alternatively we might
+-- consider using 'QC.growingElements' if we want something more
+-- like what the SC.Serial case does.
 instance QC.Arbitrary W where
     arbitrary = QC.elements everyW
     shrink w  = takeWhile (w /=) everyW
@@ -178,18 +182,17 @@ packWS = WS . S.pack . map unW
 unpackWS :: WS -> [W]
 unpackWS = map W . S.unpack . unWS
 
--- | Like @reverse . 'S.inits'@ but halving at each step rather
--- than just dropping one.
+-- | Like 'S.inits' but each step keeps half more, rather than just one more.
 prefixes :: WS -> [WS]
 prefixes (WS (PS x s l)) =
-    [WS (PS x s n) | n <- takeWhile (> 0) (iterate (`div` 2) l)]
+    [WS (PS x s (l - k)) | k <- takeWhile (> 0) (iterate (`div` 2) l)]
 
 instance QC.Arbitrary WS where
     arbitrary = QC.sized $ \n -> do
-        k  <- QC.choose (0,n)
+        k  <- QC.chooseInt (0,n)
         xs <- QC.vector k
         return $ packWS xs
-    shrink = (map packWS . QC.shrink . unpackWS) <=< prefixes
+    shrink = QC.shrinkMap packWS unpackWS <=< prefixes
 
 instance QC.CoArbitrary WS where
     coarbitrary = QC.coarbitrary . unpackWS
@@ -217,22 +220,25 @@ newtype WTrie a = WT { unWT :: T.Trie a }
 instance Show a => Show (WTrie a) where
     showsPrec p = showsPrec p . unWT
 
+first :: (b -> c) -> (b,d) -> (c,d)
+first f (x,y) = (f x, y)
+
+-- TODO: maybe we ought to define @T.fromListBy@ for better fusion?
+fromListWT :: [(WS,a)] -> WTrie a
+fromListWT = WT . T.fromList . map (first unWS)
+
+-- We can use 'T.toListBy' to manually fuse with the map
+toListWT :: WTrie a -> [(WS,a)]
+toListWT = map (first WS) . T.toList . unWT
+
 instance (QC.Arbitrary a) => QC.Arbitrary (WTrie a) where
     arbitrary = QC.sized $ \n -> do
-        k      <- QC.choose (0,n)
-        labels <- map unWS <$> QC.vector k
+        k      <- QC.chooseInt (0,n)
+        labels <- QC.vector k
         elems  <- QC.vector k
-        return . WT . T.fromList $ zip labels elems
+        return . fromListWT $ zip labels elems
     -- Extremely inefficient, but should be effective at least.
-    shrink
-        = map (WT . T.fromList . map (first unWS))
-        . QC.shrink
-        . map (first WS)
-        . T.toList
-        . unWT
-        where
-        first :: (b -> c) -> (b,d) -> (c,d)
-        first f (x,y) = (f x, y)
+    shrink = QC.shrinkMap fromListWT toListWT
 
 -- TODO: instance QC.CoArbitrary (WTrie a)
 

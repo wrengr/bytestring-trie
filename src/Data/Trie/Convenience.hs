@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.14
+--                                                  ~ 2021.11.20
 -- |
 -- Module      :  Data.Trie.Convenience
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -44,8 +44,7 @@ module Data.Trie.Convenience
     ) where
 
 import Data.Trie
-import Data.Trie.Internal (lookupBy_, adjustBy)
-import Data.Trie.Errors   (impossible)
+import Data.Trie.Internal (lookupBy_, alterBy_)
 import Data.ByteString    (ByteString)
 import Data.List          (foldl', sortBy)
 import Data.Ord           (comparing)
@@ -201,19 +200,15 @@ insertLookupWithKey :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a 
 ----------------------------------------------------------------
 -- | Apply a function to change the value at a key.
 adjustWithKey :: (ByteString -> a -> a) -> ByteString -> Trie a -> Trie a
-adjustWithKey f q =
-    adjustBy (\k _ -> f k) q (impossible "Convenience.adjustWithKey")
--- TODO: benchmark vs the definition with alterBy/liftM
+adjustWithKey f q = adjust (f q) q
 
 -- | Apply a function to the value at a key, possibly removing it.
 update :: (a -> Maybe a) -> ByteString -> Trie a -> Trie a
-update f q =
-    alterBy (\_ _ mx -> mx >>= f) q (impossible "Convenience.update")
+update f q = alterBy_ (\mx t -> (mx >>= f, t)) q
 
 -- | A variant of 'update' which also provides the key to the function.
 updateWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> Trie a
-updateWithKey f q =
-    alterBy (\k _ mx -> mx >>= f k) q (impossible "Convenience.updateWithKey")
+updateWithKey f q = alterBy_ (\mx t -> (mx >>= f q, t)) q
 
 {-
 updateLookupWithKey :: (ByteString -> a -> Maybe a) -> ByteString -> Trie a -> (Maybe a, Trie a)

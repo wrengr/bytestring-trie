@@ -41,7 +41,7 @@ module Data.Trie.Internal
     , match_, matches_
 
     -- * Simple modification
-    , alterBy, alterBy_, adjustBy
+    , alterBy, alterBy_, adjust
 
     -- * Combining tries
     , mergeBy, intersectBy
@@ -874,12 +874,14 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
 alterBy :: (ByteString -> a -> Maybe a -> Maybe a)
          -> ByteString -> a -> Trie a -> Trie a
 alterBy f q x = alterBy_ (\mv t -> (f q x mv, t)) q
-
 -- TODO: use GHC's 'inline' function so that this gets specialized away.
 -- TODO: benchmark to be sure that this doesn't introduce unforseen
 --  performance costs because of the uncurrying etc.
 -- TODO: move to "Data.Trie" itself instead of here, since it doesn't
 --  depend on any internals (unless we actually do the CPS optimization).
+-- TODO: would there be any benefit in basing this off a different
+--  function that captures the invariant that the subtrie is left
+--  alone?
 
 
 -- | A variant of 'alterBy' which also allows modifying the sub-trie.
@@ -905,7 +907,7 @@ alterBy_ f q_
         | zero qh m       = branch p m (go q l) r
         | otherwise       = branch p m l (go q r)
         where
-        qh = errorLogHead "alterBy" q
+        qh = errorLogHead "alterBy_" q
     go q t_@(Arc k mv t) =
         let (p,k',q') = breakMaximalPrefix k q in
         case (S.null k', S.null q') of
@@ -924,24 +926,19 @@ alterBy_ f q_
         (True, False) -> arc k mv (go q' t)
 
 
--- TODO: build this from a variant that doesn't need to thread the
--- @q_@ and @x_@ through to the function.
+-- TODO: benchmark vs the definition with alterBy/liftM
+-- TODO: add a variant that's strict in the function.
 --
--- | Alter the value associated with a given key. If the key is not
--- present, then the trie is returned unaltered. See 'alterBy' if
--- you are interested in inserting new keys or deleting old keys.
--- Because this function does not need to worry about changing the
--- trie structure, it is somewhat faster than 'alterBy'.
-adjustBy :: (ByteString -> a -> a -> a)
-         -> ByteString -> a -> Trie a -> Trie a
-adjustBy f_ q_ x_
-    | S.null q_ = adjustEpsilon
-    | otherwise = go q_
+-- /Since: 0.2.6/ for being exported from "Data.Trie.Internal".
+--
+-- | Apply a function to the value at a key.  If the key is not
+-- present, then the trie is returned unaltered.
+adjust :: (a -> a) -> ByteString -> Trie a -> Trie a
+adjust f = start
     where
-    f = f_ q_ x_
-
-    adjustEpsilon (Arc k (Just v) t) | S.null k = Arc k (Just (f v)) t
-    adjustEpsilon t_                            = t_
+    start q t                  | not (S.null q) = go q t
+    start _ (Arc k (Just v) t) | S.null k       = Arc k (Just (f v)) t
+    start _ t                                   = t
 
     go _ Empty            = Empty
     go q t@(Branch p m l r)
@@ -949,7 +946,7 @@ adjustBy f_ q_ x_
         | zero qh m       = Branch p m (go q l) r
         | otherwise       = Branch p m l (go q r)
         where
-        qh = errorLogHead "adjustBy" q
+        qh = errorLogHead "adjust" q
     go q t_@(Arc k mv t) =
         let (_,k',q') = breakMaximalPrefix k q in
         case (S.null k', S.null q') of

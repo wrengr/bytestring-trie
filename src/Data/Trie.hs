@@ -48,7 +48,7 @@ module Data.Trie
     , lookupBy, lookup, member, submap, match, minMatch, matches
 
     -- * Simple modification
-    , alterBy, insert, adjust, delete, deleteSubmap
+    , insert, adjust, adjustBy, alterBy, delete, deleteSubmap
 
     -- * Combining tries
     , mergeBy, unionL, unionR
@@ -166,11 +166,18 @@ insert :: ByteString -> a -> Trie a -> Trie a
 {-# INLINE insert #-}
 insert = alterBy (\_ x _ -> Just x)
 
--- | Apply a function to the value at a key.
-adjust :: (a -> a) -> ByteString -> Trie a -> Trie a
-{-# INLINE adjust #-}
-adjust f q = adjustBy (\_ _ -> f) q (impossible "adjust")
--- TODO: benchmark vs the definition with alterBy/liftM
+-- | Alter the value associated with a given key. If the key is not
+-- present, then the trie is returned unaltered. See 'alterBy' if
+-- you are interested in inserting new keys or deleting old keys.
+-- Because this function does not need to worry about changing the
+-- trie structure, it is somewhat faster than 'alterBy'.
+--
+-- /Since: 0.2.6/ for being exported from "Data.Trie".  Before then
+-- it was only exported from "Data.Trie.Internal".
+adjustBy :: (ByteString -> a -> a -> a)
+         -> ByteString -> a -> Trie a -> Trie a
+{-# INLINE adjustBy #-}
+adjustBy f q x = adjust (f q x) q
 
 -- | Remove the value stored at a key.
 delete :: ByteString -> Trie a -> Trie a

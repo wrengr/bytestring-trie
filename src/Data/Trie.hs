@@ -112,7 +112,7 @@ lookupBy f = lookupBy_ f (f Nothing empty) (f Nothing)
 -- | Return the value associated with a query string if it exists.
 lookup :: ByteString -> Trie a -> Maybe a
 {-# INLINE lookup #-}
-lookup = lookupBy_ const Nothing (const Nothing)
+lookup = lookupBy const
 
 -- TODO? move to "Data.Trie.Convenience"?
 -- | Does a string have a value in the trie?

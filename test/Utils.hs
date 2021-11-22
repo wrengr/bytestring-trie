@@ -157,8 +157,9 @@ instance QC.Arbitrary W where
 instance QC.CoArbitrary W where
     coarbitrary = QC.coarbitrary . unW
 
+-- We take @(d+1)@ to match the instances for 'Char', (SC.N a), etc
 instance Monad m => SC.Serial m W where
-    series = SC.generate (`take` everyW)
+    series = SC.generate (\d -> take (d+1) everyW)
 
 instance Monad m => SC.CoSerial m W where
     coseries = fmap (. unW) . SC.coseries
@@ -265,15 +266,45 @@ instance (Monad m, SC.Serial m a) => SC.Serial m (WTrie a) where
 infixr 0 ==>, .==>.
 infix  4 .==.
 
+{-
+-- TODO: clean up something like this:
+class ForAll src p q where
+    forAll :: forall a. (Show a) => src a -> (a -> p) -> q
+instance (QC.Testable p) => ForAll QC.Gen p QC.Property where
+    forAll gen pf = QC.forAllShrink gen QC.shrink pf
+instance (SC.Testable m p) => ForAll (SC.Series m) p (SC.Property m) where
+    forAll srs pf = SC.forAll (SC.over srs pf)
+
+class SuchThat src where
+    suchThat :: forall a. src a -> (a -> Bool) -> src a
+instance SuchThat QC.Gen where
+    suchThat = QC.suchThat
+instance SuchThat (SC.Series m) where
+    suchThat = flip Control.Monad.mfilter
+
+class Generable src a where
+    generate :: src a
+instance (QC.Arbitrary a) => Generable QC.Gen a where
+    generate = QC.arbitrary
+instance (SC.Serial m a) => Generable (SC.Series m) a where
+    generate = SC.series
+
+forEach :: (Forall src p q, SuchThat src, Generable src a, Show a) => (a -> Bool) -> (a -> p) -> q
+forEach = forAll . suchThat generate
+-}
+
+
 -- | Deal with QC\/SC polymorphism issues because of @(==>)@.
 -- Fundeps would be nice here, but @|b->a@ is undecidable, and @|a->b@ is wrong.
-class CheckGuard a b where
-    (==>) :: Bool -> a -> b
+class CheckGuard p q where
+    (==>) :: Bool -> p -> q
 
-instance (QC.Testable a) => CheckGuard a QC.Property where
+instance (QC.Testable p) => CheckGuard p QC.Property where
     (==>) = (QC.==>)
+    -- TODO: might should also use 'QC.cover' with this.
+    -- TODO: or we may prefer to rephrase things to use 'QC.suchThat' instead (should be sufficient for our particular use case, if we can find a smallcheck analogue (probably 'SC.over'))
 
-instance (Monad m, SC.Testable m a) => CheckGuard a (SC.Property m) where
+instance (Monad m, SC.Testable m p) => CheckGuard p (SC.Property m) where
     (==>) = (SC.==>)
 
 -- | Lifted implication.
@@ -283,6 +314,7 @@ instance (Monad m, SC.Testable m a) => CheckGuard a (SC.Property m) where
 -- | Function equality / lifted equality.
 (.==.) :: (Eq b) => (a -> b) -> (a -> b) -> (a -> Bool)
 (.==.) f g x = f x == g x
+    -- TODO: should use (QC.===) or diy with QC.counterexample; assuming we can overload that for smallcheck equivalent (or for smallcheck to ignore and fall back to (==))
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

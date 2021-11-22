@@ -8,7 +8,8 @@
 
 Coverage:
 * Data.Trie:
-    elems, lookupBy, match, minMatch, matches, adjustBy
+    elems, adjustBy
+    lookupBy: with a function that inspects the second argument.
 * Data.Trie.ByteStringInternal:
     breakMaximalPrefix: evaluate the prefix when either of the arguments is null
         (Just for the nice HPC numbers)
@@ -16,13 +17,12 @@ Coverage:
     fromListWith', fromListWithL', lookupWithDefault, insertWith, insertWith', insertWithKey, insertWithKey', adjustWithKey, update, updateWithKey, unionWith, unionWith', intersectWith, intersectWith'
     fromListWith, fromListWithL: use @f@ that evaluates the second argument
 * Data.Trie.Internal:
-    showsPrec, showTrie, put, get, fmap, foldMap, traverse, pure, (<*>), (<>), mempty, filterMap, mapBy, contextualMap, contextualMap', contextualFilterMap, contextualMapBy, cata_, cata, match_, matches_, matchFB_, adjust, minAssoc, maxAssoc, updateMinViewBy, updateMaxViewBy
+    showsPrec, showTrie, put, get, fmap, foldMap, traverse, pure, (<*>), (<>), mempty, filterMap, mapBy, contextualMap, contextualMap', contextualFilterMap, contextualMapBy, cata_, cata, adjust
     (>>=): bits and pieces.
     arc:    is never called with null @k@... (failing to capture invariants? or not enough testing?)
     getPrefix: (Arc S.empty _ _)
-    lookupBy_: null query
-    mergeBy: either argument has epsilon value
-    intersectBy: either argument has epsilon value; Arc/Arc/prepend cases
+    intersectBy: bits and pieces.
+    match_: @goJust _ _ _ q (Arc k (Just _) _) | breakMaximalPrefix k q == (_, S.empty, S.empty)@
 
 
 

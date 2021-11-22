@@ -21,6 +21,7 @@ module Main (main) where
 import Utils
 
 import qualified Data.Trie              as T
+import qualified Data.Trie.Internal     as TI
 import qualified Data.Trie.Convenience  as TC
 import qualified Data.ByteString        as S
 
@@ -177,13 +178,47 @@ quickcheckTests
         "prop_intersectPlus"
         (prop_intersectPlus :: WTrie Int -> WTrie Int -> Bool)
     ]
+  , Tasty.testGroup "match/matches properties (@Int)"
+    [ QC.testProperty
+        "prop_matches_keysOrdered"
+        (prop_matches_keysOrdered   :: WS -> WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_matches_keysArePrefix"
+        (prop_matches_keysArePrefix :: WS -> WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_minMatch_is_first_matches"
+        (prop_minMatch_is_first_matches :: WS -> WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_match_is_last_matches"
+        (prop_match_is_last_matches :: WS -> WTrie Int -> Bool)
+    ]
+  , Tasty.testGroup "Priority-queue functions (@Int)"
+    [ QC.testProperty
+        "prop_minAssoc_is_first_toList"
+        (prop_minAssoc_is_first_toList :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_maxAssoc_is_last_toList"
+        (prop_maxAssoc_is_last_toList :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_updateMinViewBy_ident"
+        (prop_updateMinViewBy_ident :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_updateMaxViewBy_ident"
+        (prop_updateMaxViewBy_ident :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_updateMinViewBy_gives_minAssoc"
+        (prop_updateMinViewBy_gives_minAssoc :: (WS -> Int -> Maybe Int) -> WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_updateMaxViewBy_gives_maxAssoc"
+        (prop_updateMaxViewBy_gives_maxAssoc :: (WS -> Int -> Maybe Int) -> WTrie Int -> Bool)
+    ]
   , Tasty.testGroup "List-conversion properties (@Int)"
     [ QC.testProperty
-        "prop_toList"
-        (prop_toList        :: WTrie Int -> Bool)
+        "prop_toListBy_keysOrdered"
+        (prop_toListBy_keysOrdered  :: WTrie Int -> Bool)
     , QC.testProperty
         "prop_fromList_takes_first"
-        (prop_fromList_takes_first :: [(WS, Int)] -> Bool)
+        (prop_fromList_takes_first  :: [(WS, Int)] -> Bool)
     , QC.testProperty
         "prop_fromListR_takes_first"
         (prop_fromListR_takes_first :: [(WS, Int)] -> Bool)
@@ -202,17 +237,18 @@ quickcheckTests
     ]
   ]
 
+-- Throughout, we try to use 'W' or @()@ whenever we can, to reduce
+-- the exponential growth problem.
 smallcheckTests :: Tasty.TestTree
 smallcheckTests
   = Tasty.testGroup "SmallCheck"
   [ Tasty.testGroup "Trivial properties (@W)"
-    -- These use @()@ to reduce the problem of exponential growth.
-    -- Depth=4 is marginal here (takes about 2sec each)
+    -- Depth=4 is death here (>30sec) ever since changing the instance.
     [ SC.testProperty
         "prop_insert"
         (prop_insert        :: WS -> W -> WTrie W -> Bool)
     , SC.testProperty
-        -- This one can easily handle depth=7 (takes about 0.15sec)
+        -- This one can easily handle depth=6 fine (~0.1sec), but d=7 (~4sec)
         "prop_singleton"
         (prop_singleton     :: WS -> W -> Bool)
     , SC.testProperty
@@ -228,23 +264,23 @@ smallcheckTests
         "prop_delete_lookup"
         (prop_delete_lookup :: WS -> WTrie W -> SC.Property IO)
     ]
-  , Tasty.testGroup "Submap properties (@W)"
-    -- Depth=4 is okay here (takes about 0.5sec each)
+  , Tasty.testGroup "Submap properties (@()/@W)"
+    -- Depth=4 is at best very marginal here...
     [ SC.testProperty
         "prop_submap_keysAreMembers"
-        (prop_submap_keysAreMembers :: WS -> WTrie W -> Bool)
+        (prop_submap_keysAreMembers :: WS -> WTrie () -> Bool)
     , SC.testProperty
         "prop_submap_keysHavePrefix"
-        (prop_submap_keysHavePrefix :: WS -> WTrie W -> Bool)
+        (prop_submap_keysHavePrefix :: WS -> WTrie () -> Bool)
     , SC.testProperty
         "prop_submap_valuesEq"
         (prop_submap_valuesEq       :: WS -> WTrie W -> Bool)
     , SC.testProperty
         "prop_deleteSubmap_keysAreMembers"
-        (prop_deleteSubmap_keysAreMembers :: WS -> WTrie W -> Bool)
+        (prop_deleteSubmap_keysAreMembers :: WS -> WTrie () -> Bool)
     , SC.testProperty
         "prop_deleteSubmap_keysLackPrefix"
-        (prop_deleteSubmap_keysLackPrefix :: WS -> WTrie W -> Bool)
+        (prop_deleteSubmap_keysLackPrefix :: WS -> WTrie () -> Bool)
     , SC.testProperty
         "prop_deleteSubmap_disunion"
         (prop_deleteSubmap_disunion :: WS -> WTrie W -> Bool)
@@ -262,13 +298,50 @@ smallcheckTests
         "prop_intersectPlus"
         (prop_intersectPlus :: WTrie Int -> WTrie Int -> Bool)
     ]
-  , Tasty.testGroup "List-conversion properties (@W)"
+  , Tasty.testGroup "match/matches properties (@()/@W)"
     [ SC.testProperty
-        "prop_toList"
-        (prop_toList        :: WTrie W -> Bool)
+        "prop_matches_keysOrdered"
+        (prop_matches_keysOrdered   :: WS -> WTrie () -> Bool)
+    , SC.testProperty
+        "prop_matches_keysArePrefix"
+        (prop_matches_keysArePrefix :: WS -> WTrie () -> Bool)
+    , SC.testProperty
+        "prop_minMatch_is_first_matches"
+        (prop_minMatch_is_first_matches :: WS -> WTrie W -> Bool)
+    , SC.testProperty
+        "prop_match_is_last_matches"
+        (prop_match_is_last_matches :: WS -> WTrie W -> Bool)
+    ]
+  , Tasty.testGroup "Priority-queue functions (@W)"
+    -- Depth=4 takes about 1sec each
+    [ SC.testProperty
+        "prop_minAssoc_is_first_toList"
+        (prop_minAssoc_is_first_toList :: WTrie W -> Bool)
+    , SC.testProperty
+        "prop_maxAssoc_is_last_toList"
+        (prop_maxAssoc_is_last_toList :: WTrie W -> Bool)
+    , SC.testProperty
+        "prop_updateMinViewBy_ident"
+        (prop_updateMinViewBy_ident :: WTrie W -> Bool)
+    , SC.testProperty
+        "prop_updateMaxViewBy_ident"
+        (prop_updateMaxViewBy_ident :: WTrie W -> Bool)
+    -- HACK: must explicitly pass functions for these two, else they're too slow
+    , SC.testProperty
+        "prop_updateMinViewBy_gives_minAssoc"
+        (prop_updateMinViewBy_gives_minAssoc undefined :: WTrie W -> Bool)
+    , SC.testProperty
+        "prop_updateMaxViewBy_gives_maxAssoc"
+        (prop_updateMaxViewBy_gives_maxAssoc undefined :: WTrie W -> Bool)
+    ]
+  , Tasty.adjustOption (+ (1::SC.SmallCheckDepth))
+  $ Tasty.testGroup "List-conversion properties (@()/@W)"
+    [ SC.testProperty
+        "prop_toListBy_keysOrdered"
+        (prop_toListBy_keysOrdered  :: WTrie () -> Bool)
     , SC.testProperty
         "prop_fromList_takes_first"
-        (prop_fromList_takes_first :: [(WS, W)] -> Bool)
+        (prop_fromList_takes_first  :: [(WS, W)] -> Bool)
     , SC.testProperty
         "prop_fromListR_takes_first"
         (prop_fromListR_takes_first :: [(WS, W)] -> Bool)
@@ -412,70 +485,128 @@ prop_delete_lookup (WS k) =
 
 -- | All keys in a submap are keys in the supermap
 prop_submap_keysAreMembers :: WS -> WTrie a -> Bool
-prop_submap_keysAreMembers (WS k) (WT t) =
-    all (`T.member` t) . T.keys . T.submap k $ t
+prop_submap_keysAreMembers (WS q) (WT t) =
+    all (`T.member` t) . T.keys . T.submap q $ t
+    -- TODO: should we use 'QC.conjoin' (assuming another class to overload it) in lieu of 'all'? What are the actual benefits of doing so? Ditto for all the uses below.
 
 -- | All keys in a submap have the query as a prefix
 prop_submap_keysHavePrefix :: WS -> WTrie a -> Bool
-prop_submap_keysHavePrefix (WS k) (WT t) =
-    all (S.isPrefixOf k) . T.keys . T.submap k $ t
+prop_submap_keysHavePrefix (WS q) =
+    all (q `S.isPrefixOf`) . T.keys . T.submap q . unWT
 
 -- | All values in a submap are the same in the supermap
 prop_submap_valuesEq :: (Eq a) => WS -> WTrie a -> Bool
-prop_submap_valuesEq (WS k) (WT t) =
+prop_submap_valuesEq (WS q) (WT t) =
     ((`T.lookup` t') .==. (`T.lookup` t)) `all` T.keys t'
-    where t' = T.submap k t
+    where t' = T.submap q t
 
 -- | All keys in the result are keys in the supermap
 prop_deleteSubmap_keysAreMembers :: WS -> WTrie a -> Bool
-prop_deleteSubmap_keysAreMembers (WS k) (WT t) =
-    all (`T.member` t) . T.keys . T.deleteSubmap k $ t
+prop_deleteSubmap_keysAreMembers (WS q) (WT t) =
+    all (`T.member` t) . T.keys . T.deleteSubmap q $ t
 
 -- | All keys in a submap lack the query as a prefix
 prop_deleteSubmap_keysLackPrefix :: WS -> WTrie a -> Bool
-prop_deleteSubmap_keysLackPrefix (WS k) (WT t) =
-    all (not . S.isPrefixOf k) . T.keys . T.deleteSubmap k $ t
+prop_deleteSubmap_keysLackPrefix (WS q) =
+    all (not . S.isPrefixOf q) . T.keys . T.deleteSubmap q . unWT
 
 -- | `T.submap` and `T.deleteSubmap` partition every trie for every key.
 prop_deleteSubmap_disunion :: (Eq a) => WS -> WTrie a -> Bool
-prop_deleteSubmap_disunion (WS k) (WT t) =
-    t == (T.submap k t `TC.disunion` T.deleteSubmap k t)
+prop_deleteSubmap_disunion (WS q) (WT t) =
+    t == (T.submap q t `TC.disunion` T.deleteSubmap q t)
 
--- | Left-biased @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
-prop_intersectL :: (Eq a) => WTrie a -> WTrie a -> Bool
-prop_intersectL (WT x) (WT y) =
-    T.intersectL x y == (T.unionL x y `TC.disunion` TC.disunion x y)
-
--- | Right-biased @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
-prop_intersectR :: (Eq a) => WTrie a -> WTrie a -> Bool
-prop_intersectR (WT x) (WT y) =
-    T.intersectR x y == (T.unionR x y `TC.disunion` TC.disunion x y)
-
--- | Additive @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
-prop_intersectPlus :: (Eq a, Num a) => WTrie a -> WTrie a -> Bool
-prop_intersectPlus (WT x) (WT y) =
-    T.intersectBy plus x y
-    == (T.mergeBy plus x y `TC.disunion` TC.disunion x y)
-    where
-    plus a b = Just (a + b)
-
-{-
--- TODO: actually use this. Until then, commented out to silence
--- the warnings from out CI summary.
--- TODO: Can we effectively generate interesting enough functions
--- to make this worth using?
+-- TODO: other than as a helper like below, could we actually
+-- generate interesting enough functions to make this worth testing
+-- directly?
 --
 -- | Arbitrary @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
 prop_intersectBy :: (Eq a) => (a -> a -> Maybe a) -> WTrie a -> WTrie a -> Bool
 prop_intersectBy f (WT x) (WT y) =
     T.intersectBy f x y == (T.mergeBy f x y `TC.disunion` TC.disunion x y)
--}
 
+-- | Left-biased @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
+prop_intersectL :: (Eq a) => WTrie a -> WTrie a -> Bool
+prop_intersectL = prop_intersectBy (\x _ -> Just x)
 
--- | Keys are ordered when converting to a list
-prop_toList :: WTrie a -> Bool
-prop_toList = ordered . T.keys . unWT
-    where ordered xs = and (zipWith (<=) xs (drop 1 xs))
+-- | Right-biased @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
+prop_intersectR :: (Eq a) => WTrie a -> WTrie a -> Bool
+prop_intersectR = prop_intersectBy (\_ y -> Just y)
+
+-- | Additive @x ∩ y == (x ∪ y) ⋈ (x ⋈ y)@.
+prop_intersectPlus :: (Eq a, Num a) => WTrie a -> WTrie a -> Bool
+prop_intersectPlus = prop_intersectBy (\x y -> Just (x + y))
+
+isOrdered :: (Ord a) => [a] -> Bool
+isOrdered xs = and (zipWith (<=) xs (drop 1 xs))
+
+-- | 'T.toListBy', 'T.toList', and 'T.keys' are ordered by keys.
+prop_toListBy_keysOrdered :: WTrie a -> Bool
+prop_toListBy_keysOrdered = isOrdered . T.keys . unWT
+
+fst3 :: (a,b,c) -> a
+fst3 (a,_,_) = a
+
+-- | 'T.matches' is ordered by keys.
+prop_matches_keysOrdered :: WS -> WTrie a -> Bool
+prop_matches_keysOrdered (WS q) (WT t) =
+    isOrdered . map fst3 $ T.matches t q
+
+-- | Matching keys are a prefix of the query.
+prop_matches_keysArePrefix :: WS -> WTrie a -> Bool
+prop_matches_keysArePrefix (WS q) (WT t) =
+    all (`S.isPrefixOf` q) . map fst3 $ T.matches t q
+
+_eqHead :: (Eq a) => Maybe a -> [a] -> Bool
+_eqHead Nothing  []    = True
+_eqHead (Just x) (y:_) = x == y
+_eqHead _        _     = False
+
+_eqLast :: (Eq a) => Maybe a -> [a] -> Bool
+_eqLast Nothing  []       = True
+_eqLast (Just x) ys@(_:_) = x == last ys
+_eqLast _        _        = False
+
+prop_minMatch_is_first_matches :: Eq a => WS -> WTrie a -> Bool
+prop_minMatch_is_first_matches (WS q) (WT t) =
+    _eqHead (T.minMatch t q) (T.matches t q)
+
+prop_match_is_last_matches :: Eq a => WS -> WTrie a -> Bool
+prop_match_is_last_matches (WS q) (WT t) =
+    _eqLast (T.match t q) (T.matches t q)
+
+prop_minAssoc_is_first_toList :: Eq a => WTrie a -> Bool
+prop_minAssoc_is_first_toList (WT t) =
+    _eqHead (TI.minAssoc t) (T.toList t)
+
+prop_maxAssoc_is_last_toList :: Eq a => WTrie a -> Bool
+prop_maxAssoc_is_last_toList (WT t) =
+    _eqLast (TI.maxAssoc t) (T.toList t)
+
+view2assoc :: Maybe (S.ByteString, a, T.Trie a) -> Maybe (S.ByteString, a)
+view2assoc Nothing        = Nothing
+view2assoc (Just (k,v,_)) = Just (k,v)
+
+-- TODO: again, can we actually generate any interesting functions here?
+prop_updateMinViewBy_gives_minAssoc :: Eq a => (WS -> a -> Maybe a) -> WTrie a -> Bool
+prop_updateMinViewBy_gives_minAssoc f =
+    ((view2assoc . TI.updateMinViewBy (f . WS)) .==. TI.minAssoc) . unWT
+
+prop_updateMaxViewBy_gives_maxAssoc :: Eq a => (WS -> a -> Maybe a) -> WTrie a -> Bool
+prop_updateMaxViewBy_gives_maxAssoc f =
+    ((view2assoc . TI.updateMaxViewBy (f . WS)) .==. TI.maxAssoc) . unWT
+
+view2trie :: Maybe (S.ByteString, a, T.Trie a) -> T.Trie a
+view2trie Nothing        = T.empty
+view2trie (Just (_,_,t)) = t
+
+prop_updateMinViewBy_ident :: Eq a => WTrie a -> Bool
+prop_updateMinViewBy_ident =
+    ((view2trie . TI.updateMinViewBy (\_ v -> Just v)) .==. id) . unWT
+
+prop_updateMaxViewBy_ident :: Eq a => WTrie a -> Bool
+prop_updateMaxViewBy_ident =
+    ((view2trie . TI.updateMaxViewBy (\_ v -> Just v)) .==. id) .unWT
+
 
 -- | If there are duplicate keys in the @assocs@, then @f@ will
 -- take the first value.

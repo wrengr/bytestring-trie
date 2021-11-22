@@ -731,7 +731,15 @@ lookupBy_ f z a = lookupBy_'
             | zero qh m       = findArc l
             | otherwise       = findArc r
         findArc t@(Arc{})     = go q t
-        findArc Empty         = z
+        findArc Empty         = z -- Unreachable; see [Note1]
+
+-- [Note1]: Our use of the 'branch' and 'branchMerge' smart
+-- constructors ensure that 'Empty' never occurs in a 'Branch' tree
+-- ('Empty' can only occur at the root, or under an 'Arc' with
+-- value); therefore the @findArc Empty@ case is unreachable.  The
+-- given value is what the correct answer should be if we allowed
+-- such 'Empty' nodes, however.
+-- TODO: is it worth using 'error' instead to ensure we catch broken invariants?
 
 
 -- This function needs to be here, not in "Data.Trie", because of
@@ -812,7 +820,7 @@ match_ = flip start
             | zero qh m       = findArc l
             | otherwise       = findArc r
         findArc t@(Arc{})     = goNothing n q t
-        findArc Empty         = Nothing
+        findArc Empty         = Nothing -- Unreachable; see [Note1]
 
     -- | The main recursion
     goJust n0 v0 _ _    Empty       = Just (n0,v0)
@@ -840,7 +848,7 @@ match_ = flip start
             | zero qh m       = findArc l
             | otherwise       = findArc r
         findArc t@(Arc{})     = goJust n0 v0 n q t
-        findArc Empty         = Just (n0,v0)
+        findArc Empty         = Just (n0,v0) -- Unreachable; see [Note1]
 
 
 -- | Given a query, find all prefixes with associated values in the
@@ -891,7 +899,7 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
                 | zero qh m       = findArc l
                 | otherwise       = findArc r
             findArc t@(Arc{})     = go n q t
-            findArc Empty         = id
+            findArc Empty         = id -- Unreachable; see [Note1]
 
 
 {-----------------------------------------------------------

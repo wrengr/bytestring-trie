@@ -51,8 +51,6 @@ import Data.Semigroup      (Sum)
 #else
 data Sum a = Sum a
     deriving (Eq, Ord, Read, Show, Bounded, Num)
-instance Num a => Semigroup (Sum a) where
-    Sum x <> Sum y = Sum (x + y)
 instance Num a => Monoid (Sum a) where
     mempty = Sum 0
     mappend (Sum x) (Sum y) = Sum (x + y)
@@ -251,21 +249,7 @@ quickcheckTests
         (prop_fromListWithLConst_takes_first :: [(WS, Int)] -> Bool)
     ]
   , Tasty.testGroup "Type classes"
-    [ Tasty.testGroup "Semigroup (@Sum Int)"
-      [ QC.testProperty
-          -- This one is a bit more expensive: ~1sec instead of <=0.5sec
-          "prop_Semigroup"
-          (prop_Semigroup :: WTrie (Sum Int) -> WTrie (Sum Int) -> WTrie (Sum Int) -> Bool)
-      ]
-    , Tasty.testGroup "Monoid (@Sum Int)"
-      [ QC.testProperty
-          "prop_MonoidIdentityL"
-          (prop_MonoidIdentityL :: WTrie (Sum Int) -> Bool)
-      , QC.testProperty
-          "prop_MonoidIdentityR"
-          (prop_MonoidIdentityR :: WTrie (Sum Int) -> Bool)
-      ]
-    , Tasty.testGroup "Functor (@Int)"
+    [ Tasty.testGroup "Functor (@Int)"
       [ QC.testProperty
           "prop_FunctorIdentity"
           (prop_FunctorIdentity   :: WTrie Int -> Bool)
@@ -294,6 +278,22 @@ quickcheckTests
       -- TODO: prop_MonadIdentityL, prop_MonadAssoc
       ]
     -- TODO: Foldable, Traversable
+#if MIN_VERSION_base(4,9,0)
+    , Tasty.testGroup "Semigroup (@Sum Int)"
+      [ QC.testProperty
+          -- This one is a bit more expensive: ~1sec instead of <=0.5sec
+          "prop_Semigroup"
+          (prop_Semigroup :: WTrie (Sum Int) -> WTrie (Sum Int) -> WTrie (Sum Int) -> Bool)
+      ]
+#endif
+    , Tasty.testGroup "Monoid (@Sum Int)"
+      [ QC.testProperty
+          "prop_MonoidIdentityL"
+          (prop_MonoidIdentityL :: WTrie (Sum Int) -> Bool)
+      , QC.testProperty
+          "prop_MonoidIdentityR"
+          (prop_MonoidIdentityR :: WTrie (Sum Int) -> Bool)
+      ]
     ]
   , Tasty.testGroup "Other mapping/filtering (@Int)"
     [ QC.testProperty
@@ -827,8 +827,10 @@ prop_MonadIdentityL = (return a >>= k) == k a
 prop_MonadAssoc     = m >>= (\x -> k x >>= h) == (m >>= k) >>= h
 -}
 
+#if MIN_VERSION_base(4,9,0)
 prop_Semigroup :: (Semigroup a, Eq a) => WTrie a -> WTrie a -> WTrie a -> Bool
 prop_Semigroup (WT a) (WT b) (WT c) = a <> (b <> c) == (a <> b) <> c
+#endif
 
 prop_MonoidIdentityL :: (Monoid a, Eq a) => WTrie a -> Bool
 prop_MonoidIdentityL = ((mempty <>) .==. id) . unWT

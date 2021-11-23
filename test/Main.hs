@@ -40,7 +40,7 @@ import Data.Ord  (comparing)
 -- [aka GHC 8.8.1] @(<>)@ is re-exported from the Prelude.
 #elif MIN_VERSION_base(4,9,0)
 -- [aka GHC 8.0.1]
-import Data.Semigroup      ((<>), Semigroup)
+import Data.Semigroup      (Semigroup(..))
 #elif MIN_VERSION_base(4,5,0)
 -- [aka GHC 7.4.1]
 import Data.Monoid         ((<>))
@@ -830,11 +830,12 @@ prop_Semigroup :: (Semigroup a, Eq a) => WTrie a -> WTrie a -> WTrie a -> Bool
 prop_Semigroup (WT a) (WT b) (WT c) = a <> (b <> c) == (a <> b) <> c
 #endif
 
+-- N.B., base-4.11.0.0 is when Semigroup became superclass of Monoid
 prop_MonoidIdentityL :: (Monoid a, Eq a) => WTrie a -> Bool
-prop_MonoidIdentityL = ((mempty <>) .==. id) . unWT
+prop_MonoidIdentityL = ((mempty `mappend`) .==. id) . unWT
 
 prop_MonoidIdentityR :: (Monoid a, Eq a) => WTrie a -> Bool
-prop_MonoidIdentityR = ((<> mempty) .==. id) . unWT
+prop_MonoidIdentityR = ((`mappend` mempty) .==. id) . unWT
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

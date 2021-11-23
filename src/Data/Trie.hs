@@ -135,7 +135,7 @@ match t q =
 -- in the trie, and return that prefix, it's value, and the remainder
 -- of the query.
 --
--- /Since: 0.2.6/
+-- @since 0.2.6
 minMatch :: Trie a -> ByteString -> Maybe (ByteString, a, ByteString)
 minMatch t q =
     case matches t q of
@@ -185,7 +185,7 @@ delete = alterBy_ (\_ t -> (Nothing, t))
 
 -- | Remove all keys beginning with a prefix.
 --
--- /Since: 0.2.6/
+-- @since 0.2.6
 deleteSubmap :: ByteString -> Trie a -> Trie a
 {-# INLINE deleteSubmap #-}
 deleteSubmap = alterBy_ (\_ _ -> (Nothing, empty))
@@ -209,14 +209,14 @@ unionR = mergeBy (\_ y -> Just y)
 
 -- | Take the intersection of two tries, with values from the left trie.
 --
--- /Since: 0.2.6/
+-- @since 0.2.6
 intersectL :: Trie a -> Trie b -> Trie a
 {-# INLINE intersectL #-}
 intersectL = intersectBy (\x _ -> Just x)
 
 -- | Take the intersection of two tries, with values from the right trie.
 --
--- /Since: 0.2.6/
+-- @since 0.2.6
 intersectR :: Trie a -> Trie b -> Trie b
 {-# INLINE intersectR #-}
 intersectR = intersectBy (\_ y -> Just y)

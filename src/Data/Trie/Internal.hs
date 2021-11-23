@@ -625,7 +625,7 @@ foldrWithKey fcons nil = \t -> go S.empty t nil
 -- datatype, erasing only some bitmasking metadata for the branches.
 -- For a more semantic catamorphism, see `cata`.
 --
--- /Since: 0.2.6/
+-- @since 0.2.6
 cata_
     :: (ByteString -> Maybe a -> b -> b)
     -> (b -> b -> b)
@@ -648,7 +648,7 @@ cata_ a b e = go
 -- the literal structure of the implementation.  For a more literal
 -- catamorphism, see `cata_`.
 --
--- /Since: 0.2.6/
+-- @since 0.2.6
 cata
     :: (ByteString -> a -> b -> b)
     -> (ByteString -> [b] -> b)
@@ -1110,7 +1110,7 @@ mergeMaybe f (Just v0)   (Just v1) = f v0 v1
 -- | Take the intersection of two tries, using a function to resolve
 -- collisions.
 --
--- /Since: 0.2.6/
+-- @since 0.2.6
 intersectBy :: (a -> b -> Maybe c) -> Trie a -> Trie b -> Trie c
 intersectBy f = intersectBy'
     where

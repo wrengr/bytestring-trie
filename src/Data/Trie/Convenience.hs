@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.20
+--                                                  ~ 2021.11.22
 -- |
 -- Module      :  Data.Trie.Convenience
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -238,14 +238,14 @@ unionWith' f = mergeBy (\x y -> Just $! f x y)
 -- the values.  The resulting trie is constructed strictly, bit the
 -- results of the combining function are evaluated lazily.
 --
--- /Since: 0.2.6/
+-- @since 0.2.6
 intersectWith :: (a -> b -> c) -> Trie a -> Trie b -> Trie c
 intersectWith f = intersectBy (\x y -> Just (f x y))
 
 -- | A variant of 'intersectWith' which evaluates the combining
 -- function strictly.
 --
--- /Since: 0.2.6/
+-- @since 0.2.6
 intersectWith' :: (a -> b -> c) -> Trie a -> Trie b -> Trie c
 intersectWith' f = intersectBy (\x y -> Just $! f x y)
 

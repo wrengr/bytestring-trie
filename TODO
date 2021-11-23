@@ -1,5 +1,21 @@
 * Reimplement things a-la HAMT <https://github.com/tibbe/unordered-containers/blob/hamt/Data/HashMap/Base.hs> for the wide fanout, ignoring the hashing stuff naturally.
 
+* Investigate using the new unlifted datatypes:
+    https://downloads.haskell.org/~ghc/9.2.1/docs/html/users_guide/exts/primitives.html#unlifted-datatypes
+
+* Consider reintroducing separation of Empty vs other constructors,
+  so as to capture the invariant that Branch cannot have Empty
+  recursion.  This would allow to remove all the unreachable (findArc Empty)
+  cases, which is mainly a hygiene thing, but might could possibly
+  help improve codegen/performance.
+
+  Of course, that still doesn't capture the invariants about how
+  Arc recurses; however, the only way I can think of to do that
+  properly but without introducing massive code complexity, would
+  be to switch over to using a GADT to track things.
+
+
+------------------------------------------------------------
 Test Coverage:
 * Data.Trie:
     elems, adjustBy
@@ -20,6 +36,7 @@ Test Coverage:
 
 
 
+------------------------------------------------------------
 Data.Trie.Internal:
 * shouldn't the smart constructors be INLINE-ed?
 * Verify that the new alterBy_ doesn't make the new alterBy less efficient than the old alterBy.
@@ -31,18 +48,19 @@ Data.Trie.Internal:
 * Clean up the cruft from development
 * make the special handling for epsilons use a consistent style/name for all
 
+------------------------------------------------------------
 Data.Trie.BitTwiddle:
 * Do benchmarking to compare using (Bits Word8) vs (Bits Int) and elemToNat
 * Do benchmarking to see whether the Word8 instances are not worse than Int instances. If Int is better/as-good, see about maybe getting Data.IntMap to switch to using a module like ours and exporting it from base. This would introduce a dependency on a particular base version, but reuse is good.
 --- On x86 the time performance is basically the same (trivially worse, within margin of error), memory performance is slightly worse (maybe due to conversions et al). Should be similar on most other architectures, except maybe ARM where Word8 is different than Word16/Word32
 
-
+------------------------------------------------------------
 Data.Trie.ByteStringInternal:
 * Write quickcheck law for breakMaximalPrefix
 * Write a smart constructor for ByteStrings to ensure good alignment
 * Write debugging suite for cross-platform checking
 
-
+------------------------------------------------------------
 Data.Trie.Convenience:
 * Try to find a single best implementation of fromList instead of all these variants. Some kind of amortized approximation to sorting which lets us be lazier?
 * fromListWith, fromListWithKey?
@@ -53,6 +71,8 @@ Data.Trie.Convenience:
 * split, splitLookup ??
 
 
+------------------------------------------------------------
+------------------------------------------------------------
 Other:
 * Reconsider a version of Trie that uses natural word size everywhere. Simplest way to maintain invariants is probably to have multiple values stored in each arc (one for each byte). But there might be some other way to do it...
 

@@ -5,7 +5,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.21
+--                                                  ~ 2021.11.22
 -- |
 -- Module      :  test/Main
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -39,10 +39,25 @@ import Data.Ord  (comparing)
 #if MIN_VERSION_base(4,13,0)
 -- [aka GHC 8.8.1] @(<>)@ is re-exported from the Prelude.
 #elif MIN_VERSION_base(4,9,0)
+-- [aka GHC 8.0.1]
 import Data.Semigroup      ((<>))
 #elif MIN_VERSION_base(4,5,0)
+-- [aka GHC 7.4.1]
 import Data.Monoid         ((<>))
 #endif
+#if MIN_VERSION_base(4,9,0)
+-- The documentation says since base-4.8.0 but that's wrong
+import Data.Semigroup      (Sum)
+#else
+data Sum a = Sum a
+    deriving (Eq, Ord, Read, Show, Bounded, Num)
+instance Num a => Semigroup (Sum a) where
+    Sum x <> Sum y = Sum (x + y)
+instance Num a => Monoid (Sum a) where
+    mempty = Sum 0
+    mappend (Sum x) (Sum y) = Sum (x + y)
+#endif
+
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
@@ -70,9 +85,9 @@ main = do
         else System.exitFailure
 
 -- We add the timeout for the sake of GithubActions CI, so we don't
--- accidentally blow our budget.  Since 'tests' actually runs in
--- around 7~8sec normally (or 10sec with HPC enabled), allowing
--- 30sec is more than generous.
+-- accidentally blow our budget.  So far, with HPC enabled the test
+-- suite still takes about 20sec all together, so allowing 30sec
+-- per test is more than generous.
 globalOptions :: Tasty.OptionSet
 globalOptions = mconcat
     [ Tasty.singleOption (Tasty.mkTimeout 30000000)  -- 30sec; in microsecs
@@ -125,7 +140,7 @@ to do that without GADTs or impredicativity?
 quickcheckTests :: Tasty.TestTree
 quickcheckTests
   = Tasty.testGroup "QuickCheck"
-  [ Tasty.testGroup "Trivial properties (@Int)"
+  [ Tasty.testGroup "Trivialities (@Int)"
     [ QC.testProperty
         "prop_insert"
         (prop_insert        :: WS -> Int -> WTrie Int -> Bool)
@@ -145,7 +160,7 @@ quickcheckTests
         "prop_delete_lookup"
         (prop_delete_lookup :: WS -> WTrie Int -> QC.Property)
     ]
-  , Tasty.testGroup "Submap properties (@Int)"
+  , Tasty.testGroup "Submap (@Int)"
     [ QC.testProperty
         "prop_submap_keysAreMembers"
         (prop_submap_keysAreMembers :: WS -> WTrie Int -> Bool)
@@ -167,7 +182,7 @@ quickcheckTests
     ]
   , Tasty.localOption (QC.QuickCheckMaxSize 300)
     -- BUG: fix that 'Tasty.localOption'
-  $ Tasty.testGroup "Intersection properties (@Int)"
+  $ Tasty.testGroup "Intersection (@Int)"
     [ QC.testProperty
         "prop_intersectL"
         (prop_intersectL    :: WTrie Int -> WTrie Int -> Bool)
@@ -178,7 +193,7 @@ quickcheckTests
         "prop_intersectPlus"
         (prop_intersectPlus :: WTrie Int -> WTrie Int -> Bool)
     ]
-  , Tasty.testGroup "match/matches properties (@Int)"
+  , Tasty.testGroup "Matching (@Int)"
     [ QC.testProperty
         "prop_matches_keysOrdered"
         (prop_matches_keysOrdered   :: WS -> WTrie Int -> Bool)
@@ -192,7 +207,7 @@ quickcheckTests
         "prop_match_is_last_matches"
         (prop_match_is_last_matches :: WS -> WTrie Int -> Bool)
     ]
-  , Tasty.testGroup "Priority-queue functions (@Int)"
+  , Tasty.testGroup "Priority-queue (@Int)"
     [ QC.testProperty
         "prop_minAssoc_is_first_toList"
         (prop_minAssoc_is_first_toList :: WTrie Int -> Bool)
@@ -212,7 +227,7 @@ quickcheckTests
         "prop_updateMaxViewBy_gives_maxAssoc"
         (prop_updateMaxViewBy_gives_maxAssoc :: (WS -> Int -> Maybe Int) -> WTrie Int -> Bool)
     ]
-  , Tasty.testGroup "List-conversion properties (@Int)"
+  , Tasty.testGroup "List-conversion (@Int)"
     [ QC.testProperty
         "prop_toListBy_keysOrdered"
         (prop_toListBy_keysOrdered  :: WTrie Int -> Bool)
@@ -234,6 +249,80 @@ quickcheckTests
     , QC.testProperty
         "prop_fromListWithLConst_takes_first"
         (prop_fromListWithLConst_takes_first :: [(WS, Int)] -> Bool)
+    ]
+  , Tasty.testGroup "Type classes"
+    [ Tasty.testGroup "Semigroup (@Sum Int)"
+      [ QC.testProperty
+          -- This one is a bit more expensive: ~1sec instead of <=0.5sec
+          "prop_Semigroup"
+          (prop_Semigroup :: WTrie (Sum Int) -> WTrie (Sum Int) -> WTrie (Sum Int) -> Bool)
+      ]
+    , Tasty.testGroup "Monoid (@Sum Int)"
+      [ QC.testProperty
+          "prop_MonoidIdentityL"
+          (prop_MonoidIdentityL :: WTrie (Sum Int) -> Bool)
+      , QC.testProperty
+          "prop_MonoidIdentityR"
+          (prop_MonoidIdentityR :: WTrie (Sum Int) -> Bool)
+      ]
+    , Tasty.testGroup "Functor (@Int)"
+      [ QC.testProperty
+          "prop_FunctorIdentity"
+          (prop_FunctorIdentity   :: WTrie Int -> Bool)
+      -- TODO: prop_FunctorCompose
+      {-
+      -- TODO: still worth it to do this test with 'undefined'?
+      , QC.testProperty
+          "prop_fmap_keys"
+          (prop_fmap_keys (undefined :: Int -> Int) :: WTrie Int -> Bool)
+      -}
+      , QC.testProperty
+          -- TODO: generalize to other functions.
+          "prop_fmap_toList"
+          (prop_fmap_toList (+1) :: WTrie Int -> Bool)
+      ]
+    , Tasty.testGroup "Applicative (@Int)"
+      [ QC.testProperty
+          "prop_ApplicativeIdentity"
+          (prop_ApplicativeIdentity :: WTrie Int -> Bool)
+      -- TODO: prop_ApplicativeCompose, prop_ApplicativeHom, prop_ApplicativeInterchange
+      ]
+    , Tasty.testGroup "Monad (@Int)"
+      [ QC.testProperty
+          "prop_MonadIdentityR"
+          (prop_MonadIdentityR :: WTrie Int -> Bool)
+      -- TODO: prop_MonadIdentityL, prop_MonadAssoc
+      ]
+    -- TODO: Foldable, Traversable
+    ]
+  , Tasty.testGroup "Other mapping/filtering (@Int)"
+    [ QC.testProperty
+        "prop_filterMap_ident"
+        (prop_filterMap_ident :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_filterMap_empty"
+        (prop_filterMap_empty :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_mapBy_keys"
+        (prop_mapBy_keys :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_contextualMap_ident"
+        (prop_contextualMap_ident :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_contextualMap'_ident"
+        (prop_contextualMap'_ident :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_contextualFilterMap_ident"
+        (prop_contextualFilterMap_ident :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_contextualMapBy_keys"
+        (prop_contextualMapBy_keys :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_contextualMapBy_ident"
+        (prop_contextualMapBy_ident :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_contextualMapBy_empty"
+        (prop_contextualMapBy_empty :: WTrie Int -> Bool)
     ]
   ]
 
@@ -615,9 +704,13 @@ _takes_first f assocs =
     (T.toList . f) .==. (nubBy (apFst (==)) . sortBy (comparing fst))
     $ map (first unWS) assocs
 
--- | Lift a function to apply to the first of pairs, retaining the second.
+-- | Lift a function to apply to the 'fst' of pairs, retaining the 'snd'.
 first :: (a -> b) -> (a,c) -> (b,c)
 first f (x,y) = (f x, y)
+
+-- | Lift a function to apply to the 'snd' of pairs, retaining the 'fst'.
+second :: (b -> c) -> (a,b) -> (a,c)
+second f (x,y) = (x, f y)
 
 -- | Lift a binary function to apply to the first of pairs, discarding seconds.
 apFst :: (a -> b -> c) -> ((a,d) -> (b,e) -> c)
@@ -646,6 +739,102 @@ prop_fromListWithConst_takes_first = _takes_first (TC.fromListWith const)
 -- | @('TC.fromListWithL' const)@ takes the first value for a given key.
 prop_fromListWithLConst_takes_first :: (Eq a) => [(WS, a)] -> Bool
 prop_fromListWithLConst_takes_first = _takes_first (TC.fromListWithL const)
+
+prop_FunctorIdentity :: Eq a => WTrie a -> Bool
+prop_FunctorIdentity = (fmap id .==. id) . unWT
+
+{- -- TODO: is there any way to make this remotely testable?
+prop_FunctorCompose :: Eq c => (b -> c) -> (a -> b) -> WTrie a -> Bool
+prop_FunctorCompose f g = (fmap (f . g) .==. (fmap f . fmap g)) . unWT
+-}
+
+{-
+-- Both of these test only a subset of what 'prop_fmap_toList' tests.  I was hoping they'd help simplify the function-generation problem, but if we're testing 'prop_fmap_toList' anyways then there's no point in testing these too.
+
+-- | 'fmap' doesn't affect the keys. This is safe to call with an
+-- undefined function, thereby proving that the function cannot
+-- affect things.
+prop_fmap_keys :: Eq b => (a -> b) -> WTrie a -> Bool
+prop_fmap_keys f = ((T.keys . fmap f) .==. T.keys) . unWT
+
+prop_fmap_elems :: Eq b => (a -> b) -> WTrie a -> Bool
+prop_fmap_elems f = ((T.elems . fmap f) .==. (map f . T.elems)) . unWT
+-}
+
+-- TODO: is there any way to generate halfway useful functions for testing here?
+prop_fmap_toList :: Eq b => (a -> b) -> WTrie a -> Bool
+prop_fmap_toList f =
+    ((T.toList . fmap f) .==. (map (second f) . T.toList)) . unWT
+
+prop_filterMap_ident :: Eq a => WTrie a -> Bool
+prop_filterMap_ident = (T.filterMap Just .==. id) . unWT
+
+prop_filterMap_empty :: Eq a => WTrie a -> Bool
+prop_filterMap_empty = (T.filterMap const_Nothing .==. const T.empty) . unWT
+    where
+    -- Have to fix the result type here.
+    const_Nothing :: a -> Maybe a
+    const_Nothing = const Nothing
+
+justConst :: a -> b -> Maybe a
+justConst x _ = Just x
+
+prop_mapBy_keys :: WTrie a -> Bool
+prop_mapBy_keys = all (uncurry (==)) . T.toList . T.mapBy justConst . unWT
+
+prop_contextualMap_ident :: Eq a => WTrie a -> Bool
+prop_contextualMap_ident = (TI.contextualMap const .==. id) . unWT
+
+prop_contextualMap'_ident :: Eq a => WTrie a -> Bool
+prop_contextualMap'_ident = (TI.contextualMap' const .==. id) . unWT
+
+prop_contextualFilterMap_ident :: Eq a => WTrie a -> Bool
+prop_contextualFilterMap_ident =
+    (TI.contextualFilterMap justConst .==. id) . unWT
+
+prop_contextualMapBy_keys :: WTrie a -> Bool
+prop_contextualMapBy_keys =
+    all (uncurry (==)) . T.toList . TI.contextualMapBy f . unWT
+    where
+    f k _ _ = Just k
+
+prop_contextualMapBy_ident :: Eq a => WTrie a -> Bool
+prop_contextualMapBy_ident = (TI.contextualMapBy f .==. id) . unWT
+    where
+    f _ v _ = Just v
+
+prop_contextualMapBy_empty :: Eq a => WTrie a -> Bool
+prop_contextualMapBy_empty = (TI.contextualMapBy f .==. const T.empty) . unWT
+    where
+    -- Have to fix the result type here.
+    f :: S.ByteString -> a -> T.Trie a -> Maybe a
+    f _ _ _ = Nothing
+
+prop_ApplicativeIdentity :: Eq a => WTrie a -> Bool
+prop_ApplicativeIdentity = ((pure id <*>) .==. id) . unWT
+
+{- -- (remaining, untestable) Applicative laws
+prop_ApplicativeCompose  = pure (.) <*> u <*> v <*> w == u <*> (v <*> w)
+prop_ApplicativeHom      = pure f <*> pure x == pure (f x)
+prop_ApplicativeInterchange = u <*> pure y == pure ($ y) <*> u
+-}
+
+prop_MonadIdentityR :: Eq a => WTrie a -> Bool
+prop_MonadIdentityR = ((>>= return) .==. id) . unWT
+
+{- -- (remaining, untestable) Monad laws
+prop_MonadIdentityL = (return a >>= k) == k a
+prop_MonadAssoc     = m >>= (\x -> k x >>= h) == (m >>= k) >>= h
+-}
+
+prop_Semigroup :: (Semigroup a, Eq a) => WTrie a -> WTrie a -> WTrie a -> Bool
+prop_Semigroup (WT a) (WT b) (WT c) = a <> (b <> c) == (a <> b) <> c
+
+prop_MonoidIdentityL :: (Monoid a, Eq a) => WTrie a -> Bool
+prop_MonoidIdentityL = ((mempty <>) .==. id) . unWT
+
+prop_MonoidIdentityR :: (Monoid a, Eq a) => WTrie a -> Bool
+prop_MonoidIdentityR = ((<> mempty) .==. id) . unWT
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

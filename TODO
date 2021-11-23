@@ -27,12 +27,11 @@ Test Coverage:
     fromListWith', fromListWithL', lookupWithDefault, insertWith, insertWith', insertWithKey, insertWithKey', adjustWithKey, update, updateWithKey, unionWith, unionWith', intersectWith, intersectWith'
     fromListWith, fromListWithL: use @f@ that evaluates the second argument
 * Data.Trie.Internal:
-    showsPrec, showTrie, put, get, fmap, foldMap, traverse, pure, (<*>), (<>), mempty, filterMap, mapBy, contextualMap, contextualMap', contextualFilterMap, contextualMapBy, cata_, cata, adjust
-    (>>=): bits and pieces.
+    showsPrec, showTrie, put, get, foldMap, traverse, cata_, cata, adjust
+    (>>=): a few bits still missing.
     getPrefix: (Arc S.empty _ _)
     intersectBy: bits and pieces.
     match_: @goJust _ _ _ q (Arc k (Just _) _) | breakMaximalPrefix k q == (_, S.empty, S.empty)@
-    * Make sure to test the contextual/filter maps with the constantly-Nothing function and a singleton epsilon map. Will show that `arc` cannot remove the S.null check; as well as ensuring a corner case is covered.
 
 
 

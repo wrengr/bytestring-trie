@@ -2,7 +2,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 ----------------------------------------------------------------
---                                                  ~ 2021.11.20
+--                                                  ~ 2021.11.22
 -- |
 -- Module      :  Data.Trie
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -62,7 +62,6 @@ import Prelude hiding     (null, lookup)
 import qualified Prelude  (null, lookup)
 
 import Data.Trie.Internal
-import Data.Trie.Errors   (impossible)
 import Data.ByteString    (ByteString)
 import qualified Data.ByteString as S
 import Data.Maybe         (isJust)

@@ -37,7 +37,6 @@ Test Coverage:
 
 ------------------------------------------------------------
 Data.Trie.Internal:
-* shouldn't the smart constructors be INLINE-ed?
 * Verify that the new alterBy_ doesn't make the new alterBy less efficient than the old alterBy.
 * Check for the issue about using parameters at multiple recursion levels, as mentioned in the Containers paper. We should force those parameters outside of the recursion, doing so can save big.
 * Also check for using their other versions of maskW, which could give 10% speedup!

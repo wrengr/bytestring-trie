@@ -40,15 +40,14 @@ import Data.Ord  (comparing)
 -- [aka GHC 8.8.1] @(<>)@ is re-exported from the Prelude.
 #elif MIN_VERSION_base(4,9,0)
 -- [aka GHC 8.0.1]
-import Data.Semigroup      ((<>), Semigroup, Sum)
+import Data.Semigroup      ((<>), Semigroup)
 #elif MIN_VERSION_base(4,5,0)
 -- [aka GHC 7.4.1]
 import Data.Monoid         ((<>))
 #endif
-
-----------------------------------------------------------------
-----------------------------------------------------------------
-#if !(MIN_VERSION_base(4,9,0))
+#if MIN_VERSION_base(4,9,0)
+import Data.Semigroup      (Sum)
+#else
 data Sum a = Sum a
     deriving (Eq, Ord, Read, Show, Bounded, Num)
 instance Num a => Monoid (Sum a) where
@@ -56,6 +55,7 @@ instance Num a => Monoid (Sum a) where
     mappend (Sum x) (Sum y) = Sum (x + y)
 #endif
 
+----------------------------------------------------------------
 ----------------------------------------------------------------
 -- We can't use 'Tasty.defaultMain' together with 'Tasty.localOption',
 -- because what we want to do is to set new defaults but still allow

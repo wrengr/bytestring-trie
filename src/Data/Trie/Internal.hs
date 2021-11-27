@@ -1,12 +1,11 @@
--- To make GHC stop warning about the Prelude
-{-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-unused-imports #-}
+{-# OPTIONS_GHC -Wall -fwarn-tabs -Wcompat #-}
 {-# LANGUAGE NoImplicitPrelude #-}
 
 -- For list fusion on toListBy, and guarding `base` versions.
 {-# LANGUAGE CPP #-}
 
 ------------------------------------------------------------
---                                              ~ 2021.11.22
+--                                              ~ 2021.11.26
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -59,26 +58,43 @@ module Data.Trie.Internal
     , updateMinViewBy, updateMaxViewBy
     ) where
 
-import Prelude hiding    (null, lookup)
-import qualified Prelude (null, lookup)
+import Prelude hiding      (null, lookup)
 
 import qualified Data.ByteString as S
 import Data.Trie.ByteStringInternal
 import Data.Trie.BitTwiddle
-import Data.Trie.Errors   (impossible)
+import Data.Trie.Errors    (impossible)
 
 import Data.Binary         (Binary(..), Get, Word8)
-#if MIN_VERSION_base(4,9,0)
+
+#if MIN_VERSION_base(4,13,0)
+-- [aka GHC 8.8.1]: Prelude re-exports 'Semigroup'.
+#elif MIN_VERSION_base(4,9,0)
+-- [aka GHC 8.0.1]: "Data.Semigroup" added to base.
+-- From now on we'll use 'Data.Semigroup.<>' in lieu of 'Data.Monoid.<>',
+-- since they conflict with one another until base-4.11 / GHC 8.4.1
 import Data.Semigroup      (Semigroup(..))
-#elif MIN_VERSION_base(4,5,0)
--- So we can abbreviate 'S.append'
+#elif MIN_VERSION_base(4,8,0)
+-- [aka GHC 7.10.1]: Prelude re-exports 'Monoid', but not @(<>)@.
 import Data.Monoid         ((<>))
-#endif
+#elif MIN_VERSION_base(4,5,0)
+-- [aka GHC 7.4.1]: @(<>)@ added to "Data.Monoid".
+import Data.Monoid         (Monoid(..), (<>))
+#else
+-- We'll just define our own @(<>)@...
 import Data.Monoid         (Monoid(..))
+#endif
+
 import Control.Monad       (liftM, liftM3, liftM4)
+
+#if MIN_VERSION_base(4,8,0)
+-- [aka GHC 7.10.1]: Prelude re-exports 'Applicative', @(<$>)@,
+-- 'Foldable', and 'Traversable'.
+#else
 import Control.Applicative (Applicative(..), (<$>))
 import Data.Foldable       (Foldable(foldMap))
 import Data.Traversable    (Traversable(traverse))
+#endif
 
 #ifdef __GLASGOW_HASKELL__
 import GHC.Exts (build)

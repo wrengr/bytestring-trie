@@ -1,9 +1,6 @@
-{-# OPTIONS_GHC -Wall -fwarn-tabs -Wcompat #-}
-{-# LANGUAGE NoImplicitPrelude #-}
-
--- For list fusion on toListBy, and guarding `base` versions.
-{-# LANGUAGE CPP #-}
-
+-- Not using -Wcompat, because it wants outdated things for GHC 8.0/8.2
+{-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+{-# LANGUAGE NoImplicitPrelude, CPP #-}
 ------------------------------------------------------------
 --                                              ~ 2021.11.26
 -- |
@@ -368,8 +365,22 @@ instance (Semigroup a) => Semigroup (Trie a) where
 
 -- This instance is more sensible than Data.IntMap and Data.Map's
 instance (Monoid a) => Monoid (Trie a) where
-    mempty  = empty
-#if (!(MIN_VERSION_base(4,11,0)))
+    mempty = empty
+#if MIN_VERSION_base(4,11,0)
+    -- Now that the canonical instance is the default, don't define
+    -- 'mappend', in anticipation of Phase 4 of:
+    -- <https://gitlab.haskell.org/ghc/ghc/-/wikis/proposal/semigroup-monoid>
+{-
+--if MIN_VERSION_base(4,9,0)
+    -- GHC 8.0/8.2 -Wnoncanonical-monoid-instances wants this
+    -- definition, even though 'Semigroup' isn't a superclass of
+    -- 'Monoid' until base-4.11 so it would require additional
+    -- constraints on the instance.  Since we're only supporting
+    -- these older versions for legacy reasons, there's no reason
+    -- to bother adhering to the -Wcompat here.
+    mappend = (<>)
+-}
+#else
     mappend = mergeBy $ \x y -> Just (x `mappend` y)
 #endif
 

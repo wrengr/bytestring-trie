@@ -1,10 +1,10 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-name-shadowing #-}
-
--- The MagicHash is for unboxed primitives (-fglasgow-exts also works)
-{-# LANGUAGE CPP, MagicHash #-}
-
+{-# LANGUAGE CPP #-}
+#ifdef __GLASGOW_HASKELL__
+{-# LANGUAGE MagicHash #-}
+#endif
 ----------------------------------------------------------------
---                                                  ~ 2021.10.17
+--                                                  ~ 2021.11.26
 -- |
 -- Module      :  Data.Trie.BitTwiddle
 -- Copyright   :  Copyright (c) 2002 Daan Leijen

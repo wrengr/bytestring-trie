@@ -116,17 +116,18 @@ member :: ByteString -> Trie a -> Bool
 {-# INLINE member #-}
 member q = isJust . lookup q
 
+getMatch :: ByteString -> (Int, a) -> (ByteString, a, ByteString)
+{-# INLINE getMatch #-}
+getMatch q (n,x) =
+    case S.splitAt n q of
+    (p,q') -> (p, x, q')
 
 -- | Given a query, find the longest prefix with an associated value
 -- in the trie, and return that prefix, it's value, and the remainder
 -- of the query.
 match :: Trie a -> ByteString -> Maybe (ByteString, a, ByteString)
-match t q =
-    case match_ t q of
-    Nothing    -> Nothing
-    Just (n,x) ->
-        case S.splitAt n q of
-        (p,q') -> Just (p, x, q')
+{-# INLINE match #-}
+match t q = getMatch q <$> match_ t q
 
 -- | Given a query, find the shortest prefix with an associated value
 -- in the trie, and return that prefix, it's value, and the remainder
@@ -134,6 +135,7 @@ match t q =
 --
 -- @since 0.2.6
 minMatch :: Trie a -> ByteString -> Maybe (ByteString, a, ByteString)
+{-# INLINE minMatch #-}
 minMatch t q =
     case matches t q of
     []  -> Nothing
@@ -145,11 +147,7 @@ minMatch t q =
 -- producer for list fusion.
 matches :: Trie a -> ByteString -> [(ByteString, a, ByteString)]
 {-# INLINE matches #-}
-matches t q = map f (matches_ t q)
-    where
-    f (n,x) =
-        case S.splitAt n q of
-        (p,q') -> (p, x, q')
+matches t q = getMatch q <$> matches_ t q
 
 
 {---------------------------------------------------------------

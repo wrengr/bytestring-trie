@@ -3,6 +3,10 @@
 #ifdef __GLASGOW_HASKELL__
 {-# LANGUAGE MagicHash #-}
 #endif
+#if __GLASGOW_HASKELL__ >= 701
+-- Naturally, the MagicHash stuff from "GHC.Exts" isn't considered safe.
+{-# LANGUAGE Trustworthy #-}
+#endif
 ----------------------------------------------------------------
 --                                                  ~ 2021.11.26
 -- |

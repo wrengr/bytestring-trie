@@ -1,4 +1,8 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+{-# LANGUAGE CPP #-}
+#if __GLASGOW_HASKELL__ >= 701
+{-# LANGUAGE Safe #-}
+#endif
 ----------------------------------------------------------------
 --                                                  ~ 2021.10.17
 -- |

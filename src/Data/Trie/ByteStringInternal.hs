@@ -1,6 +1,11 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+{-# LANGUAGE CPP #-}
+#if __GLASGOW_HASKELL__ >= 701
+-- Neither 'unsafeDupablePerformIO' nor 'Data.ByteString.Internal' is safe.
+{-# LANGUAGE Trustworthy #-}
+#endif
 ------------------------------------------------------------
---                                              ~ 2021.11.07
+--                                              ~ 2021.11.26
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano

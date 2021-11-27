@@ -1,6 +1,10 @@
 -- Not using -Wcompat, because it wants outdated things for GHC 8.0/8.2
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 {-# LANGUAGE NoImplicitPrelude, CPP #-}
+#if __GLASGOW_HASKELL__ >= 701
+-- Alas, "GHC.Exts" isn't considered safe, even though 'build' surely is.
+{-# LANGUAGE Trustworthy #-}
+#endif
 ------------------------------------------------------------
 --                                              ~ 2021.11.26
 -- |

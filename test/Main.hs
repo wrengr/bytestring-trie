@@ -36,15 +36,17 @@ import qualified Test.Tasty.QuickCheck  as QC
 
 import Data.List (nubBy, sortBy)
 import Data.Ord  (comparing)
+
 #if MIN_VERSION_base(4,13,0)
--- [aka GHC 8.8.1] @(<>)@ is re-exported from the Prelude.
+-- [aka GHC 8.8.1]: Prelude re-exports 'Semigroup'.
 #elif MIN_VERSION_base(4,9,0)
--- [aka GHC 8.0.1]
+-- [aka GHC 8.0.1]: "Data.Semigroup" added to base.
 import Data.Semigroup      (Semigroup(..))
 #elif MIN_VERSION_base(4,5,0)
--- [aka GHC 7.4.1]
+-- [aka GHC 7.4.1]: @(<>)@ added to "Data.Monoid".
 import Data.Monoid         ((<>))
 #endif
+
 #if MIN_VERSION_base(4,9,0)
 import Data.Semigroup      (Sum)
 #else

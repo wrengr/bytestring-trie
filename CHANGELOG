@@ -1,3 +1,5 @@
+0.2.6.1 (>= 2021.11.26):
+    - Cleaning up OPTIONS_GHC and imports.
 0.2.6 (2021.11.22):
     - Adjusting the instances for Applicative/Monad and Monoid, to
       avoid warnings from GHC 9.2.1 regarding:

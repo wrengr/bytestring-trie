@@ -1,5 +1,6 @@
 0.2.6.1 (>= 2021.11.26):
     - Cleaning up OPTIONS_GHC and imports.
+    - Cleaning up Haddock and adding more @since annotations
 0.2.6 (2021.11.22):
     - Adjusting the instances for Applicative/Monad and Monoid, to
       avoid warnings from GHC 9.2.1 regarding:
@@ -29,7 +30,7 @@
 0.2.4.1 (2015.04.04):
     - Data.Trie.Internal: adjusted imports to compule under GHC 7.10.1
 0.2.4 (2014.10.09):
-    - added Data.Trie.Internal.{match_,matches_}, Data.Trie.Base.{match,matches}
+    - added Data.Trie.Internal.{match_,matches_}, Data.Trie.{match,matches}
 0.2.3 (2010.02.12):
     - added Data.Trie.Internal.alterBy_
     - added Data.Trie.Internal.{contextualMap, contextualMap', contextualFilterMap, contextualMapBy}

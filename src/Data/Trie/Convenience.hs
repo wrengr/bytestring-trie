@@ -4,7 +4,7 @@
 {-# LANGUAGE Safe #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.11.22
+--                                                  ~ 2021.11.27
 -- |
 -- Module      :  Data.Trie.Convenience
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -112,6 +112,8 @@ fromListWith f = foldr (uncurry $ alterBy g) empty
 -- fusion. If you need list fusion and are running into stack
 -- overflow problems with 'fromListWith', then this function may
 -- solve the problem.
+--
+-- @since 0.2.3
 fromListWith' :: (a -> a -> a) -> [(ByteString,a)] -> Trie a
 {-# INLINE fromListWith' #-}
 fromListWith' f = foldr (uncurry $ alterBy g') empty
@@ -126,6 +128,8 @@ fromListWith' f = foldr (uncurry $ alterBy g') empty
 -- the list; the second argument is the \"new\" value from the
 -- remaining tail of the list (just like the first argument to
 -- 'foldl'). Thus, @fromListL = fromListWithL const@.
+--
+-- @since 0.2.3
 fromListWithL :: (a -> a -> a) -> [(ByteString,a)] -> Trie a
 {-# INLINE fromListWithL #-}
 fromListWithL f = foldl' (flip . uncurry $ alterBy flipG) empty
@@ -136,6 +140,8 @@ fromListWithL f = foldl' (flip . uncurry $ alterBy flipG) empty
 
 -- | A variant of 'fromListWithL' which applies the combining
 -- function strictly.
+--
+-- @since 0.2.3
 fromListWithL' :: (a -> a -> a) -> [(ByteString,a)] -> Trie a
 {-# INLINE fromListWithL' #-}
 fromListWithL' f = foldl' (flip . uncurry $ alterBy flipG') empty
@@ -171,6 +177,8 @@ insertWith f =
 
 -- | A variant of 'insertWith' which applies the combining function
 -- strictly.
+--
+-- @since 0.2.3
 insertWith' :: (a -> a -> a) -> ByteString -> a -> Trie a -> Trie a
 insertWith' f =
     alterBy $ \_ x mv ->
@@ -189,6 +197,8 @@ insertWithKey f =
 
 -- | A variant of 'insertWithKey' which applies the combining
 -- function strictly.
+--
+-- @since 0.2.3
 insertWithKey' :: (ByteString -> a -> a -> a) -> ByteString -> a -> Trie a -> Trie a
 insertWithKey' f =
     alterBy $ \k x mv ->
@@ -234,6 +244,8 @@ unionWith f = mergeBy (\x y -> Just (f x y))
 
 -- | A variant of 'unionWith' which evaluates the combining function
 -- strictly.
+--
+-- @since 0.2.3
 unionWith' :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
 unionWith' f = mergeBy (\x y -> Just $! f x y)
 

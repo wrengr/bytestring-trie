@@ -5,7 +5,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.11.26
+--                                              ~ 2021.11.27
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -37,11 +37,16 @@ type ByteStringElem = Word8
 
 
 ------------------------------------------------------------
+-- The @since annotation is for when this got re-exported from
+-- "Data.Trie.Internal".
+--
 -- | Returns the longest shared prefix and the two remaining suffixes
 -- for a pair of strings.
 --
--- >    s == (\(pre,s',z') -> pre `append` s') (breakMaximalPrefix s z)
--- >    z == (\(pre,s',z') -> pre `append` z') (breakMaximalPrefix s z)
+-- * @s == (\\(pre,s',z') -> pre '<>' s') ('breakMaximalPrefix' s z)@
+-- * @z == (\\(pre,s',z') -> pre '<>' z') ('breakMaximalPrefix' s z)@
+--
+-- @since 0.2.2
 breakMaximalPrefix
     :: ByteString
     -> ByteString

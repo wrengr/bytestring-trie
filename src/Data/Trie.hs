@@ -4,7 +4,7 @@
 {-# LANGUAGE Safe #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.11.26
+--                                                  ~ 2021.11.27
 -- |
 -- Module      :  Data.Trie
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -74,25 +74,26 @@ import Data.Maybe         (isJust)
 -- Conversion functions
 ---------------------------------------------------------------}
 
--- | Convert association list into a trie. On key conflict, values
+-- | Convert association list into a trie.  On key conflict, values
 -- earlier in the list shadow later ones.
 fromList :: [(ByteString,a)] -> Trie a
 {-# INLINE fromList #-}
 fromList = foldr (uncurry insert) empty
 
--- | Convert trie into association list. Keys will be in sorted order.
+-- | Convert trie into association list.  The list is ordered
+-- according to the keys.
 toList :: Trie a -> [(ByteString,a)]
 {-# INLINE toList #-}
 toList  = toListBy (,)
-
--- FIX? should 'keys' and 'elems' move to Data.Trie.Convenience instead?
 
 -- | Return all keys in the trie, in sorted order.
 keys :: Trie a -> [ByteString]
 {-# INLINE keys #-}
 keys  = toListBy const
 
--- | Return all values in the trie, in sorted order according to the keys.
+-- | Return all values in the trie, in key-sorted order.
+--
+-- @since 0.2.2
 elems :: Trie a -> [a]
 {-# INLINE elems #-}
 elems  = toListBy (flip const)
@@ -113,7 +114,6 @@ lookup :: ByteString -> Trie a -> Maybe a
 {-# INLINE lookup #-}
 lookup = lookupBy const
 
--- TODO? move to "Data.Trie.Convenience"?
 -- | Does a string have a value in the trie?
 member :: ByteString -> Trie a -> Bool
 {-# INLINE member #-}
@@ -128,6 +128,8 @@ getMatch q (n,x) =
 -- | Given a query, find the longest prefix with an associated value
 -- in the trie, and return that prefix, it's value, and the remainder
 -- of the query.
+--
+-- @since 0.2.4
 match :: Trie a -> ByteString -> Maybe (ByteString, a, ByteString)
 {-# INLINE match #-}
 match t q = getMatch q <$> match_ t q
@@ -148,6 +150,8 @@ minMatch t q =
 -- trie, and return their (prefix, value, remainder) triples in
 -- order from shortest prefix to longest.  This function is a good
 -- producer for list fusion.
+--
+-- @since 0.2.4
 matches :: Trie a -> ByteString -> [(ByteString, a, ByteString)]
 {-# INLINE matches #-}
 matches t q = getMatch q <$> matches_ t q
@@ -169,8 +173,9 @@ insert = alterBy (\_ x _ -> Just x)
 -- Because this function does not need to worry about changing the
 -- trie structure, it is somewhat faster than 'alterBy'.
 --
--- /Since: 0.2.6/ for being exported from "Data.Trie".  Before then
--- it was only exported from "Data.Trie.Internal".
+-- @since 0.2.6
+-- __NOTE__ Prior to version 0.2.6 this function was exported from
+-- "Data.Trie.Internal" instead.
 adjustBy :: (ByteString -> a -> a -> a)
          -> ByteString -> a -> Trie a -> Trie a
 {-# INLINE adjustBy #-}

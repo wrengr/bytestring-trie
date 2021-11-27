@@ -6,7 +6,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.11.26
+--                                              ~ 2021.11.27
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -20,6 +20,8 @@
 -- from "Data.Trie", which is the preferred API for users. This
 -- module is for developers who need deeper (and potentially fragile)
 -- access to the abstract type.
+--
+-- @since 0.1.3
 ------------------------------------------------------------
 
 module Data.Trie.Internal
@@ -106,7 +108,7 @@ import GHC.Exts (build)
 
 #if (!(MIN_VERSION_base(4,5,0)))
 infixr 6 <>
--- Only ever used to abbreviate 'S.append'
+-- | Only ever used to abbreviate 'S.append'
 (<>) :: Monoid m => m -> m -> m
 (<>) = mappend
 {-# INLINE (<>) #-}
@@ -229,6 +231,8 @@ data Trie a = Empty
 -- It doesn't emit truly proper Haskell code though, since ByteStrings
 -- are printed as (ASCII) Strings, but that's not our fault. (Also
 -- 'fromList' is in "Data.Trie" instead of here.)
+--
+-- | @since 0.2.2
 instance (Show a) => Show (Trie a) where
     showsPrec p t = showParen (p > 10)
                   $ ("Data.Trie.fromList "++) . shows (toListBy (,) t)
@@ -322,6 +326,7 @@ instance Traversable Trie where
         go (Arc k (Just v) t) = Arc k . Just <$> f v <*> go t
         go (Branch p m l r)   = Branch p m <$> go l <*> go r
 
+-- | @since 0.2.2
 instance Applicative Trie where
     pure    = singleton S.empty
     m <*> n = m >>= (<$> n)
@@ -336,6 +341,8 @@ instance Applicative Trie where
 --  1. return x >>= f  == f x
 --  2. m >>= return    == m
 --  3. (m >>= f) >>= g == m >>= (\x -> f x >>= g)
+--
+-- | @since 0.2.2
 instance Monad Trie where
 -- Since base-4.8 (ghc-7.10.1) we have the default @return = pure@.
 -- Since ghc-9.2.1 we get a warning about providing any other
@@ -361,6 +368,7 @@ instance Monad Trie where
 -- The "Data.Semigroup" module is in base since 4.9.0.0; but having
 -- the 'Semigroup' superclass for the 'Monoid' instance only comes
 -- into force in base 4.11.0.0.
+-- | @since 0.2.5.0
 instance (Semigroup a) => Semigroup (Trie a) where
     (<>) = mergeBy $ \x y -> Just (x <> y)
     -- TODO: optimized implementations of:
@@ -442,6 +450,8 @@ mapBy f = go S.empty
 
 -- | A variant of 'fmap' which provides access to the subtrie rooted
 -- at each value.
+--
+-- @since 0.2.3
 contextualMap :: (a -> Trie a -> b) -> Trie a -> Trie b
 contextualMap f = go
     where
@@ -452,6 +462,8 @@ contextualMap f = go
 
 
 -- | A variant of 'contextualMap' which applies the function strictly.
+--
+-- @since 0.2.3
 contextualMap' :: (a -> Trie a -> b) -> Trie a -> Trie b
 contextualMap' f = go
     where
@@ -462,6 +474,8 @@ contextualMap' f = go
 
 
 -- | A contextual variant of 'filterMap'.
+--
+-- @since 0.2.3
 contextualFilterMap :: (a -> Trie a -> Maybe b) -> Trie a -> Trie b
 contextualFilterMap f = go
     where
@@ -473,6 +487,8 @@ contextualFilterMap f = go
 
 -- | A contextual variant of 'mapBy'. Again note that this is
 -- expensive since we must reconstruct the keys.
+--
+-- @since 0.2.3
 contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
 contextualMapBy f = go S.empty
     where
@@ -648,6 +664,8 @@ size' (Arc _ (Just _) t) f n = size' t f $! n + 1
 --
 -- | Convert a trie into a list (in key-sorted order) using a
 -- function, folding the list as we go.
+--
+-- @since 0.2.2
 foldrWithKey :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
 foldrWithKey fcons nil = \t -> go S.empty t nil
     where
@@ -835,6 +853,8 @@ errorEmptyAfterNothing s = errorInvariantBroken s "Empty after Nothing"
 -- This function may not have the most useful return type. For a
 -- version that returns the prefix itself as well as the remaining
 -- string, see 'Data.Trie.match'.
+--
+-- @since 0.2.4
 match_ :: Trie a -> ByteString -> Maybe (Int, a)
 match_ = flip start
     where
@@ -905,6 +925,8 @@ match_ = flip start
 -- This function may not have the most useful return type. For a
 -- version that returns the prefix itself as well as the remaining
 -- string, see 'Data.Trie.matches'.
+--
+-- @since 0.2.4
 matches_ :: Trie a -> ByteString -> [(Int,a)]
 matches_ t q =
 #if !defined(__GLASGOW_HASKELL__)
@@ -977,7 +999,8 @@ alterBy f q x = alterBy_ (\mv t -> (f q x mv, t)) q
 -- If the function returns @(Just v, t)@ and @lookup S.empty t ==
 -- Just w@, then the @w@ will be overwritten by @v@.
 --
--- /Type changed in 0.2.6/
+-- @since 0.2.3
+-- __NOTE__: /Type changed in 0.2.6/
 alterBy_
     :: (Maybe a -> Trie a -> (Maybe a, Trie a))
     -> ByteString -> Trie a -> Trie a
@@ -1026,7 +1049,8 @@ alterBy_ f = start
 -- TODO: benchmark vs the definition with alterBy/liftM
 -- TODO: add a variant that's strict in the function.
 --
--- /Since: 0.2.6/ for being exported from "Data.Trie.Internal".
+-- /Since: 0.2.6/ for being exported from "Data.Trie.Internal"
+-- rather than "Data.Trie"
 --
 -- | Apply a function to the value at a key.  If the key is not
 -- present, then the trie is returned unaltered.
@@ -1245,6 +1269,8 @@ intersectMaybe _ _         _         = Nothing
 -- | Return the lexicographically smallest 'ByteString' and the
 -- value it's mapped to; or 'Nothing' for the empty trie.  When one
 -- entry is a prefix of another, the prefix will be returned.
+--
+-- @since 0.2.2
 minAssoc :: Trie a -> Maybe (ByteString, a)
 minAssoc = go S.empty
     where
@@ -1257,6 +1283,8 @@ minAssoc = go S.empty
 -- | Return the lexicographically largest 'ByteString' and the
 -- value it's mapped to; or 'Nothing' for the empty trie.  When one
 -- entry is a prefix of another, the longer one will be returned.
+--
+-- @since 0.2.2
 maxAssoc :: Trie a -> Maybe (ByteString, a)
 maxAssoc = go S.empty
     where
@@ -1274,6 +1302,8 @@ mapView f (Just (k,v,t)) = Just (k,v, f t)
 
 
 -- | Update the 'minAssoc' and return the old 'minAssoc'.
+--
+-- @since 0.2.2
 updateMinViewBy :: (ByteString -> a -> Maybe a)
                 -> Trie a -> Maybe (ByteString, a, Trie a)
 updateMinViewBy f = go S.empty
@@ -1285,6 +1315,8 @@ updateMinViewBy f = go S.empty
 
 
 -- | Update the 'maxAssoc' and return the old 'maxAssoc'.
+--
+-- @since 0.2.2
 updateMaxViewBy :: (ByteString -> a -> Maybe a)
                 -> Trie a -> Maybe (ByteString, a, Trie a)
 updateMaxViewBy f = go S.empty

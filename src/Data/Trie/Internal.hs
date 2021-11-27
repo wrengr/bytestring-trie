@@ -62,6 +62,7 @@ module Data.Trie.Internal
 import Prelude hiding      (null, lookup)
 
 import qualified Data.ByteString as S
+import qualified Data.ByteString.Unsafe as SU
 import Data.Trie.ByteStringInternal
 import Data.Trie.BitTwiddle
 import Data.Trie.Errors    (impossible)
@@ -503,7 +504,7 @@ arc k    Nothing
     | S.null k  = id
     | otherwise = prepend k
 
--- | Variant of `arc` where the string is known to be non-null.
+-- | Variant of 'arc' where the string is known to be non-null.
 arcNN :: ByteString -> Maybe a -> Trie a -> Trie a
 {-# INLINE arcNN #-}
 arcNN k mv@(Just _) = Arc k mv
@@ -517,7 +518,7 @@ prepend _ t@Empty         = t
 prepend k t@(Branch{})    = Arc k Nothing t
 prepend k (Arc k' mv' t') = Arc (k <> k') mv' t'
 
--- | Variant of `arc` for when the string is known to be empty.
+-- | Variant of 'arc' for when the string is known to be empty.
 -- Does not verify that the trie argument is not already contain
 -- an epsilon value; is up to the caller to ensure correctness.
 epsilon :: Maybe a -> Trie a -> Trie a
@@ -547,12 +548,14 @@ branchMerge p1 t1  p2 t2
 -- Data.ByteString.TrieInternal.wordHead somehow, that way
 -- we can see 4/8/?*Word8 at a time instead of just one.
 -- But that makes maintaining invariants ...difficult :(
-getPrefix :: Trie a -> Prefix
-{-# INLINE getPrefix #-}
-getPrefix (Branch p _ _ _)        = p
-getPrefix (Arc k _ _) | S.null k  = 0 -- for lack of a better value
-                      | otherwise = S.head k
-getPrefix Empty                   = error "getPrefix: no Prefix of Empty"
+
+-- | Get the equivalent of the 'Prefix' stored in a @Branch@, but
+-- for an @Arc@.
+arcPrefix :: ByteString -> Prefix
+{-# INLINE arcPrefix #-}
+arcPrefix k
+    | S.null k  = 0 -- for lack of a better value
+    | otherwise = SU.unsafeHead k
 
 
 {-----------------------------------------------------------
@@ -563,11 +566,23 @@ getPrefix Empty                   = error "getPrefix: no Prefix of Empty"
 -- TODO: shouldn't we inline the logic and just NOINLINE the string
 -- constant? There are only three use sites, which themselves aren't
 -- inlined...
+-- TODO: this is almost identical to 'arcPrefix'; the only difference
+-- is that we use this one for matching a query against a trie,
+-- whereas we use 'arcPrefix' when matching two tries together.
+-- That said, since our test suite never throws this error, it
+-- should be safe to use 'arcPrefix' everywhere instead.  Or, if
+-- we want to preserve the semantic distinction, then we could start
+-- using 'Control.Exception.assert' to hoist the null-check out to
+-- where it belongs and still allow it to compile away.  Conversely,
+-- note that 'arcPrefix' is never called with a null string either
+-- (since null strings are only ever allowed for epsilon values;
+-- and all the use-sites of 'arcPrefix' are after handling those
+-- epsilons, or otherwise guarded).
 errorLogHead :: String -> ByteString -> ByteStringElem
 {-# NOINLINE errorLogHead #-}
 errorLogHead fn q
     | S.null q  = error $ "Data.Trie.Internal." ++ fn ++": found null subquery"
-    | otherwise = S.head q
+    | otherwise = SU.unsafeHead q
 
 
 ------------------------------------------------------------
@@ -992,16 +1007,18 @@ alterBy_ f = start
                           uncurry (arcNN p) (f Nothing (Arc k' mv t))
         (False, False) ->
             case nothing q' of
-            Empty -> t_ -- Nothing to add, reuse old Arc
-            l     -> arc' (branchMerge (getPrefix l) l (getPrefix r) r)
-                    where
-                    r = Arc k' mv t
-                    -- inlined variant of @arc p Nothing@, which captures
-                    -- the invariant that the result of 'branchMerge'
-                    -- above must be a Branch (because neither @l@ nor
-                    -- @r@ are Empty)
-                    arc' | S.null p  = id
-                         | otherwise = Arc p Nothing
+            Empty     -> t_ -- Nothing to add, reuse old Arc
+            Branch{}  -> impossible "alterBy_" -- 'arcNN' can't Branch
+            l@(Arc{}) ->
+                -- Inlined version of @arc p Nothing@, capturing
+                -- the invariant that the 'branchMerge' must be a
+                -- Branch (since neither trie argument is Empty).
+                (if S.null p then id else Arc p Nothing)
+                -- 'arcNN' will always have that the string in @l@
+                -- must begin with @q'@, which is non-null here and
+                -- therefore @arcPrefix q'@ is equivalent to taking
+                -- the 'arcPrefix' of the string in @l@.
+                $ (branchMerge (arcPrefix q') l (arcPrefix k') (Arc k' mv t))
         (True, True)  -> uncurry (arc k) (f mv t)
         (True, False) -> arc k mv (go q' t)
 
@@ -1073,8 +1090,8 @@ mergeBy f = mergeBy'
     go Empty t1    = t1
     go t0    Empty = t0
     -- /O(n+m)/ for this part where /n/ and /m/ are sizes of the branchings
-    go  t0@(Branch p0 m0 l0 r0)
-        t1@(Branch p1 m1 l1 r1)
+    go t0@(Branch p0 m0 l0 r0)
+       t1@(Branch p1 m1 l1 r1)
         | shorter m0 m1  = union0
         | shorter m1 m0  = union1
         | p0 == p1       = branch p0 m0 (go l0 l1) (go r0 r1)
@@ -1086,48 +1103,46 @@ mergeBy f = mergeBy'
         union1  | nomatch p0 p1 m1  = branchMerge p0 t0 p1 t1
                 | zero p0 m1        = branch p1 m1 (go t0 l1) r1
                 | otherwise         = branch p1 m1 l1 (go t0 r1)
-    -- We combine these branches of @go@ in order to clarify where
-    -- the definitions of @p0@, @p1@, @m'@, @p'@ are relevant.
-    -- However, this may introduce inefficiency in the pattern
-    -- matching automaton...
-    -- TODO: check; and get rid of @go'@ if it does.
-    go t0_ t1_ = go' t0_ t1_
+    --
+    go t0@(Arc k0 mv0 s0)
+       t1@(Arc k1 mv1 s1)
+        | m' == 0 =
+            let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
+            if S.null pre
+            then error "mergeBy: no mask, but no prefix string"
+            else
+                let {-# INLINE t0' #-}
+                    t0' = Arc k0' mv0 s0
+                    {-# INLINE t1' #-}
+                    t1' = Arc k1' mv1 s1
+                in
+                case (S.null k0', S.null k1') of
+                (True, True)  -> arcNN pre (mergeMaybe f mv0 mv1) (go s0 s1)
+                (True, False) -> arcNN pre mv0 (go s0  t1')
+                (False,True)  -> arcNN pre mv1 (go t0' s1)
+                (False,False) -> prepend pre   (go t0' t1')
+        -- Inlined 'branchMerge'; the two @Arc@s are disjoint.
+        | zero p0 m'       = Branch p' m' t0 t1
+        | otherwise        = Branch p' m' t1 t0
         where
-        p0 = getPrefix t0_
-        p1 = getPrefix t1_
+        p0 = arcPrefix k0
+        p1 = arcPrefix k1
         m' = branchMask p0 p1
         p' = mask p0 m'
-
-        go' (Arc k0 mv0 t0)
-            (Arc k1 mv1 t1)
-            | m' == 0 =
-                let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
-                if S.null pre
-                then error "mergeBy: no mask, but no prefix string"
-                else
-                    let {-# INLINE t0' #-}
-                        t0' = Arc k0' mv0 t0
-                        {-# INLINE t1' #-}
-                        t1' = Arc k1' mv1 t1
-                    in
-                    case (S.null k0', S.null k1') of
-                    (True, True)  -> arcNN pre (mergeMaybe f mv0 mv1) (go t0 t1)
-                    (True, False) -> arcNN pre mv0 (go t0  t1')
-                    (False,True)  -> arcNN pre mv1 (go t0' t1)
-                    (False,False) -> prepend pre (go t0' t1')
-        go' (Arc{})
-            (Branch _p1 m1 l r)
-            | nomatch p0 p1 m1 = branchMerge p1 t1_  p0 t0_
-            | zero p0 m1       = branch p1 m1 (go t0_ l) r
-            | otherwise        = branch p1 m1 l (go t0_ r)
-        go' (Branch _p0 m0 l r)
-            (Arc{})
-            | nomatch p1 p0 m0 = branchMerge p0 t0_  p1 t1_
-            | zero p1 m0       = branch p0 m0 (go l t1_) r
-            | otherwise        = branch p0 m0 l (go r t1_)
-        -- Inlined branchMerge. Both tries are disjoint @Arc@s now.
-        go' _ _ | zero p0 m'   = Branch p' m' t0_ t1_
-        go' _ _                = Branch p' m' t1_ t0_
+    go t0@(Arc k0 _ _)
+       t1@(Branch p1 m1 l r)
+        | nomatch p0 p1 m1 = branchMerge p1 t1  p0 t0
+        | zero p0 m1       = branch p1 m1 (go t0 l) r
+        | otherwise        = branch p1 m1 l (go t0 r)
+        where
+        p0 = arcPrefix k0
+    go t0@(Branch p0 m0 l r)
+       t1@(Arc k1 _ _)
+        | nomatch p1 p0 m0 = branchMerge p0 t0  p1 t1
+        | zero p1 m0       = branch p0 m0 (go l t1) r
+        | otherwise        = branch p0 m0 l (go r t1)
+        where
+        p1 = arcPrefix k1
 
 
 mergeMaybe :: (a -> a -> Maybe a) -> Maybe a -> Maybe a -> Maybe a
@@ -1165,8 +1180,8 @@ intersectBy f = intersectBy'
     -- | The main recursion
     go Empty _    =  Empty
     go _    Empty =  Empty
-    go  t0@(Branch p0 m0 l0 r0)
-        t1@(Branch p1 m1 l1 r1)
+    go t0@(Branch p0 m0 l0 r0)
+       t1@(Branch p1 m1 l1 r1)
         | shorter m0 m1  =  intersection0
         | shorter m1 m0  =  intersection1
         | p0 == p1       =  branch p0 m0 (go l0 l1) (go r0 r1)
@@ -1180,44 +1195,38 @@ intersectBy f = intersectBy'
             | nomatch p0 p1 m1  = Empty
             | zero p0 m1        = go t0 l1
             | otherwise         = go t0 r1
-    go t0_@(Arc k0 mv0 t0)
-       t1_@(Arc k1 mv1 t1)
-        | m' == 0 =
+    go (Arc k0 mv0 s0)
+       (Arc k1 mv1 s1)
+        | branchMask (arcPrefix k0) (arcPrefix k1) /= 0 = Empty
+        | otherwise =
             let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
             if S.null pre
             then error "intersectBy: no mask, but no prefix string"
             else
                 let {-# INLINE t0' #-}
-                    t0' = Arc k0' mv0 t0
+                    t0' = Arc k0' mv0 s0
                     {-# INLINE t1' #-}
-                    t1' = Arc k1' mv1 t1
+                    t1' = Arc k1' mv1 s1
                 in
                 case (S.null k0', S.null k1') of
-                (True, True)  -> arcNN pre (intersectMaybe f mv0 mv1) (go t0 t1)
-                (True, False) -> prepend pre (go t0  t1')
-                (False,True)  -> prepend pre (go t0' t1)
+                (True, True)  -> arcNN pre (intersectMaybe f mv0 mv1) (go s0 s1)
+                (True, False) -> prepend pre (go s0  t1')
+                (False,True)  -> prepend pre (go t0' s1)
                 (False,False) -> prepend pre (go t0' t1')
-        where
-        p0 = getPrefix t0_
-        p1 = getPrefix t1_
-        m' = branchMask p0 p1
-    go t0_@(Arc{})
-       t1_@(Branch _p1 m1 l r)
+    go t0@(Arc k0 _ _)
+       (Branch p1 m1 l r)
         | nomatch p0 p1 m1 = Empty
-        | zero p0 m1       = go t0_ l
-        | otherwise        = go t0_ r
+        | zero p0 m1       = go t0 l
+        | otherwise        = go t0 r
         where
-        p0 = getPrefix t0_
-        p1 = getPrefix t1_
-    go t0_@(Branch _p0 m0 l r)
-       t1_@(Arc{})
+        p0 = arcPrefix k0
+    go (Branch p0 m0 l r)
+       t1@(Arc k1 _ _)
         | nomatch p1 p0 m0 = Empty
-        | zero p1 m0       = go l t1_
-        | otherwise        = go r t1_
+        | zero p1 m0       = go l t1
+        | otherwise        = go r t1
         where
-        p0 = getPrefix t0_
-        p1 = getPrefix t1_
-    go _ _ =  Empty
+        p1 = arcPrefix k1
 
 
 intersectMaybe :: (a -> b -> Maybe c) -> Maybe a -> Maybe b -> Maybe c

@@ -20,18 +20,31 @@ Test Coverage:
 * Data.Trie:
     elems, adjustBy
     lookupBy: with a function that inspects the second argument.
-* Data.Trie.ByteStringInternal:
-    breakMaximalPrefix: evaluate the prefix when either of the arguments is null
-        (Just for the nice HPC numbers)
 * Data.Trie.Convenience:
     fromListWith', fromListWithL', lookupWithDefault, insertWith, insertWith', insertWithKey, insertWithKey', adjustWithKey, update, updateWithKey, unionWith, unionWith', intersectWith, intersectWith'
     fromListWith, fromListWithL: use @f@ that evaluates the second argument
 * Data.Trie.Internal:
-    showsPrec, showTrie, put, get, foldMap, traverse, cata_, cata, adjust
-    (>>=): a few bits still missing.
-    getPrefix: (Arc S.empty _ _)
-    intersectBy: bits and pieces.
-    match_: @goJust _ _ _ q (Arc k (Just _) _) | breakMaximalPrefix k q == (_, S.empty, S.empty)@
+    showsPrec, showTrie, put, get, foldMap, traverse, cata_, cata, adjust:
+        at all
+    (>>=):
+        a case where the function argument to mergeBy is used.
+    mapBy, contextualMap, contextualMap', contextualFilterMap, contextualMapBy:
+        with functions that touch the trie argument.
+    branchMerge:
+        with Empty first argument; or better would be to adjust this helper for how it's actually used.
+    arcPrefix:
+        with null string; or better would be to combine with errorLogHead, use assertions, etc
+    intersectBy:
+        For Branch/Branch case where p0==p1, how come the first two arguments to 'branch' are never forced?
+        For Arc/Arc case, how come the first argument to 'prepend' is never forced?
+    match_:
+        @goJust _ _ _ q (Arc k mv _) | breakMaximalPrefix k q == (_, S.empty, S.empty)@
+        One or the other of the two branches on @mv@ will sometimes
+        be covered by our test suite, and rarely both will, but
+        it'd be better to add some HUnit tests to ensure we always
+        cover both.
+    mapView:
+        Actually, the Nothing case is unreachable for all four use cases. Can/should improve the recursion pattern if we want to get rid of that. ***Must add benchmarks first though!
 
 
 

@@ -283,14 +283,14 @@ showTrie t = shows' id t ""
 -- TODO: consider an instance more like the new one for Data.Map. Better?
 instance (Binary a) => Binary (Trie a) where
     put Empty            = do put (0 :: Word8)
-    put (Arc k m t)      = do put (1 :: Word8); put k; put m; put t
+    put (Arc k mv t)     = do put (1 :: Word8); put k; put mv; put t
     put (Branch p m l r) = do put (2 :: Word8); put p; put m; put l; put r
 
     -- BUG(github#21): need to verify the invariants!
     get = do tag <- get :: Get Word8
              case tag of
                  0 -> return Empty
-                 1 -> liftM3 Arc get get get
+                 1 -> liftM3 Arc    get get get
                  _ -> liftM4 Branch get get get get
 
 

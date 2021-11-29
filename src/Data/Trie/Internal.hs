@@ -73,6 +73,7 @@ import Data.Binary         (Binary(..), Get, Word8)
 
 #if MIN_VERSION_base(4,13,0)
 -- [aka GHC 8.8.1]: Prelude re-exports 'Semigroup'.
+-- FIXME: or is it in base-4.11 / GHC 8.4.1 that it gets re-exported?
 #elif MIN_VERSION_base(4,9,0)
 -- [aka GHC 8.0.1]: "Data.Semigroup" added to base.
 -- From now on we'll use 'Data.Semigroup.<>' in lieu of 'Data.Monoid.<>',

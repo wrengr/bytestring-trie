@@ -5,7 +5,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.22
+--                                                  ~ 2021.11.28
 -- |
 -- Module      :  test/Main
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -83,25 +83,29 @@ main = do
         else System.exitFailure
 
 -- We add the timeout for the sake of GithubActions CI, so we don't
--- accidentally blow our budget.  So far, with HPC enabled the test
--- suite still takes about 20sec all together, so allowing 30sec
--- per test is more than generous.
+-- accidentally blow our budget.  So far, even with HPC enabled,
+-- each test takes less than 1sec (almost all of them taking less
+-- than 0.5sec); so allowing 10s per test is more than generous.
+-- Since the full suite takes around 20sec, that means the timeout
+-- will cap the suite to take no more than 200sec / 3.3min.
 globalOptions :: Tasty.OptionSet
 globalOptions = mconcat
-    [ Tasty.singleOption (Tasty.mkTimeout 30000000)  -- 30sec; in microsecs
+    [ Tasty.singleOption (Tasty.mkTimeout 10000000)  -- 10sec; in microsecs
     , Tasty.singleOption (QC.QuickCheckTests    500) -- QC.Args.maxSuccess
     , Tasty.singleOption (QC.QuickCheckMaxSize  400) -- QC.Args.maxSize
     , Tasty.singleOption (QC.QuickCheckMaxRatio 10)  -- QC.Args.maxDiscardRatio
     , Tasty.singleOption (SC.SmallCheckDepth    3)
     ]
 
+-- We run the HUnit and smallcheck tests first, since they're the
+-- fastest.  Thus, we only pay for the QuickCheck tests if we have to.
 tests :: Tasty.TestTree
 tests =
   Tasty.testGroup "All Tests"
   [ hunitTests
   , Tasty.testGroup "Properties"
-    [ quickcheckTests
-    , smallcheckTests
+    [ smallcheckTests
+    , quickcheckTests
     ]
   ]
 
@@ -138,7 +142,12 @@ to do that without GADTs or impredicativity?
 quickcheckTests :: Tasty.TestTree
 quickcheckTests
   = Tasty.testGroup "QuickCheck"
-  [ Tasty.testGroup "Trivialities (@Int)"
+  [ Tasty.testGroup "Data.Trie.ByteStringInternal"
+    [ QC.testProperty
+        "prop_breakMaximalPrefix"
+        (prop_breakMaximalPrefix :: WS -> WS -> Bool)
+    ]
+  , Tasty.testGroup "Trivialities (@Int)"
     [ QC.testProperty
         "prop_insert"
         (prop_insert        :: WS -> Int -> WTrie Int -> Bool)
@@ -331,7 +340,13 @@ quickcheckTests
 smallcheckTests :: Tasty.TestTree
 smallcheckTests
   = Tasty.testGroup "SmallCheck"
-  [ Tasty.testGroup "Trivial properties (@W)"
+  [ Tasty.testGroup "Data.Trie.ByteStringInternal"
+    [ Tasty.adjustOption (+ (1::SC.SmallCheckDepth))
+    $ SC.testProperty
+        "prop_breakMaximalPrefix"
+        (prop_breakMaximalPrefix :: WS -> WS -> Bool)
+    ]
+  , Tasty.testGroup "Trivialities (@W)"
     -- Depth=4 is death here (>30sec) ever since changing the instance.
     [ SC.testProperty
         "prop_insert"
@@ -353,7 +368,7 @@ smallcheckTests
         "prop_delete_lookup"
         (prop_delete_lookup :: WS -> WTrie W -> SC.Property IO)
     ]
-  , Tasty.testGroup "Submap properties (@()/@W)"
+  , Tasty.testGroup "Submap (@()/@W)"
     -- Depth=4 is at best very marginal here...
     [ SC.testProperty
         "prop_submap_keysAreMembers"
@@ -374,7 +389,7 @@ smallcheckTests
         "prop_deleteSubmap_disunion"
         (prop_deleteSubmap_disunion :: WS -> WTrie W -> Bool)
     ]
-  , Tasty.testGroup "Intersection properties (@W/@Int)"
+  , Tasty.testGroup "Intersection (@W/@Int)"
     -- Warning: Using depth=4 here is bad (the first two take about
     -- 26.43sec; the last one much longer).
     [ SC.testProperty
@@ -387,7 +402,7 @@ smallcheckTests
         "prop_intersectPlus"
         (prop_intersectPlus :: WTrie Int -> WTrie Int -> Bool)
     ]
-  , Tasty.testGroup "match/matches properties (@()/@W)"
+  , Tasty.testGroup "Matching (@()/@W)"
     [ SC.testProperty
         "prop_matches_keysOrdered"
         (prop_matches_keysOrdered   :: WS -> WTrie () -> Bool)
@@ -401,7 +416,7 @@ smallcheckTests
         "prop_match_is_last_matches"
         (prop_match_is_last_matches :: WS -> WTrie W -> Bool)
     ]
-  , Tasty.testGroup "Priority-queue functions (@W)"
+  , Tasty.testGroup "Priority-queue (@W)"
     -- Depth=4 takes about 1sec each
     [ SC.testProperty
         "prop_minAssoc_is_first_toList"
@@ -424,7 +439,7 @@ smallcheckTests
         (prop_updateMaxViewBy_gives_maxAssoc undefined :: WTrie W -> Bool)
     ]
   , Tasty.adjustOption (+ (1::SC.SmallCheckDepth))
-  $ Tasty.testGroup "List-conversion properties (@()/@W)"
+  $ Tasty.testGroup "List-conversion (@()/@W)"
     [ SC.testProperty
         "prop_toListBy_keysOrdered"
         (prop_toListBy_keysOrdered  :: WTrie () -> Bool)
@@ -447,6 +462,7 @@ smallcheckTests
         "prop_fromListWithLConst_takes_first"
         (prop_fromListWithLConst_takes_first :: [(WS, W)] -> Bool)
     ]
+  -- TODO: do we want to smallcheck any of the "Type classes" or "Other mapping/filtering" stuff we do in quickcheck?
   ]
 
 
@@ -545,6 +561,13 @@ test_Delete =
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
+
+-- | 'TI.breakMaximalPrefix' satisfies the documented equalities.
+prop_breakMaximalPrefix :: WS -> WS -> Bool
+prop_breakMaximalPrefix (WS s) (WS z) =
+    let (pre,s',z') = TI.breakMaximalPrefix s z
+    in (pre <> s') == s
+    && (pre <> z') == z
 
 -- | If you insert a value, you can look it up
 prop_insert :: (Eq a) => WS -> a -> WTrie a -> Bool

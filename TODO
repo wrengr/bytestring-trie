@@ -67,7 +67,6 @@ Data.Trie.BitTwiddle:
 
 ------------------------------------------------------------
 Data.Trie.ByteStringInternal:
-* Write quickcheck law for breakMaximalPrefix
 * Write a smart constructor for ByteStrings to ensure good alignment
 * Write debugging suite for cross-platform checking
 

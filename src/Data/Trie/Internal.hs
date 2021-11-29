@@ -6,7 +6,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.11.27
+--                                              ~ 2021.11.28
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -71,16 +71,23 @@ import Data.Trie.Errors    (impossible)
 
 import Data.Binary         (Binary(..), Get, Word8)
 
-#if MIN_VERSION_base(4,13,0)
--- [aka GHC 8.8.1]: Prelude re-exports 'Semigroup'.
--- FIXME: or is it in base-4.11 / GHC 8.4.1 that it gets re-exported?
-#elif MIN_VERSION_base(4,9,0)
+#if MIN_VERSION_base(4,9,0)
 -- [aka GHC 8.0.1]: "Data.Semigroup" added to base.
--- From now on we'll use 'Data.Semigroup.<>' in lieu of 'Data.Monoid.<>',
--- since they conflict with one another until base-4.11 / GHC 8.4.1
+--
+-- Note: Until [base-4.11 / GHC 8.4.1] there's a naming conflict
+-- between 'Data.Semigroup.<>' vs 'Data.Monoid.<>'.  From this
+-- version onward we'll prefer the semigroup one since it's future
+-- compatible.  And besides, other than giving our instance, we
+-- only actually *use* @(<>)@ as an alias for 'S.append', and
+-- "Data.ByteString" nicely defines both 'Data.Semigroup.<>' and
+-- 'Data.Monoid.mappend' to resolve to 'S.append'.
+--
+-- Note: [base-4.13.0 / GHC 8.8.1] has Prelude re-export 'Semigroup'
+-- (the class name) and 'Data.Semigroup.<>'; however it does not
+-- re-export 'stimes' nor (I assume) 'sconcat'!
 import Data.Semigroup      (Semigroup(..))
 #elif MIN_VERSION_base(4,8,0)
--- [aka GHC 7.10.1]: Prelude re-exports 'Monoid', but not @(<>)@.
+-- [aka GHC 7.10.1]: Prelude re-exports 'Monoid', but not 'Data.Monoid.<>'.
 import Data.Monoid         ((<>))
 #elif MIN_VERSION_base(4,5,0)
 -- [aka GHC 7.4.1]: @(<>)@ added to "Data.Monoid".
@@ -372,14 +379,15 @@ instance Monad Trie where
 -- | @since 0.2.5.0
 instance (Semigroup a) => Semigroup (Trie a) where
     (<>) = mergeBy $ \x y -> Just (x <> y)
-    -- TODO: optimized implementations of:
-    -- sconcat :: NonEmpty a -> a
-    -- stimes :: Integral b => b -> a -> a
+    -- @since >= 0.2.6.1
+    stimes n = fmap (stimes n)
+    -- TODO: optimized implementations of @sconcat :: NonEmpty a -> a@
 #endif
 
 -- This instance is more sensible than Data.IntMap and Data.Map's
 instance (Monoid a) => Monoid (Trie a) where
     mempty = empty
+    -- TODO: optimized implementation of 'mconcat'
 #if MIN_VERSION_base(4,11,0)
     -- Now that the canonical instance is the default, don't define
     -- 'mappend', in anticipation of Phase 4 of:

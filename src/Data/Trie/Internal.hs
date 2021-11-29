@@ -216,17 +216,29 @@ a new ByteString from the parts...
 -- useful for anything, or if there's a more sensible instance, I'd
 -- be curious to know.
 
-data Trie a = Empty
-            | Arc    {-# UNPACK #-} !ByteString
-                                    !(Maybe a)
-                                    !(Trie a)
-            | Branch {-# UNPACK #-} !Prefix
-                     {-# UNPACK #-} !Mask
-                                    !(Trie a)
-                                    !(Trie a)
+data Trie a
+    = Branch {-# UNPACK #-} !Prefix
+             {-# UNPACK #-} !Mask
+                            !(Trie a)
+                            !(Trie a)
+    | Arc    {-# UNPACK #-} !ByteString
+                            !(Maybe a)
+                            !(Trie a)
+    | Empty
     deriving Eq
     -- Prefix/Mask should be deterministic regardless of insertion order
     -- TODO: prove this is so.
+
+-- [Note: Order of constructors]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- As discussed in "Data.IntMap.Internal", the order of constructors
+-- in the definition is the order in which case analysis will always
+-- test them.  On GHC 9.2.1 I haven't noticed a significant difference
+-- from changing the order, but that could be due to bad benchmarking
+-- (i.e., reusing the test suite); so I'll trust that this hasn't
+-- changed so much since GHC 7.0.  The only question is whether
+-- @Arc@ or @Branch@ should come first, which depends a lot on the
+-- dataset being used.
 
 
 -- TODO? add Ord instance like Data.Map?

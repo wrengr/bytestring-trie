@@ -5,7 +5,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.28
+--                                                  ~ 2021.12.04
 -- |
 -- Module      :  test/Main
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -149,23 +149,23 @@ quickcheckTests
     ]
   , Tasty.testGroup "Trivialities (@Int)"
     [ QC.testProperty
-        "prop_insert"
-        (prop_insert        :: WS -> Int -> WTrie Int -> Bool)
-    , QC.testProperty
         "prop_singleton"
         (prop_singleton     :: WS -> Int -> Bool)
     , QC.testProperty
-        "prop_size_insert"
-        (prop_size_insert   :: WS -> Int -> WTrie Int -> QC.Property)
+        "prop_insert_lookup"
+        (prop_insert_lookup :: WS -> Int -> WTrie Int -> Bool)
     , QC.testProperty
-        "prop_size_delete"
-        (prop_size_delete   :: WS -> Int -> WTrie Int -> QC.Property)
+        "prop_delete_lookup"
+        (prop_delete_lookup :: WS -> WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_insert_size"
+        (prop_insert_size   :: WS -> Int -> WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_delete_size"
+        (prop_delete_size   :: WS -> WTrie Int -> Bool)
     , QC.testProperty
         "prop_insert_delete"
         (prop_insert_delete :: WS -> Int -> WTrie Int -> QC.Property)
-    , QC.testProperty
-        "prop_delete_lookup"
-        (prop_delete_lookup :: WS -> WTrie Int -> QC.Property)
     ]
   , Tasty.testGroup "Submap (@Int)"
     [ QC.testProperty
@@ -335,38 +335,54 @@ quickcheckTests
     ]
   ]
 
+
+adjustSmallCheckDepth
+    :: (SC.SmallCheckDepth -> SC.SmallCheckDepth)
+    -> Tasty.TestTree -> Tasty.TestTree
+adjustSmallCheckDepth = Tasty.adjustOption
+
 -- Throughout, we try to use 'W' or @()@ whenever we can, to reduce
 -- the exponential growth problem.
 smallcheckTests :: Tasty.TestTree
 smallcheckTests
   = Tasty.testGroup "SmallCheck"
   [ Tasty.testGroup "Data.Trie.ByteStringInternal"
-    [ Tasty.adjustOption (+ (1::SC.SmallCheckDepth))
+    [ adjustSmallCheckDepth (+1)
     $ SC.testProperty
         "prop_breakMaximalPrefix"
         (prop_breakMaximalPrefix :: WS -> WS -> Bool)
     ]
-  , Tasty.testGroup "Trivialities (@W)"
-    -- Depth=4 is death here (>30sec) ever since changing the instance.
-    [ SC.testProperty
-        "prop_insert"
-        (prop_insert        :: WS -> W -> WTrie W -> Bool)
-    , SC.testProperty
+  , Tasty.testGroup "Trivialities (@W/@())"
+    [ adjustSmallCheckDepth (+2)
+    $ SC.testProperty
         -- This one can easily handle depth=6 fine (~0.1sec), but d=7 (~4sec)
         "prop_singleton"
         (prop_singleton     :: WS -> W -> Bool)
     , SC.testProperty
-        "prop_size_insert"
-        (prop_size_insert   :: WS -> W -> WTrie W -> SC.Property IO)
+        -- Warning: depth 4 takes >10sec!
+        "prop_insert_lookup"
+        (prop_insert_lookup :: WS -> W -> WTrie W -> Bool)
     , SC.testProperty
-        "prop_size_delete"
-        (prop_size_delete   :: WS -> W -> WTrie W -> SC.Property IO)
+        -- Don't waste any depth on the values!
+        -- Warning: depth 4 takes >10sec!
+        "prop_delete_lookup"
+        (prop_delete_lookup :: WS -> WTrie () -> Bool)
     , SC.testProperty
+        -- Don't waste any depth on the values!
+        -- Warning: depth 4 takes >10sec!
+        "prop_insert_size"
+        (prop_insert_size   :: WS -> () -> WTrie () -> Bool)
+    , SC.testProperty
+        -- Don't waste any depth on the values!
+        -- Warning: depth 4 takes >10sec!
+        -- FIXME: at depth 3: 388/410 (94%) did not meet the condition!
+        -- (That is, before rephrasing to avoid using 'CheckGuard')
+        "prop_delete_size"
+        (prop_delete_size   :: WS -> WTrie () -> Bool)
+    , SC.testProperty
+        -- Note: at depth 3: 136/2120 (6.4%) did not meet the condition.
         "prop_insert_delete"
         (prop_insert_delete :: WS -> W -> WTrie W -> SC.Property IO)
-    , SC.testProperty
-        "prop_delete_lookup"
-        (prop_delete_lookup :: WS -> WTrie W -> SC.Property IO)
     ]
   , Tasty.testGroup "Submap (@()/@W)"
     -- Depth=4 is at best very marginal here...
@@ -569,31 +585,43 @@ prop_breakMaximalPrefix (WS s) (WS z) =
     in (pre <> s') == s
     && (pre <> z') == z
 
--- | If you insert a value, you can look it up
-prop_insert :: (Eq a) => WS -> a -> WTrie a -> Bool
-prop_insert (WS k) v (WT t) =
-    (T.lookup k . T.insert k v $ t) == Just v
-
 -- | A singleton, is.
 prop_singleton :: (Eq a) => WS -> a -> Bool
 prop_singleton (WS k) v =
-    T.insert k v T.empty == T.singleton k v
+    T.singleton k v == T.insert k v T.empty
 
-prop_size_insert :: (Eq a, CheckGuard Bool b) => WS -> a -> WTrie a -> b
-prop_size_insert (WS k) v =
-    ((not . T.member k) .==>. (T.size . T.insert k v) .==. ((1+) . T.size)) . unWT
+-- | If you insert a value, you can look it up.
+prop_insert_lookup :: (Eq a) => WS -> a -> WTrie a -> Bool
+prop_insert_lookup (WS k) v (WT t) =
+    (T.lookup k . T.insert k v $ t) == Just v
 
-prop_size_delete :: (Eq a, CheckGuard Bool b) => WS -> a -> WTrie a -> b
-prop_size_delete (WS k) v =
-    ((not . T.member k) .==>. (T.size . T.delete k . T.insert k v) .==. T.size) . unWT
+-- | If you delete a value, you can't look it up.
+prop_delete_lookup :: WS -> WTrie a -> Bool
+prop_delete_lookup (WS k) =
+    isNothing . T.lookup k . T.delete k . unWT
+    where
+    isNothing Nothing  = True
+    isNothing (Just _) = False
+
+-- TODO: print/record diagnostics re what proportion of calls have
+-- @n=0@ vs @n=1@, to ensure proper coverage.
+prop_insert_size :: WS -> a -> WTrie a -> Bool
+prop_insert_size (WS k) v (WT t) =
+    ((T.size . T.insert k v) .==. ((n +) . T.size)) $ t
+    where
+    n = if T.member k t then 0 else 1
+
+-- TODO: print/record diagnostics re what proportion of calls have
+-- @n=0@ vs @n=1@, to ensure proper coverage.
+prop_delete_size :: WS -> WTrie a -> Bool
+prop_delete_size (WS k) (WT t) =
+    ((T.size . T.delete k) .==. (subtract n . T.size)) $ t
+    where
+    n = if T.member k t then 1 else 0
 
 prop_insert_delete :: (Eq a, CheckGuard Bool b) => WS -> a -> WTrie a -> b
 prop_insert_delete (WS k) v =
     ((not . T.member k) .==>. (T.delete k . T.insert k v) .==. id) . unWT
-
-prop_delete_lookup :: (Eq a, CheckGuard Bool b) => WS -> WTrie a -> b
-prop_delete_lookup (WS k) =
-    ((not . T.member k) .==>. (T.lookup k . T.delete k) .==. const Nothing) . unWT
 
 -- | All keys in a submap are keys in the supermap
 prop_submap_keysAreMembers :: WS -> WTrie a -> Bool

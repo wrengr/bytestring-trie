@@ -8,7 +8,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.11.26
+--                                                  ~ 2021.12.04
 -- |
 -- Module      :  Data.Trie.BitTwiddle
 -- Copyright   :  Copyright (c) 2002 Daan Leijen
@@ -166,15 +166,22 @@ branchMask p1 p2
   into highly efficient machine code. The algorithm is derived from
   Jorg Arndt's FXT library.
 ---------------------------------------------------------------}
+
+-- N.B., because this is not exported and is only used by 'branchMask'
+-- which operates on 'Word8' inputs, we can safely restrict the
+-- algorithm to only doing the first few steps, rather than doing
+-- all the steps needed for 'Word64'.
 highestBitMask :: Word -> Word
 {-# INLINE highestBitMask #-}
 highestBitMask x
     = case (x .|. shiftRL x 1) of
        x -> case (x .|. shiftRL x 2) of
-        x -> case (x .|. shiftRL x 4) of
-         x -> case (x .|. shiftRL x 8) of
-          x -> case (x .|. shiftRL x 16) of
-           x -> case (x .|. shiftRL x 32) of   -- for 64 bit platforms
+        x -> case (x .|. shiftRL x 4) of        -- for 8-bit input range.
+        {-
+         x -> case (x .|. shiftRL x 8) of       -- for 16-bit
+          x -> case (x .|. shiftRL x 16) of     -- for 32-bit
+           x -> case (x .|. shiftRL x 32) of    -- for 64-bit platforms
+        -}
             x -> (x `xor` shiftRL x 1)
 
 ----------------------------------------------------------------

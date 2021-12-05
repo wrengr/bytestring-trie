@@ -15,10 +15,10 @@
 --                                              ~ 2021.12.05
 -- |
 -- Module      :  Data.Trie.Internal
--- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2021 wren romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
--- Stability   :  provisional
+-- Stability   :  experimental
 -- Portability :  portable (with CPP)
 --
 -- Internal definition of the 'Trie' data type and generic functions

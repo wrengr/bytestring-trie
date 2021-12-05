@@ -7,10 +7,10 @@
 --                                                  ~ 2021.11.27
 -- |
 -- Module      :  Data.Trie.Convenience
--- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2021 wren romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
--- Stability   :  experimental
+-- Stability   :  provisional
 -- Portability :  portable
 --
 -- Additional convenience functions. In order to keep "Data.Trie"

@@ -7,10 +7,10 @@
 --                                                  ~ 2021.12.05
 -- |
 -- Module      :  Data.Trie
--- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2021 wren romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
--- Stability   :  experimental
+-- Stability   :  provisional
 -- Portability :  portable
 --
 -- An efficient implementation of finite maps from strings to values.

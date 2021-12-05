@@ -9,10 +9,10 @@
 --                                              ~ 2021.12.05
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
--- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2021 wren romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
--- Stability   :  experimental
+-- Stability   :  stable
 -- Portability :  GHC-only
 --
 -- Helper functions on 'ByteString's for "Data.Trie.Internal".

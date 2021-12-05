@@ -8,10 +8,10 @@
 --                                                  ~ 2021.12.05
 -- |
 -- Module      :  Data.Trie.Errors
--- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
+-- Copyright   :  Copyright (c) 2008--2021 wren romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
--- Stability   :  experimental
+-- Stability   :  internal
 -- Portability :  portable
 --
 -- Internal convenience functions for giving error messages.

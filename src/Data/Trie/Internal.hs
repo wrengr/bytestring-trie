@@ -5,8 +5,9 @@
 -- Alas, "GHC.Exts" isn't considered safe, even though 'build' surely is.
 {-# LANGUAGE Trustworthy #-}
 #endif
+{-# OPTIONS_HADDOCK not-home #-}
 ------------------------------------------------------------
---                                              ~ 2021.11.28
+--                                              ~ 2021.12.04
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -293,6 +294,45 @@ instance (Binary a) => Binary (Trie a) where
                  1 -> liftM3 Arc    get get get
                  _ -> liftM4 Branch get get get get
 
+{-
+-- TODO: do we want/need these instances?
+
+#if __GLASGOW_HASKELL__
+instance Data.Data.Data (Trie a) where ...
+-- See 'IntMap' for how to do this without sacrificing abstraction.
+#endif
+
+#if __GLASGOW_HASKELL__ >= 708
+instance GHC.Exts.IsList (Trie a) where
+    type Item (Trie a) = (ByteString, a)
+    fromList = fromList
+    toList   = toList
+#endif
+
+#if MIN_VERSION_base(4,9,0)
+instance Eq1 Trie where
+    liftEq eq _ _ = _
+
+-- Assuming we also add a plain 'Ord' instance
+instance Ord1 Trie where
+    liftCompare cmp _ _ = _
+
+instance Show1 Trie where
+    liftShowsPrec sp sl d m =
+        showsUnaryWith (liftShowsPrec sp' sl') "fromList" d (toList m)
+      where
+        sp' = liftShowsPrec sp sl
+        sl' = liftShowList sp sl
+
+-- Assuming we also add a plain 'Read' instance
+instance Read1 Trie where
+    liftReadsPrec rp rl = readsData $
+        readsUnaryWith (liftReadsPrec rp' rl') "fromList" fromList
+      where
+        rp' = liftReadsPrec rp rl
+        rl' = liftReadList rp rl
+#endif
+-}
 
 {-----------------------------------------------------------
 -- Trie instances: Abstract Nonsense
@@ -305,6 +345,7 @@ instance Functor Trie where
         go (Arc k Nothing  t) = Arc k Nothing      (go t)
         go (Arc k (Just v) t) = Arc k (Just (f v)) (go t)
         go (Branch p m l r)   = Branch p m (go l) (go r)
+    -- TODO: also define @(<$)@ #if __GLASGOW_HASKELL__
 
 
 instance Foldable Trie where
@@ -345,6 +386,8 @@ instance Traversable Trie where
         go (Arc k Nothing  t) = Arc k Nothing        <$> go t
         go (Arc k (Just v) t) = Arc k . Just <$> f v <*> go t
         go (Branch p m l r)   = Branch p m <$> go l <*> go r
+
+-- TODO: 'traverseWithKey', like 'IntMap' has...
 
 -- | @since 0.2.2
 instance Applicative Trie where

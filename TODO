@@ -14,6 +14,10 @@
   properly but without introducing massive code complexity, would
   be to switch over to using a GADT to track things.
 
+* Investigate which functions of Data.Trie.Internal should be marked
+  as INLINABLE. (And probably re-investicate which public ones are
+  marked INLINE.)
+
 
 ------------------------------------------------------------
 Test Coverage:
@@ -80,6 +84,15 @@ Data.Trie.Convenience:
 * partition, partitionWithKey, mapEither[WithKey] ?
 * split, splitLookup ??
 
+------------------------------------------------------------
+------------------------------------------------------------
+New functions to consider:
+* lookup{GT,GE,LT,LE} -- a~la IntMap etc
+* splitting versions like lookup{GT,GE,LT,LE}
+* alterF -- a~la Data.Map
+* BitQueue stuff (cf., Data.Map)??
+* lookupIndex -- a~la Data.Map?
+* take/drop -- a~la Data.Map, and iterating our current priority-queue stuff
 
 ------------------------------------------------------------
 ------------------------------------------------------------

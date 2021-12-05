@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren gayle romano <wren@cpan.org>                ~ 2021.11.14
+-- wren gayle romano <wren@cpan.org>                ~ 2021.12.04
 ----------------------------------------------------------------
 
 -- Cabal >=1.10 is required by Hackage.
@@ -7,7 +7,7 @@ Cabal-Version:  >= 1.10
 Build-Type:     Simple
 
 Name:           bytestring-trie
-Version:        0.2.6.1
+Version:        0.2.7
 Stability:      provisional
 Homepage:       https://wrengr.org/software/hackage.html
 Bug-Reports:    https://github.com/wrengr/bytestring-trie/issues

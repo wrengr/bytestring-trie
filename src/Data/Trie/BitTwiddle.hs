@@ -11,14 +11,15 @@
 --                                                  ~ 2021.12.04
 -- |
 -- Module      :  Data.Trie.BitTwiddle
--- Copyright   :  Copyright (c) 2002 Daan Leijen
+-- Copyright   :  Copyright (c) Clark Gaebel 2012, Johan Tibel 2012, 2002 Daan Leijen
 -- License     :  BSD3
 -- Maintainer  :  libraries@haskell.org, wren@cpan.org
 -- Stability   :  stable
 -- Portability :  portable (with CPP)
 --
 -- Functions to treat 'Word' as a bit-vector for big-endian patricia
--- trees. This code is duplicated from "Data.IntMap". The only
+-- trees. This code is duplicated from "Data.IntMap" (or
+-- "Utils.Containers.Internal.BitUtil" these days). The only
 -- differences are that some of the conversion functions are
 -- specialized to 'Data.Word.Word8' for bytestrings, instead of
 -- being specialized to 'Int'.
@@ -33,12 +34,28 @@ module Data.Trie.BitTwiddle
 
 import Data.Trie.ByteStringInternal (ByteStringElem)
 
+-- It's too much noise to fully restrict this import, so just note
+-- the requirements:
+--      base 4.8.0 / GHC 7.10.1 -- 'countLeadingZeros', 'countTrailingZeros'
+--      base 4.7.0 / GHC 7.8.2  -- 'FiniteBits', 'finiteBitSize'
+--      base 4.5.0 / GHC 7.4.1  -- 'popCount'
 import Data.Bits
 
+-- To make it clearer what we're really testing for.
+-- TODO: make this into a Cabal flag; for easier testing if nothing else.
+#define USE_CLZ_IMPLEMENTATION MIN_VERSION_base(4,8,0)
+
 #if __GLASGOW_HASKELL__ >= 503
-import GHC.Exts  ( Word(..), Int(..), shiftRL# )
-#elif __GLASGOW_HASKELL__
-import GlaExts   ( Word(..), Int(..), shiftRL# )
+-- Before GHC 5.3 these were in "GlaExts" instead.
+import GHC.Exts
+    ( Word(W#)
+    , Int(I#)
+#   if USE_CLZ_IMPLEMENTATION
+    , shiftL#
+#   else
+    , shiftRL#
+#   endif
+    )
 #else
 import Data.Word (Word)
 #endif
@@ -57,13 +74,30 @@ natToElem :: Word -> KeyElem
 {-# INLINE natToElem #-}
 natToElem = fromIntegral
 
+-- TODO: newer versions of the containers library just use
+-- 'unsafeShift{R,L}' unilaterally. So, what is the difference
+-- (i.e., these days) between using the 'uncheckedShift{L,RL}#' of
+-- 'unsafeShift{L,R}' vs using the 'shift{L,RL}#' of 'shift{L,R}'?
+-- Also, do we no longer need to trick GHC into actually unboxing
+-- and inlining these?
+#if USE_CLZ_IMPLEMENTATION
+shiftLL :: Word -> Int -> Word
+{-# INLINE shiftLL #-}
+#   if __GLASGOW_HASKELL__
+-- Use unboxing to get @shiftLL@ inlined.
+shiftLL (W# x) (I# i) = W# (shiftL# x i)
+#   else
+shiftLL x i = unsafeShiftL x i
+#   endif
+#else
 shiftRL :: Word -> Int -> Word
 {-# INLINE shiftRL #-}
-#if __GLASGOW_HASKELL__
--- GHC: use unboxing to get @shiftRL@ inlined.
+#   if __GLASGOW_HASKELL__
+-- Use unboxing to get @shiftRL@ inlined.
 shiftRL (W# x) (I# i) = W# (shiftRL# x i)
-#else
-shiftRL x i = shiftR x i
+#   else
+shiftRL x i = unsafeShiftR x i
+#   endif
 #endif
 
 
@@ -167,12 +201,20 @@ branchMask p1 p2
   Jorg Arndt's FXT library.
 ---------------------------------------------------------------}
 
+highestBitMask :: Word -> Word
+{-# INLINE highestBitMask #-}
+#if USE_CLZ_IMPLEMENTATION
+-- This is the implementation used in newer versions of the containers library.
+-- Added this implementation here in version 0.2.7.
+highestBitMask w = shiftLL 1 (wordSize - 1 - countLeadingZeros w)
+#else
+-- This is the classic one we used up to bytestring-trie-0.2.6.1
+-- And it's still what containers falls back to for older versions of base.
+--
 -- N.B., because this is not exported and is only used by 'branchMask'
 -- which operates on 'Word8' inputs, we can safely restrict the
 -- algorithm to only doing the first few steps, rather than doing
 -- all the steps needed for 'Word64'.
-highestBitMask :: Word -> Word
-{-# INLINE highestBitMask #-}
 highestBitMask x
     = case (x .|. shiftRL x 1) of
        x -> case (x .|. shiftRL x 2) of
@@ -183,6 +225,17 @@ highestBitMask x
            x -> case (x .|. shiftRL x 32) of    -- for 64-bit platforms
         -}
             x -> (x `xor` shiftRL x 1)
+#endif
+
+#if USE_CLZ_IMPLEMENTATION
+wordSize :: Int
+{-# INLINE wordSize #-}
+#   if MIN_VERSION_base(4,7,0)
+wordSize = finiteBitSize (0 :: Word)
+#   else
+wordSize = bitSize (0 :: Word)
+#   endif
+#endif
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

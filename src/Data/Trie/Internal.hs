@@ -98,6 +98,7 @@ import Data.Monoid         (Monoid(..), (<>))
 import Data.Monoid         (Monoid(..))
 #endif
 
+import Control.DeepSeq     (NFData(rnf))
 import Control.Monad       (liftM, liftM3, liftM4)
 
 #if MIN_VERSION_base(4,8,0)
@@ -293,6 +294,12 @@ instance (Binary a) => Binary (Trie a) where
                  0 -> return Empty
                  1 -> liftM3 Arc    get get get
                  _ -> liftM4 Branch get get get get
+
+-- | @since 0.2.7
+instance NFData a => NFData (Trie a) where
+    rnf Empty            = ()
+    rnf (Arc _ mv t)     = rnf mv `seq` rnf t
+    rnf (Branch _ _ l r) = rnf l `seq` rnf r
 
 {-
 -- TODO: do we want/need these instances?

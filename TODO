@@ -18,6 +18,9 @@
   as INLINABLE. (And probably re-investicate which public ones are
   marked INLINE.)
 
+* Prove (or at the very least test!) that the Prefix and Mask are
+  deterministic regardless of insertion order.
+
 
 ------------------------------------------------------------
 Test Coverage:

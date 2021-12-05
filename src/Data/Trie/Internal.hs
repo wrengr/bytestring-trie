@@ -1,13 +1,18 @@
 -- Not using -Wcompat, because it wants outdated things for GHC 8.0/8.2
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+{-# OPTIONS_HADDOCK not-home #-}
+
 {-# LANGUAGE NoImplicitPrelude, CPP #-}
 #if __GLASGOW_HASKELL__ >= 701
 -- Alas, "GHC.Exts" isn't considered safe, even though 'build' surely is.
 {-# LANGUAGE Trustworthy #-}
 #endif
-{-# OPTIONS_HADDOCK not-home #-}
+#if __GLASGOW_HASKELL__ >= 708
+-- For 'GHC.Exts.IsList'
+{-# LANGUAGE TypeFamilies #-}
+#endif
 ------------------------------------------------------------
---                                              ~ 2021.12.04
+--                                              ~ 2021.12.05
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -37,7 +42,7 @@ module Data.Trie.Internal
     , empty, null, singleton, size
 
     -- * Conversion and folding functions
-    , toListBy, foldrWithKey, cata_, cata
+    , fromList, toList, toListBy, foldrWithKey, cata_, cata
 
     -- * Query functions
     , lookupBy_, submap
@@ -110,9 +115,19 @@ import Data.Foldable       (Foldable(foldMap))
 import Data.Traversable    (Traversable(traverse))
 #endif
 
+#if MIN_VERSION_base(4,9,0)
+import Data.Functor.Classes (Eq1(..), Ord1(..), Show1(..), Read1(..))
+import qualified Data.Functor.Classes as FC
+#endif
+
 #ifdef __GLASGOW_HASKELL__
+import qualified Text.Read as R
 import GHC.Exts (build)
 #endif
+#if __GLASGOW_HASKELL__ >= 708
+import qualified GHC.Exts (IsList(..))
+#endif
+
 ------------------------------------------------------------
 ------------------------------------------------------------
 
@@ -123,6 +138,14 @@ infixr 6 <>
 (<>) = mappend
 {-# INLINE (<>) #-}
 #endif
+
+-- | Infix variant of `uncurry`.  Currently only used in 'alterBy_'.
+-- The fixity-level is like @(<$>)@; but I'm making it nonassociative
+-- to avoid any possible\/potential confusion.
+infix 4 $$
+($$) :: (a -> b -> c) -> (a, b) -> c
+($$) = uncurry
+{-# INLINE ($$) #-}
 
 {-----------------------------------------------------------
 -- ByteString Big-endian Patricia Trie datatype
@@ -167,7 +190,7 @@ vs NullableBS.
                   | Start  NullableBS (Node a)
 
 ** Squash Accept and Reject together:
-Most likely beneficial, though it complicates stating the invariants
+Maybe[2] beneficial.  However, it complicates stating the invariants
 about Node's recursion.
 
     data Node a   = Node (Maybe a) (ArcSet a)
@@ -178,6 +201,15 @@ about Node's recursion.
     data Branch a = Branch {Prefix} {Mask} (ArcSet a) (ArcSet a)
     data Trie a   = Empty
                   | Start  NullableBS (Node a)
+
+[2]: The above change is certainly beneficial from the perspective
+of source-code size/repetition for 'mergeBy', 'intersectBy', and
+other operations that operate on two tries in tandem; though it's
+unclear whether/how much that transfers to compiled-code size/bloat.
+Also since the 'Maybe' isn't unpacked, this introduces an additional
+indirection to reach values.  Starting at version 0.2.7 there's an
+ongoing effort to try to determine whether this change is beneficial
+or not, and to quantify how much it affects things.
 
 ** Squash Branch into Many:
 Purely beneficial, since there's no point in keeping them distinct anymore.
@@ -204,11 +236,24 @@ Alas, this complicates the invariants about non-empty strings.
 
 ** Squash Node into Arc:
 By this point, purely beneficial.  However, the two unseen invariants remain.
-
-[2] Maybe we shouldn't unpack the ByteString. We could specialize
-or inline the breakMaximalPrefix function to prevent constructing
-a new ByteString from the parts...
 -}
+
+
+-- [Note: Order of constructors]
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- As discussed in "Data.IntMap.Internal", the order of constructors
+-- in the definition is the order in which case analysis will always
+-- test them.  On GHC 9.2.1 I haven't noticed a significant difference
+-- from changing the order, but that could be due to bad benchmarking
+-- (i.e., reusing the test suite); so I'll trust that this hasn't
+-- changed so much since GHC 7.0.  The only question is whether
+-- @Arc@ or @Branch@ should come first, which depends a lot on the
+-- dataset being used.
+--
+-- This reordering change was performed for version 0.2.7
+-- <https://github.com/wrengr/bytestring-trie/commit/75f3d32f7de7457dc7d029b60be3cce8b99c5e80>
+
+
 -- | A map from 'ByteString's to @a@. For all the generic functions,
 -- note that tries are strict in the @Maybe@ but not in @a@.
 --
@@ -231,23 +276,84 @@ data Trie a
     -- Prefix/Mask should be deterministic regardless of insertion order
     -- TODO: prove this is so.
 
--- [Note: Order of constructors]
--- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
--- As discussed in "Data.IntMap.Internal", the order of constructors
--- in the definition is the order in which case analysis will always
--- test them.  On GHC 9.2.1 I haven't noticed a significant difference
--- from changing the order, but that could be due to bad benchmarking
--- (i.e., reusing the test suite); so I'll trust that this hasn't
--- changed so much since GHC 7.0.  The only question is whether
--- @Arc@ or @Branch@ should come first, which depends a lot on the
--- dataset being used.
+
+{-----------------------------------------------------------
+-- Trie instances: Comparisons
+-----------------------------------------------------------}
+
+{-
+-- 'IntMap' defines their own instance so as to check the Mask
+-- before the Prefix; and they have done so since at least version
+-- 0.5.0.0 (2011).  So I assume the performance benefits of doing
+-- that are good enough to be worth it; thus, we'll do the same.
+--
+-- TODO: benchmark!!
+instance Eq a => Eq (Trie a) where
+    (==) = equal
+    (/=) = unequal
+
+-- TODO: mark this INLINABLE to specialize on the Eq instance?  Why doesn't IntMap?
+-- TODO: Alternatively, why doesn't IntMap simply reuse the 'liftEq' implementation?
+equal :: Eq a => Trie a -> Trie a -> Bool
+equal (Branch p0 m0 l0 r0)
+      (Branch p1 m1 l1 r1) = m0 == m1 && p0 == p1 && equal l0 l1 && equal r0 r1
+equal (Arc k0 mv0 t0)
+      (Arc k1 mv1 t1)      = k0 == k1 && mv0 == mv1 && equal t0 t1
+equal Empty Empty          = True
+equal _     _              = False
+
+unequal :: Eq a => Trie a -> Trie a -> Bool
+unequal (Branch p0 m0 l0 r0)
+        (Branch p1 m1 l1 r1) = m0 /= m1 || p0 /= p1 || unequal l0 l1 || unequal r0 r1
+unequal (Arc k0 mv0 t0)
+        (Arc k1 mv1 t1)      = k0 /= k1 || mv0 /= mv1 || unequal t0 t1
+unequal Empty Empty          = False
+unequal _     _              = True
+-}
+
+#if MIN_VERSION_base(4,9,0)
+-- | @since 0.2.7
+instance Eq1 Trie where
+  liftEq = equal1
+
+-- TODO: why doesn't IntMap close over @eq@?  Does it really cost so much more?
+-- TODO: INLINEABLE?
+equal1 :: (a -> b -> Bool) -> Trie a -> Trie b -> Bool
+equal1 eq (Branch p0 m0 l0 r0) (Branch p1 m1 l1 r1) =
+    m0 == m1 && p0 == p1 && equal1 eq l0 l1 && equal1 eq r0 r1
+equal1 eq (Arc k0 mv0 t0) (Arc k1 mv1 t1) =
+    k0 == k1 && liftEq eq mv0 mv1 && equal1 eq t0 t1
+equal1 _ Empty Empty = True
+equal1 _ _     _     = False
+#endif
 
 
--- TODO? add Ord instance like Data.Map?
+-- TODO: Both of these instances are terribly inefficient, because
+-- they unnecessarily reconstruct the keys.
+--
+-- | @since 0.2.7
+instance Ord a => Ord (Trie a) where
+    compare t0 t1 = compare (toList t0) (toList t1)
+
+#if MIN_VERSION_base(4,9,0)
+-- | @since 0.2.7
+instance Ord1 Trie where
+    liftCompare cmp t0 t1 =
+        liftCompare (liftCompare cmp) (toList t0) (toList t1)
+#endif
+
 
 {-----------------------------------------------------------
 -- Trie instances: serialization et cetera
 -----------------------------------------------------------}
+
+#if __GLASGOW_HASKELL__ >= 708
+-- | @since 0.2.7
+instance GHC.Exts.IsList (Trie a) where
+    type Item (Trie a) = (ByteString, a)
+    fromList = fromList
+    toList   = toList
+#endif
 
 -- This instance does not unveil the innards of our abstract type.
 -- It doesn't emit truly proper Haskell code though, since ByteStrings
@@ -257,8 +363,17 @@ data Trie a
 -- | @since 0.2.2
 instance (Show a) => Show (Trie a) where
     showsPrec p t = showParen (p > 10)
-                  $ ("Data.Trie.fromList "++) . shows (toListBy (,) t)
+                  $ ("fromList " ++) . shows (toList t)
 
+#if MIN_VERSION_base(4,9,0)
+-- | @since 0.2.7
+instance Show1 Trie where
+    liftShowsPrec sp sl p t =
+        FC.showsUnaryWith (liftShowsPrec sp' sl') "fromList" p (toList t)
+        where
+        sp' = liftShowsPrec sp sl
+        sl' = liftShowList  sp sl
+#endif
 
 -- | Visualization fuction for debugging.
 showTrie :: (Show a) => Trie a -> String
@@ -280,7 +395,31 @@ showTrie t = shows' id t ""
         in  s' . shows' (ss . (spaces s' ++)) t'
 
 
--- TODO?? a Read instance? hrm... should I?
+-- | @since 0.2.7
+instance (Read a) => Read (Trie a) where
+#ifdef __GLASGOW_HASKELL__
+    readPrec = R.parens . R.prec 10 $ do
+        R.Ident "fromList" <- R.lexP
+        fromList <$> R.readPrec
+
+    readListPrec = R.readListPrecDefault
+#else
+    readsPrec p = readParen (p > 10) $ \ r -> do
+        ("fromList",s) <- lex r
+        (xs,t) <- reads s
+        return (fromList xs,t)
+#endif
+
+#if MIN_VERSION_base(4,9,0)
+-- | @since 0.2.7
+instance Read1 Trie where
+    liftReadsPrec rp rl =
+        FC.readsData $ FC.readsUnaryWith (liftReadsPrec rp' rl')
+            "fromList" fromList
+        where
+        rp' = liftReadsPrec rp rl
+        rl' = liftReadList  rp rl
+#endif
 
 -- TODO: consider an instance more like the new one for Data.Map. Better?
 instance (Binary a) => Binary (Trie a) where
@@ -302,42 +441,10 @@ instance NFData a => NFData (Trie a) where
     rnf (Branch _ _ l r) = rnf l `seq` rnf r
 
 {-
--- TODO: do we want/need these instances?
-
+-- TODO: do we want/need this one?
 #if __GLASGOW_HASKELL__
 instance Data.Data.Data (Trie a) where ...
 -- See 'IntMap' for how to do this without sacrificing abstraction.
-#endif
-
-#if __GLASGOW_HASKELL__ >= 708
-instance GHC.Exts.IsList (Trie a) where
-    type Item (Trie a) = (ByteString, a)
-    fromList = fromList
-    toList   = toList
-#endif
-
-#if MIN_VERSION_base(4,9,0)
-instance Eq1 Trie where
-    liftEq eq _ _ = _
-
--- Assuming we also add a plain 'Ord' instance
-instance Ord1 Trie where
-    liftCompare cmp _ _ = _
-
-instance Show1 Trie where
-    liftShowsPrec sp sl d m =
-        showsUnaryWith (liftShowsPrec sp' sl') "fromList" d (toList m)
-      where
-        sp' = liftShowsPrec sp sl
-        sl' = liftShowList sp sl
-
--- Assuming we also add a plain 'Read' instance
-instance Read1 Trie where
-    liftReadsPrec rp rl = readsData $
-        readsUnaryWith (liftReadsPrec rp' rl') "fromList" fromList
-      where
-        rp' = liftReadsPrec rp rl
-        rl' = liftReadList rp rl
 #endif
 -}
 
@@ -803,6 +910,29 @@ cata a b e = start
     collect (Branch _ _ l r) bs = collect l (collect r bs)
 
 
+-- /Moved to "Data.Trie.Internal" since 0.2.7/
+-- We define this here because 'GHC.Exts.IsList' wants it.
+--
+-- | Convert association list into a trie.  On key conflict, values
+-- earlier in the list shadow later ones.
+fromList :: [(ByteString,a)] -> Trie a
+{-# INLINE fromList #-}
+fromList = foldr (uncurry insert) empty
+    where
+    insert = alterBy (\_ x _ -> Just x)
+
+-- /Moved to "Data.Trie.Internal" since 0.2.7/
+-- We define this here simply because so many instances want to use it.
+-- TODO: would it be worth defining this directly, for optimizing
+-- the case where list fusion doesn't eliminate the list?
+--
+-- | Convert trie into association list.  The list is ordered
+-- according to the keys.
+toList :: Trie a -> [(ByteString,a)]
+{-# INLINE toList #-}
+toList = toListBy (,)
+
+
 -- cf Data.ByteString.unpack
 -- <http://hackage.haskell.org/packages/archive/bytestring/0.9.1.4/doc/html/src/Data-ByteString.html>
 --
@@ -1081,11 +1211,11 @@ alterBy_ f = start
         | S.null q  = alterEpsilon
         | otherwise = go q
 
-    alterEpsilon (Arc k mv t) | S.null k = uncurry epsilon (f mv      t)
-    alterEpsilon t_                      = uncurry epsilon (f Nothing t_)
+    alterEpsilon (Arc k mv t) | S.null k = epsilon $$ f mv      t
+    alterEpsilon t_                      = epsilon $$ f Nothing t_
 
     -- @go@ is always called with non-null @q@, therefore @nothing@ is too.
-    nothing q = uncurry (arcNN q) (f Nothing Empty)
+    nothing q = arcNN q $$ f Nothing Empty
 
     go q Empty            = nothing q
     go q t@(Branch p m l r)
@@ -1098,7 +1228,7 @@ alterBy_ f = start
         let (p,k',q') = breakMaximalPrefix k q in
         case (S.null k', S.null q') of
         (False, True)  -> -- add node to middle of Arc
-                          uncurry (arcNN p) (f Nothing (Arc k' mv t))
+                          arcNN p $$ f Nothing (Arc k' mv t)
         (False, False) ->
             case nothing q' of
             Empty     -> t_ -- Nothing to add, reuse old Arc
@@ -1113,7 +1243,7 @@ alterBy_ f = start
                 -- therefore @arcPrefix q'@ is equivalent to taking
                 -- the 'arcPrefix' of the string in @l@.
                 $ (branchMerge (arcPrefix q') l (arcPrefix k') (Arc k' mv t))
-        (True, True)  -> uncurry (arc k) (f mv t)
+        (True, True)  -> arc k $$ f mv t
         (True, False) -> arc k mv (go q' t)
 
 

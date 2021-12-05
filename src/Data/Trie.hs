@@ -4,7 +4,7 @@
 {-# LANGUAGE Safe #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.11.27
+--                                                  ~ 2021.12.05
 -- |
 -- Module      :  Data.Trie
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -74,23 +74,12 @@ import Data.Maybe         (isJust)
 -- Conversion functions
 ---------------------------------------------------------------}
 
--- | Convert association list into a trie.  On key conflict, values
--- earlier in the list shadow later ones.
-fromList :: [(ByteString,a)] -> Trie a
-{-# INLINE fromList #-}
-fromList = foldr (uncurry insert) empty
-
--- | Convert trie into association list.  The list is ordered
--- according to the keys.
-toList :: Trie a -> [(ByteString,a)]
-{-# INLINE toList #-}
-toList  = toListBy (,)
-
 -- | Return all keys in the trie, in sorted order.
 keys :: Trie a -> [ByteString]
 {-# INLINE keys #-}
 keys  = toListBy const
 
+-- TODO: use 'foldr' directly, to avoid the cost of reconstructing the keys!
 -- | Return all values in the trie, in key-sorted order.
 --
 -- @since 0.2.2

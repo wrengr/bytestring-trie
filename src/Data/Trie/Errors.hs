@@ -1,10 +1,11 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE CPP #-}
 #if __GLASGOW_HASKELL__ >= 701
 {-# LANGUAGE Safe #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.10.17
+--                                                  ~ 2021.12.05
 -- |
 -- Module      :  Data.Trie.Errors
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano

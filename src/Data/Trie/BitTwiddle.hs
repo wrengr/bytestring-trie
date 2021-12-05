@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs -fno-warn-name-shadowing #-}
+{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE CPP #-}
 #ifdef __GLASGOW_HASKELL__
 {-# LANGUAGE MagicHash #-}
@@ -8,7 +9,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.12.04
+--                                                  ~ 2021.12.05
 -- |
 -- Module      :  Data.Trie.BitTwiddle
 -- Copyright   :  Copyright (c) Clark Gaebel 2012, Johan Tibel 2012, 2002 Daan Leijen

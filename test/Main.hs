@@ -36,6 +36,7 @@ import qualified Test.Tasty.QuickCheck  as QC
 
 import Data.List (nubBy, sortBy)
 import Data.Ord  (comparing)
+import qualified Data.Foldable as F
 
 #if MIN_VERSION_base(4,13,0)
 -- [aka GHC 8.8.1]: Prelude re-exports 'Semigroup'.
@@ -165,7 +166,7 @@ quickcheckTests
         (prop_delete_size   :: WS -> WTrie Int -> Bool)
     , QC.testProperty
         "prop_insert_delete"
-        (prop_insert_delete :: WS -> Int -> WTrie Int -> QC.Property)
+        (prop_insert_delete :: WS -> Int -> WTrie Int -> Bool)
     ]
   , Tasty.testGroup "Submap (@Int)"
     [ QC.testProperty
@@ -234,11 +235,28 @@ quickcheckTests
         "prop_updateMaxViewBy_gives_maxAssoc"
         (prop_updateMaxViewBy_gives_maxAssoc :: (WS -> Int -> Maybe Int) -> WTrie Int -> Bool)
     ]
-  , Tasty.testGroup "List-conversion (@Int)"
+  , Tasty.testGroup "toList (@Int)"
     [ QC.testProperty
         "prop_toListBy_keysOrdered"
         (prop_toListBy_keysOrdered  :: WTrie Int -> Bool)
     , QC.testProperty
+        "prop_keys"
+        (prop_keys :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_elems"
+        (prop_elems :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_foldr_vs_foldrWithKey"
+        (prop_foldr_vs_foldrWithKey :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_foldr_vs_foldr'"
+        (prop_foldr_vs_foldr' :: WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_foldl_vs_foldl'"
+        (prop_foldl_vs_foldl' :: WTrie Int -> Bool)
+    ]
+  , Tasty.testGroup "fromList (@Int)"
+    [ QC.testProperty
         "prop_fromList_takes_first"
         (prop_fromList_takes_first  :: [(WS, Int)] -> Bool)
     , QC.testProperty
@@ -381,8 +399,9 @@ smallcheckTests
         (prop_delete_size   :: WS -> WTrie () -> Bool)
     , SC.testProperty
         -- Note: at depth 3: 136/2120 (6.4%) did not meet the condition.
+        -- (That is, before rephrasing to avoid using 'CheckGuard')
         "prop_insert_delete"
-        (prop_insert_delete :: WS -> W -> WTrie W -> SC.Property IO)
+        (prop_insert_delete :: WS -> W -> WTrie W -> Bool)
     ]
   , Tasty.testGroup "Submap (@()/@W)"
     -- Depth=4 is at best very marginal here...
@@ -454,12 +473,30 @@ smallcheckTests
         "prop_updateMaxViewBy_gives_maxAssoc"
         (prop_updateMaxViewBy_gives_maxAssoc undefined :: WTrie W -> Bool)
     ]
-  , Tasty.adjustOption (+ (1::SC.SmallCheckDepth))
-  $ Tasty.testGroup "List-conversion (@()/@W)"
+  , Tasty.testGroup "toList (@()/@W)"
+    -- These can handle depth 4, but it takes >1sec (but still <5sec)
     [ SC.testProperty
         "prop_toListBy_keysOrdered"
         (prop_toListBy_keysOrdered  :: WTrie () -> Bool)
     , SC.testProperty
+        "prop_keys"
+        (prop_keys :: WTrie () -> Bool)
+    , SC.testProperty
+        "prop_elems"
+        (prop_elems :: WTrie W -> Bool)
+    , SC.testProperty
+        "prop_foldr_vs_foldrWithKey"
+        (prop_foldr_vs_foldrWithKey :: WTrie W -> Bool)
+    , SC.testProperty
+        "prop_foldr_vs_foldr'"
+        (prop_foldr_vs_foldr' :: WTrie W -> Bool)
+    , SC.testProperty
+        "prop_foldl_vs_foldl'"
+        (prop_foldl_vs_foldl' :: WTrie W -> Bool)
+    ]
+  , Tasty.adjustOption (+ (1::SC.SmallCheckDepth))
+  $ Tasty.testGroup "fromList (@()/@W)"
+    [ SC.testProperty
         "prop_fromList_takes_first"
         (prop_fromList_takes_first  :: [(WS, W)] -> Bool)
     , SC.testProperty
@@ -619,9 +656,10 @@ prop_delete_size (WS k) (WT t) =
     where
     n = if T.member k t then 1 else 0
 
-prop_insert_delete :: (Eq a, CheckGuard Bool b) => WS -> a -> WTrie a -> b
-prop_insert_delete (WS k) v =
-    ((not . T.member k) .==>. (T.delete k . T.insert k v) .==. id) . unWT
+prop_insert_delete :: (Eq a) => WS -> a -> WTrie a -> Bool
+prop_insert_delete (WS k) v (WT t)
+    | T.member k t = ((T.delete k . T.insert k v) .==. T.delete k) $ t
+    | otherwise    = ((T.delete k . T.insert k v) .==. id)         $ t
 
 -- | All keys in a submap are keys in the supermap
 prop_submap_keysAreMembers :: WS -> WTrie a -> Bool
@@ -745,8 +783,28 @@ prop_updateMinViewBy_ident =
 
 prop_updateMaxViewBy_ident :: Eq a => WTrie a -> Bool
 prop_updateMaxViewBy_ident =
-    ((view2trie . TI.updateMaxViewBy (\_ v -> Just v)) .==. id) .unWT
+    ((view2trie . TI.updateMaxViewBy (\_ v -> Just v)) .==. id) . unWT
 
+prop_keys :: WTrie a -> Bool
+prop_keys = (T.keys .==. (fmap fst . T.toList)) . unWT
+
+prop_elems :: (Eq a) => WTrie a -> Bool
+prop_elems = (T.elems .==. (fmap snd . T.toList)) . unWT
+
+-- Make sure these at least have the same order...
+prop_foldr_vs_foldrWithKey :: Eq a => WTrie a -> Bool
+prop_foldr_vs_foldrWithKey =
+    (F.foldr (:) [] .==. TI.foldrWithKey (\_ v vs -> v:vs) []) . unWT
+
+prop_foldr_vs_foldr' :: (Eq a) => WTrie a -> Bool
+prop_foldr_vs_foldr' = (F.foldr (:) [] .==. F.foldr' (:) []) . unWT
+
+prop_foldl_vs_foldl' :: (Eq a) => WTrie a -> Bool
+prop_foldl_vs_foldl' = (F.foldl snoc [] .==. F.foldl' snoc []) . unWT
+    where
+    snoc = flip (:)
+
+-- TODO: how can we best test that fold{l,r}{,'} are sufficiently lazy\/strict?
 
 -- | If there are duplicate keys in the @assocs@, then @f@ will
 -- take the first value.

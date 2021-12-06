@@ -112,17 +112,20 @@ shiftRL x i = unsafeShiftR x i
 -- If we shouldn't, then we should probably send a patch upstream
 -- to fix the (Bits Word8) instance.
 
--- | Is the value under the mask zero?
+-- | Is the key zero under the masking bit?
 zero :: KeyElem -> Mask -> Bool
 {-# INLINE zero #-}
 zero i m = (elemToNat i) .&. (elemToNat m) == 0
 
--- | Does a value /not/ match some prefix, for all the bits preceding
--- a masking bit? (Hence a subtree matching the value doesn't exist.)
+-- | Does the 'mask'ed key /not/ match the prefix?  (Hence a subtree
+-- matching the value doesn't exist.)
 nomatch :: KeyElem -> Prefix -> Mask -> Bool
 {-# INLINE nomatch #-}
 nomatch i p m = mask i m /= p
 
+-- | Convert a masking bit to the full mask it represents, and then
+-- return the prefix of the key under that mask (i.e., all the bits
+-- preceding the masking bit).
 mask :: KeyElem -> Mask -> Prefix
 {-# INLINE mask #-}
 mask i m = maskW (elemToNat i) (elemToNat m)

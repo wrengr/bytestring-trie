@@ -79,13 +79,6 @@ keys :: Trie a -> [ByteString]
 {-# INLINE keys #-}
 keys  = toListBy const
 
--- TODO: use 'foldr' directly, to avoid the cost of reconstructing the keys!
--- | Return all values in the trie, in key-sorted order.
---
--- @since 0.2.2
-elems :: Trie a -> [a]
-{-# INLINE elems #-}
-elems  = toListBy (flip const)
 
 
 {---------------------------------------------------------------

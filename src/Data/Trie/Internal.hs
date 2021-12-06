@@ -283,7 +283,7 @@ data Trie a
 
 
 {-----------------------------------------------------------
--- Smart constructors and helper functions for building tries
+-- Smart constructors
 -----------------------------------------------------------}
 
 -- | Smart constructor to prune @Empty@ from @Branch@es.
@@ -355,7 +355,8 @@ epsilon mv@(Just _) = Arc S.empty mv
 -- prefix sharing. Requires knowing the prefixes, but can combine
 -- either @Branch@es or @Arc@s.
 --
--- N.B. /do not/ use if prefixes could match entirely!
+-- __Preconditions__
+-- * /do not/ use if prefixes could match entirely!
 branchMerge :: Prefix -> Trie a -> Prefix -> Trie a -> Trie a
 {-# INLINE branchMerge #-}
 branchMerge _ Empty _ t2    = t2
@@ -413,7 +414,7 @@ errorLogHead fn q
 
 
 {-----------------------------------------------------------
--- Trie instances: Comparisons
+-- Instances: Eq, Eq1
 -----------------------------------------------------------}
 
 {-
@@ -462,6 +463,9 @@ equal1 _ Empty Empty = True
 equal1 _ _     _     = False
 #endif
 
+{-----------------------------------------------------------
+-- Instances: Ord, Ord1
+-----------------------------------------------------------}
 
 -- TODO: Both of these instances are terribly inefficient, because
 -- they unnecessarily reconstruct the keys.
@@ -477,18 +481,9 @@ instance Ord1 Trie where
         liftCompare (liftCompare cmp) (toList t0) (toList t1)
 #endif
 
-
 {-----------------------------------------------------------
--- Trie instances: serialization et cetera
+-- Instances: Show, Show1
 -----------------------------------------------------------}
-
-#if __GLASGOW_HASKELL__ >= 708
--- | @since 0.2.7
-instance GHC.Exts.IsList (Trie a) where
-    type Item (Trie a) = (ByteString, a)
-    fromList = fromList
-    toList   = toList
-#endif
 
 -- This instance does not unveil the innards of our abstract type.
 -- It doesn't emit truly proper Haskell code though, since ByteStrings
@@ -529,6 +524,9 @@ showTrie t = shows' id t ""
                  . ("--"++)
         in  s' . shows' (ss . (spaces s' ++)) t'
 
+{-----------------------------------------------------------
+-- Instances: Read, Read1
+-----------------------------------------------------------}
 
 -- | @since 0.2.7
 instance (Read a) => Read (Trie a) where
@@ -556,6 +554,10 @@ instance Read1 Trie where
         rl' = liftReadList  rp rl
 #endif
 
+{-----------------------------------------------------------
+-- Instances: Binary
+-----------------------------------------------------------}
+
 -- TODO: consider an instance more like the new one for Data.Map. Better?
 instance (Binary a) => Binary (Trie a) where
     put Empty            = do put (0 :: Word8)
@@ -568,6 +570,10 @@ instance (Binary a) => Binary (Trie a) where
                  0 -> return Empty
                  1 -> liftM3 Arc    get get get
                  _ -> liftM4 Branch get get get get
+
+{-----------------------------------------------------------
+-- Instances: NFData
+-----------------------------------------------------------}
 
 -- | @since 0.2.7
 instance NFData a => NFData (Trie a) where
@@ -584,7 +590,7 @@ instance Data.Data.Data (Trie a) where ...
 -}
 
 {-----------------------------------------------------------
--- Trie instances: Abstract Nonsense
+-- Instances: Functor
 -----------------------------------------------------------}
 
 -- TODO: IntMap floats the definition of 'fmap' out of the instance
@@ -606,6 +612,10 @@ instance Functor Trie where
     v <$ (Branch p m l r)   = Branch p m (v <$ l) (v <$ r)
 #endif
 
+{-----------------------------------------------------------
+-- Instances: Foldable
+-----------------------------------------------------------}
+-- TODO: move this one to the bottom, or there abouts
 
 instance Foldable Trie where
     {-# INLINABLE fold #-}
@@ -718,6 +728,10 @@ instance Foldable Trie where
 -- TODO: newtype Keys = K Trie  ; instance Foldable Keys
 -- TODO: newtype Assoc = A Trie ; instance Foldable Assoc
 
+{-----------------------------------------------------------
+-- Instances: Traversable, Applicative, Monad
+-----------------------------------------------------------}
+
 instance Traversable Trie where
     traverse f = go
         where
@@ -728,6 +742,7 @@ instance Traversable Trie where
 
 -- TODO: 'traverseWithKey', like 'IntMap' has...
 
+------------------------------------------------------------
 -- | @since 0.2.2
 instance Applicative Trie where
     pure      = singleton S.empty
@@ -760,6 +775,7 @@ instance Applicative Trie where
     liftA2 f (Arc k (Just v) s) t1 = arc_ k ((f v <$> t1) `unionL` liftA2 f s t1)
     -}
 
+------------------------------------------------------------
 -- Does this even make sense? It's not nondeterminism like lists
 -- and sets. If no keys were prefixes of other keys it'd make sense
 -- as a decision-tree; but since keys /can/ prefix, tries formed
@@ -789,6 +805,10 @@ instance Monad Trie where
                                where
                                unionL = mergeBy (\x _ -> Just x)
 
+
+{-----------------------------------------------------------
+-- Instances: Semigroup, Monoid
+-----------------------------------------------------------}
 
 #if MIN_VERSION_base(4,9,0)
 -- The "Data.Semigroup" module is in base since 4.9.0.0; but having
@@ -839,6 +859,10 @@ instance (Monoid a) => Monoid (Trie a) where
     mappend = mergeBy $ \x y -> Just (x `mappend` y)
 #endif
 
+
+{-----------------------------------------------------------
+-- Instances: Alternative, MonadPlus
+-----------------------------------------------------------}
 
 -- Since the Monoid instance isn't natural in @a@, I can't think
 -- of any other sensible instance for MonadPlus. It's as specious
@@ -976,6 +1000,7 @@ arcB k _ False = arc_ k
 
 
 -- | Apply a function to all values, potentially removing them.
+-- This function satisfies the laws:
 --
 -- [/conservation/]
 --   @'filterMap' ('Just' '.' f) ≡ 'fmap' f@
@@ -991,6 +1016,9 @@ filterMap f = go
     go (Branch p m l r)   = branch p m (go l) (go r)
 -- TODO: rewrite rule for both laws.
 
+-- TODO: why not implement as @contextualFilterMap (const . f)@ ?
+-- Does that actually incur additional overhead?
+
 
 -- | Generic version of 'fmap'. This function is notably more
 -- expensive than 'fmap' or 'filterMap' because we have to reconstruct
@@ -1002,6 +1030,9 @@ mapBy f = go S.empty
     go q (Arc k Nothing  t) = prepend k      (go q' t) where q' = q <> k
     go q (Arc k (Just v) t) = arc k (f q' v) (go q' t) where q' = q <> k
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
+
+-- TODO: why not implement as @contextualMapBy (\k v _ -> f k v)@ ?
+-- Does that actually incur additional overhead?
 
 
 -- | A variant of 'fmap' which provides access to the subtrie rooted
@@ -1054,13 +1085,10 @@ contextualMapBy f = go S.empty
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
 
-
-------------------------------------------------------------
-------------------------------------------------------------
-
 {-----------------------------------------------------------
 -- Basic functions
 -----------------------------------------------------------}
+-- TODO: probably want to hoist this up top
 
 -- | /O(1)/, Construct the empty trie.
 empty :: Trie a
@@ -1097,7 +1125,7 @@ size' (Arc _ (Just _) t) f  n = size' t f (n + 1)
 
 
 {-----------------------------------------------------------
--- Conversion functions
+-- Extra folding functions
 -----------------------------------------------------------}
 
 -- Still rather inefficient
@@ -1232,6 +1260,19 @@ cata a b e = start
     collect Empty            bs = bs
     collect (Arc k mv t)     bs = step k mv t : bs
     collect (Branch _ _ l r) bs = collect l (collect r bs)
+
+
+{-----------------------------------------------------------
+-- Instances: IsList
+-----------------------------------------------------------}
+
+#if __GLASGOW_HASKELL__ >= 708
+-- | @since 0.2.7
+instance GHC.Exts.IsList (Trie a) where
+    type Item (Trie a) = (ByteString, a)
+    fromList = fromList
+    toList   = toList
+#endif
 
 
 -- /Moved to "Data.Trie.Internal" since 0.2.7/

@@ -63,8 +63,8 @@ type ByteStringElem = Word8
 -- for a pair of strings.  This function performs no allocation\/copying,
 -- it simply returns slices\/views of the arguments.
 --
--- * @s == (\\(pre,s',z') -> pre '<>' s') ('breakMaximalPrefix' s z)@
--- * @z == (\\(pre,s',z') -> pre '<>' z') ('breakMaximalPrefix' s z)@
+-- * @s ≡ (\\(pre,s',z') -> pre '<>' s') ('breakMaximalPrefix' s z)@
+-- * @z ≡ (\\(pre,s',z') -> pre '<>' z') ('breakMaximalPrefix' s z)@
 --
 -- @since 0.2.2
 breakMaximalPrefix

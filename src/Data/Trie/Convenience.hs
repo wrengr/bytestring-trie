@@ -79,7 +79,7 @@ fromListL = foldl' (flip . uncurry $ insertIfAbsent) empty
 -- currently just an alias for 'fromListR'.
 fromListR :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListR #-}
-fromListR = fromList -- == foldr (uncurry insert) empty
+fromListR = fromList -- ≡ foldr (uncurry insert) empty
 
 
 -- TODO: compare performance against a fromListL variant, adjusting the sort appropriately

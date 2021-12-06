@@ -89,7 +89,7 @@ keys  = toListBy const
 -- rooted at the prefix.
 lookupBy :: (Maybe a -> Trie a -> b) -> ByteString -> Trie a -> b
 {-# INLINE lookupBy #-}
-lookupBy f = lookupBy_ f (f Nothing empty) (f Nothing)
+lookupBy f = lookupBy_ (f . Just) (f Nothing) (f Nothing empty)
 
 -- | Return the value associated with a query string if it exists.
 lookup :: ByteString -> Trie a -> Maybe a

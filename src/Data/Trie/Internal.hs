@@ -1148,22 +1148,29 @@ elems = F.foldr (:) []
 --
 -- This function is intended for internal use. For the public-facing
 -- version, see 'Data.Trie.lookupBy'.
-lookupBy_ :: (Maybe a -> Trie a -> b) -> b -> (Trie a -> b)
-          -> ByteString -> Trie a -> b
-lookupBy_ f z a = lookupBy_'
+--
+-- __NOTE__: /Type changed in 0.2.7/
+lookupBy_
+    :: (a -> Trie a -> b)   -- ^ The query matches a value.
+    -> (Trie a -> b)        -- ^ The query doesn't match, but an extension might.
+    -> b                    -- ^ The query doesn't match, nor does any extension.
+    -> ByteString -> Trie a -> b
+lookupBy_ found missing clash = start
     where
     -- | Deal with epsilon query (when there is no epsilon value)
-    lookupBy_' q t@(Branch{}) | S.null q = f Nothing t
-    lookupBy_' q t                       = go q t
-
+    start q t@(Branch{}) | S.null q = missing t
+    start q t                       = go q t
     -- | The main recursion
-    go _    Empty       = z
+    go _    Empty       = clash
     go q   (Arc k mv t) =
         let (_,k',q')   = breakMaximalPrefix k q
         in case (S.null k', S.null q') of
-                (False, True)  -> a (Arc k' mv t)
-                (False, False) -> z
-                (True,  True)  -> f mv t
+                (False, True)  -> missing (Arc k' mv t)
+                (False, False) -> clash
+                (True,  True)  ->
+                    case mv of
+                    Nothing -> missing t
+                    Just v  -> found v t
                 (True,  False) -> go q' t
     go q t_@(Branch{}) = findArc t_
         where
@@ -1171,7 +1178,7 @@ lookupBy_ f z a = lookupBy_'
         -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
         -- branching, and /W/ is the word size of the Prefix,Mask type.
         findArc (Branch p m l r)
-            | nomatch qh p m  = z
+            | nomatch qh p m  = clash
             | zero qh m       = findArc l
             | otherwise       = findArc r
         findArc t@(Arc{})     = go q t
@@ -1198,29 +1205,7 @@ submap :: ByteString -> Trie a -> Trie a
 {-# INLINE submap #-}
 submap q
     | S.null q  = id
-    | otherwise = lookupBy_ (arcNN q) empty (prepend q) q
-{-  -- Disable superfluous error checking.
-    -- @submap'@ would replace the first argument to @lookupBy_@
-    where
-    submap' Nothing Empty   = errorEmptyAfterNothing "submap"
-    submap' Nothing (Arc{}) = errorArcAfterNothing   "submap"
-    submap' mx      t       = Arc q mx t
-
-errorInvariantBroken :: String -> String -> a
-{-# NOINLINE errorInvariantBroken #-}
-errorInvariantBroken s e =  error (s ++ ": Invariant was broken" ++ e')
-    where
-    e' = if Prelude.null e then e else ", found: " ++ e
-
-errorArcAfterNothing    :: String -> a
-{-# NOINLINE errorArcAfterNothing #-}
-errorArcAfterNothing   s = errorInvariantBroken s "Arc after Nothing"
-
-errorEmptyAfterNothing  :: String -> a
-{-# NOINLINE errorEmptyAfterNothing #-}
-errorEmptyAfterNothing s = errorInvariantBroken s "Empty after Nothing"
--- -}
-
+    | otherwise = lookupBy_ (Arc q . Just) (prepend q) empty q
 
 {-
 -- TODO: would it be worth it to define this specialization?  The

@@ -4,7 +4,7 @@
 {-# LANGUAGE Safe #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.11.27
+--                                                  ~ 2021.12.05
 -- |
 -- Module      :  Data.Trie.Convenience
 -- Copyright   :  Copyright (c) 2008--2021 wren romano
@@ -152,10 +152,7 @@ fromListWithL' f = foldl' (flip . uncurry $ alterBy flipG') empty
 ----------------------------------------------------------------
 -- | Lookup a key, returning a default value if it's not found.
 lookupWithDefault :: a -> ByteString -> Trie a -> a
-lookupWithDefault def = lookupBy_ f def (const def)
-    where
-    f Nothing  _ = def
-    f (Just v) _ = v
+lookupWithDefault def = lookupBy_ const (const def) def
 
 ----------------------------------------------------------------
 

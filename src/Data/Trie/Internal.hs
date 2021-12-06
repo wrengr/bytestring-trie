@@ -658,8 +658,6 @@ instance Monad Trie where
     (>>=) (Arc k (Just v) t) f = arc_ k (f v `unionL` (t >>= f))
                                where
                                unionL = mergeBy (\x _ -> Just x)
-                               arc_ q | S.null q  = id
-                                      | otherwise = prepend q
 
 
 #if MIN_VERSION_base(4,9,0)
@@ -816,20 +814,20 @@ wither :: Applicative f => (a -> f (Maybe b)) -> Trie a -> f (Trie b)
 wither f = go
     where
     go Empty              = pure Empty
-    go (Arc k Nothing  t) = prepend k <$> go t
+    go (Arc k Nothing  t) = prepend k     <$> go t
     go (Arc k (Just v) t) = arc k <$> f v <*> go t
     go (Branch p m l r)   = branch p m <$> go l <*> go r
 -- And hence
 witherMap g f = go
     where
     go Empty              = pure (g Empty)
-    go (Arc k Nothing  t) = g . prepend k <$> go t
+    go (Arc k Nothing  t) = g . prepend k         <$> go t
     go (Arc k (Just v) t) = (g .) . arc k <$> f v <*> go t
     go (Branch p m l r)   = (g .) . branch p m <$> go l <*> go r
 filterA p = go
     where
     go Empty              = pure Empty
-    go (Arc k Nothing  t) = prepend k <$> go t
+    go (Arc k Nothing  t) = prepend k        <$> go t
     go (Arc k (Just v) t) = arcB k v <$> p v <*> go t
     go (Branch p m l r)   = branch p m <$> go l <*> go r
 -- And separately derived we have:
@@ -837,13 +835,13 @@ filter :: (a -> Bool) -> Trie a -> Trie b
 filter p = go
     where
     go Empty              = empty
-    go (Arc k Nothing  t) = prepend k (go t)
+    go (Arc k Nothing  t) = prepend k      (go t)
     go (Arc k (Just v) t) = arcB k v (p v) (go t)
     go (Branch p m l r)   = branch p m (go l) (go r)
 
--- > arcB k v b ≡ arcNN k (if b then Just v else Nothing)
+-- > arcB k v b ≡ arc k (if b then Just v else Nothing)
 arcB k v True  = Arc k (Just v)
-arcB k _ False = prepend k
+arcB k _ False = arc_ k
 -}
 
 
@@ -929,6 +927,7 @@ contextualMapBy f = go S.empty
 {-----------------------------------------------------------
 -- Smart constructors and helper functions for building tries
 -----------------------------------------------------------}
+-- FIXME: hoist this section up above all the instances etc.
 
 -- | Smart constructor to prune @Empty@ from @Branch@es.
 branch :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
@@ -937,34 +936,58 @@ branch _ _ Empty r     = r
 branch _ _ l     Empty = l
 branch p m l     r     = Branch p m l r
 
+{-
+-- | A common precondition for ensuring the safety of the following
+-- smart constructors.
+ifJustThenNoEpsilon :: Maybe a -> Trie a -> Bool
+ifJustThenNoEpsilon (Just _) (Arc k (Just _) _) = not (S.null k)
+ifJustThenNoEpsilon _ _ = True
+-}
 
 -- | Smart constructor to prune @Arc@s that lead nowhere.
--- N.B if mv=Just then doesn't check that t /= (Arc S.empty (Just _) _);
--- it's up to callers to ensure that invariant isn't broken.
+--
+-- __Preconditions__
+-- * @arc _ mv t | ifJustThenNoEpsilon mv t@
 arc :: ByteString -> Maybe a -> Trie a -> Trie a
 {-# INLINE arc #-}
 arc k mv@(Just _) = Arc k mv
-arc k    Nothing
+arc k    Nothing  = arc_ k
+
+-- | > arc_ k ≡ arc k Nothing
+--
+-- This function is only very rarely needed; most of the time you
+-- already know that the string is non-null, and thus you can call
+-- 'prepend' directly.
+arc_ :: ByteString -> Trie a -> Trie a
+{-# INLINE arc_ #-}
+arc_ k
     | S.null k  = id
     | otherwise = prepend k
 
 -- | Variant of 'arc' where the string is known to be non-null.
+--
+-- __Preconditions__
+-- * @arcNN k _  _ | not (S.null k)@
+-- * @arcNN _ mv t | ifJustThenNoEpsilon mv t@
 arcNN :: ByteString -> Maybe a -> Trie a -> Trie a
 {-# INLINE arcNN #-}
 arcNN k mv@(Just _) = Arc k mv
 arcNN k    Nothing  = prepend k
 
--- | Prepend a non-empty string to a trie.  Relies on the caller
--- to ensure that the string is non-empty.
+-- | Prepend a non-empty string to a trie.
+--
+-- __Preconditions__
+-- * @prepend k _ | not (S.null k)@
 prepend :: ByteString -> Trie a -> Trie a
 {-# INLINE prepend #-}
 prepend _ t@Empty         = t
 prepend k t@(Branch{})    = Arc k Nothing t
 prepend k (Arc k' mv' t') = Arc (k <> k') mv' t'
 
--- | Variant of 'arc' for when the string is known to be empty.
--- Does not verify that the trie argument is not already contain
--- an epsilon value; is up to the caller to ensure correctness.
+-- | > epsilon mv ≡ arc S.empty mv
+--
+-- __Preconditions__
+-- * @epsilon mv t | ifJustThenNoEpsilon mv t@
 epsilon :: Maybe a -> Trie a -> Trie a
 {-# INLINE epsilon #-}
 epsilon Nothing     = id
@@ -1561,7 +1584,7 @@ alterBy_ f = start
             Empty     -> t -- Nothing to add, reuse old Arc
             Branch{}  -> impossible "alterBy_" -- 'arcNN' can't Branch
             l@(Arc{}) ->
-                -- Inlined version of @arc p Nothing@, capturing
+                -- Inlined version of @arc_ p@, capturing
                 -- the invariant that the 'branchMerge' must be a
                 -- Branch (since neither trie argument is Empty).
                 (if S.null p then id else Arc p Nothing)

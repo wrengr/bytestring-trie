@@ -283,6 +283,136 @@ data Trie a
 
 
 {-----------------------------------------------------------
+-- Smart constructors and helper functions for building tries
+-----------------------------------------------------------}
+
+-- | Smart constructor to prune @Empty@ from @Branch@es.
+branch :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
+{-# INLINE branch #-}
+branch _ _ Empty r     = r
+branch _ _ l     Empty = l
+branch p m l     r     = Branch p m l r
+
+{-
+-- | A common precondition for ensuring the safety of the following
+-- smart constructors.
+ifJustThenNoEpsilon :: Maybe a -> Trie a -> Bool
+ifJustThenNoEpsilon (Just _) (Arc k (Just _) _) = not (S.null k)
+ifJustThenNoEpsilon _ _ = True
+-}
+
+-- | Smart constructor to prune @Arc@s that lead nowhere.
+--
+-- __Preconditions__
+-- * @arc _ mv t | ifJustThenNoEpsilon mv t@
+arc :: ByteString -> Maybe a -> Trie a -> Trie a
+{-# INLINE arc #-}
+arc k mv@(Just _) = Arc k mv
+arc k    Nothing  = arc_ k
+
+-- | > arc_ k ≡ arc k Nothing
+--
+-- This function is only very rarely needed; most of the time you
+-- already know that the string is non-null, and thus you can call
+-- 'prepend' directly.
+arc_ :: ByteString -> Trie a -> Trie a
+{-# INLINE arc_ #-}
+arc_ k
+    | S.null k  = id
+    | otherwise = prepend k
+
+-- | Variant of 'arc' where the string is known to be non-null.
+--
+-- __Preconditions__
+-- * @arcNN k _  _ | not (S.null k)@
+-- * @arcNN _ mv t | ifJustThenNoEpsilon mv t@
+arcNN :: ByteString -> Maybe a -> Trie a -> Trie a
+{-# INLINE arcNN #-}
+arcNN k mv@(Just _) = Arc k mv
+arcNN k    Nothing  = prepend k
+
+-- | Prepend a non-empty string to a trie.
+--
+-- __Preconditions__
+-- * @prepend k _ | not (S.null k)@
+prepend :: ByteString -> Trie a -> Trie a
+{-# INLINE prepend #-}
+prepend _ t@Empty         = t
+prepend k t@(Branch{})    = Arc k Nothing t
+prepend k (Arc k' mv' t') = Arc (k <> k') mv' t'
+
+-- | > epsilon mv ≡ arc S.empty mv
+--
+-- __Preconditions__
+-- * @epsilon mv t | ifJustThenNoEpsilon mv t@
+epsilon :: Maybe a -> Trie a -> Trie a
+{-# INLINE epsilon #-}
+epsilon Nothing     = id
+epsilon mv@(Just _) = Arc S.empty mv
+
+
+-- | Smart constructor to join two tries into a @Branch@ with maximal
+-- prefix sharing. Requires knowing the prefixes, but can combine
+-- either @Branch@es or @Arc@s.
+--
+-- N.B. /do not/ use if prefixes could match entirely!
+branchMerge :: Prefix -> Trie a -> Prefix -> Trie a -> Trie a
+{-# INLINE branchMerge #-}
+branchMerge _ Empty _ t2    = t2
+branchMerge _  t1   _ Empty = t1
+branchMerge p1 t1  p2 t2
+    | zero p1 m             = Branch p m t1 t2
+    | otherwise             = Branch p m t2 t1
+    where
+    m = branchMask p1 p2
+    p = mask p1 m
+
+
+-- It would be better if Arc used
+-- Data.ByteString.TrieInternal.wordHead somehow, that way
+-- we can see 4/8/?*Word8 at a time instead of just one.
+-- But that makes maintaining invariants ...difficult :(
+
+-- | Get the equivalent of the 'Prefix' stored in a @Branch@, but
+-- for an @Arc@.
+arcPrefix :: ByteString -> Prefix
+{-# INLINE arcPrefix #-}
+arcPrefix k
+    | S.null k  = 0 -- for lack of a better value
+    | otherwise = SU.unsafeHead k
+
+
+{-----------------------------------------------------------
+-- Error messages
+-----------------------------------------------------------}
+
+-- TODO: move off to "Data.Trie.Errors"?
+-- TODO: shouldn't we inline the logic and just NOINLINE the string
+-- constant? There are only three use sites, which themselves aren't
+-- inlined...
+-- TODO: this is almost identical to 'arcPrefix'; the only difference
+-- is that we use this one for matching a query against a trie,
+-- whereas we use 'arcPrefix' when matching two tries together.
+-- That said, since our test suite never throws this error, it
+-- should be safe to use 'arcPrefix' everywhere instead.  Or, if
+-- we want to preserve the semantic distinction, then we could start
+-- using 'Control.Exception.assert' to hoist the null-check out to
+-- where it belongs and still allow it to compile away.  Conversely,
+-- note that 'arcPrefix' is never called with a null string either
+-- (since null strings are only ever allowed for epsilon values;
+-- and all the use-sites of 'arcPrefix' are after handling those
+-- epsilons, or otherwise guarded).
+errorLogHead :: String -> ByteString -> ByteStringElem
+{-# NOINLINE errorLogHead #-}
+errorLogHead fn q
+    | S.null q  = error $ "Data.Trie.Internal." ++ fn ++": found null subquery"
+    | otherwise = SU.unsafeHead q
+
+------------------------------------------------------------
+------------------------------------------------------------
+
+
+{-----------------------------------------------------------
 -- Trie instances: Comparisons
 -----------------------------------------------------------}
 
@@ -923,133 +1053,6 @@ contextualMapBy f = go S.empty
     go q (Arc k (Just v) t) = arc k (f q' v t) (go q' t) where q' = q <> k
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
 
-
-{-----------------------------------------------------------
--- Smart constructors and helper functions for building tries
------------------------------------------------------------}
--- FIXME: hoist this section up above all the instances etc.
-
--- | Smart constructor to prune @Empty@ from @Branch@es.
-branch :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
-{-# INLINE branch #-}
-branch _ _ Empty r     = r
-branch _ _ l     Empty = l
-branch p m l     r     = Branch p m l r
-
-{-
--- | A common precondition for ensuring the safety of the following
--- smart constructors.
-ifJustThenNoEpsilon :: Maybe a -> Trie a -> Bool
-ifJustThenNoEpsilon (Just _) (Arc k (Just _) _) = not (S.null k)
-ifJustThenNoEpsilon _ _ = True
--}
-
--- | Smart constructor to prune @Arc@s that lead nowhere.
---
--- __Preconditions__
--- * @arc _ mv t | ifJustThenNoEpsilon mv t@
-arc :: ByteString -> Maybe a -> Trie a -> Trie a
-{-# INLINE arc #-}
-arc k mv@(Just _) = Arc k mv
-arc k    Nothing  = arc_ k
-
--- | > arc_ k ≡ arc k Nothing
---
--- This function is only very rarely needed; most of the time you
--- already know that the string is non-null, and thus you can call
--- 'prepend' directly.
-arc_ :: ByteString -> Trie a -> Trie a
-{-# INLINE arc_ #-}
-arc_ k
-    | S.null k  = id
-    | otherwise = prepend k
-
--- | Variant of 'arc' where the string is known to be non-null.
---
--- __Preconditions__
--- * @arcNN k _  _ | not (S.null k)@
--- * @arcNN _ mv t | ifJustThenNoEpsilon mv t@
-arcNN :: ByteString -> Maybe a -> Trie a -> Trie a
-{-# INLINE arcNN #-}
-arcNN k mv@(Just _) = Arc k mv
-arcNN k    Nothing  = prepend k
-
--- | Prepend a non-empty string to a trie.
---
--- __Preconditions__
--- * @prepend k _ | not (S.null k)@
-prepend :: ByteString -> Trie a -> Trie a
-{-# INLINE prepend #-}
-prepend _ t@Empty         = t
-prepend k t@(Branch{})    = Arc k Nothing t
-prepend k (Arc k' mv' t') = Arc (k <> k') mv' t'
-
--- | > epsilon mv ≡ arc S.empty mv
---
--- __Preconditions__
--- * @epsilon mv t | ifJustThenNoEpsilon mv t@
-epsilon :: Maybe a -> Trie a -> Trie a
-{-# INLINE epsilon #-}
-epsilon Nothing     = id
-epsilon mv@(Just _) = Arc S.empty mv
-
-
--- | Smart constructor to join two tries into a @Branch@ with maximal
--- prefix sharing. Requires knowing the prefixes, but can combine
--- either @Branch@es or @Arc@s.
---
--- N.B. /do not/ use if prefixes could match entirely!
-branchMerge :: Prefix -> Trie a -> Prefix -> Trie a -> Trie a
-{-# INLINE branchMerge #-}
-branchMerge _ Empty _ t2    = t2
-branchMerge _  t1   _ Empty = t1
-branchMerge p1 t1  p2 t2
-    | zero p1 m             = Branch p m t1 t2
-    | otherwise             = Branch p m t2 t1
-    where
-    m = branchMask p1 p2
-    p = mask p1 m
-
-
--- It would be better if Arc used
--- Data.ByteString.TrieInternal.wordHead somehow, that way
--- we can see 4/8/?*Word8 at a time instead of just one.
--- But that makes maintaining invariants ...difficult :(
-
--- | Get the equivalent of the 'Prefix' stored in a @Branch@, but
--- for an @Arc@.
-arcPrefix :: ByteString -> Prefix
-{-# INLINE arcPrefix #-}
-arcPrefix k
-    | S.null k  = 0 -- for lack of a better value
-    | otherwise = SU.unsafeHead k
-
-
-{-----------------------------------------------------------
--- Error messages
------------------------------------------------------------}
-
--- TODO: move off to "Data.Trie.Errors"?
--- TODO: shouldn't we inline the logic and just NOINLINE the string
--- constant? There are only three use sites, which themselves aren't
--- inlined...
--- TODO: this is almost identical to 'arcPrefix'; the only difference
--- is that we use this one for matching a query against a trie,
--- whereas we use 'arcPrefix' when matching two tries together.
--- That said, since our test suite never throws this error, it
--- should be safe to use 'arcPrefix' everywhere instead.  Or, if
--- we want to preserve the semantic distinction, then we could start
--- using 'Control.Exception.assert' to hoist the null-check out to
--- where it belongs and still allow it to compile away.  Conversely,
--- note that 'arcPrefix' is never called with a null string either
--- (since null strings are only ever allowed for epsilon values;
--- and all the use-sites of 'arcPrefix' are after handling those
--- epsilons, or otherwise guarded).
-errorLogHead :: String -> ByteString -> ByteStringElem
-{-# NOINLINE errorLogHead #-}
-errorLogHead fn q
-    | S.null q  = error $ "Data.Trie.Internal." ++ fn ++": found null subquery"
-    | otherwise = SU.unsafeHead q
 
 
 ------------------------------------------------------------

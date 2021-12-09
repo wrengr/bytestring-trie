@@ -1950,45 +1950,37 @@ intersectMaybe _ _         _         = Nothing
 {-----------------------------------------------------------
 -- Priority-queue functions
 -----------------------------------------------------------}
+-- TODO: should verify that all of these are now free of the quadratic
+-- slowdown from reconstructing keys. They should be, but just to
+-- verify that some new quadratic hasn't accidentally crept in...
 
--- FIXME: we can fix this one to avoid quadratic slowdown!
---
 -- | Return the lexicographically smallest 'ByteString' and the
 -- value it's mapped to; or 'Nothing' for the empty trie.  When one
 -- entry is a prefix of another, the prefix will be returned.
 --
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the key.
---
 -- @since 0.2.2
 minAssoc :: Trie a -> Maybe (ByteString, a)
-minAssoc = go S.empty
+minAssoc = go Epsilon
     where
-    go _ Empty              = Nothing
-    go q (Arc k (Just v) _) = Just (q <> k, v)
-    go q (Arc k Nothing  t) = go   (q <> k) t
-    go q (Branch _ _ l _)   = go q l
+    go !_ Empty              = Nothing
+    go  q (Arc k (Just v) _) = Just (toStrict (q +>? k), v)
+    go  q (Arc k Nothing  t) = go (q +>! k) t
+    go  q (Branch _ _ l _)   = go q l
 
 
--- FIXME: we can fix this one to avoid quadratic slowdown!
---
 -- | Return the lexicographically largest 'ByteString' and the
 -- value it's mapped to; or 'Nothing' for the empty trie.  When one
 -- entry is a prefix of another, the longer one will be returned.
 --
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the key.
---
 -- @since 0.2.2
 maxAssoc :: Trie a -> Maybe (ByteString, a)
-maxAssoc = go S.empty
+maxAssoc = go Epsilon
     where
-    go _ Empty                  = Nothing
-    go q (Arc k (Just v) Empty) = Just (q <> k, v)
-    go q (Arc k _        t)     = go   (q <> k) t
-    go q (Branch _ _ _ r)       = go q r
+    go !_ Empty                  = Nothing
+    go  q (Arc k (Just v) Empty) = Just (toStrict (q +>? k), v)
+    go  q (Arc k (Just _) t)     = go (q +>? k) t
+    go  q (Arc k Nothing  t)     = go (q +>! k) t
+    go  q (Branch _ _ _ r)       = go q r
 
 
 mapView :: (Trie a -> Trie a)
@@ -1998,42 +1990,33 @@ mapView _ Nothing        = Nothing
 mapView f (Just (k,v,t)) = Just (k,v, f t)
 
 
--- FIXME: we can fix this one to avoid quadratic slowdown!
---
 -- | Update the 'minAssoc' and return the old 'minAssoc'.
---
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the key.
 --
 -- @since 0.2.2
 updateMinViewBy :: (ByteString -> a -> Maybe a)
                 -> Trie a -> Maybe (ByteString, a, Trie a)
-updateMinViewBy f = go S.empty
+updateMinViewBy f = go Epsilon
     where
-    go _ Empty              = Nothing
-    go q (Arc k (Just v) t) = Just (q',v, arc k (f q' v) t) where q' = q <> k
-    go q (Arc k Nothing  t) = mapView (prepend k) (go (q <> k) t)
-    go q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
+    go !_ Empty              = Nothing
+    go  q (Arc k (Just v) t) = let q' = toStrict (q +>? k)
+                               in Just (q',v, arc k (f q' v) t)
+    go  q (Arc k Nothing  t) = mapView (prepend k) (go (q +>! k) t)
+    go  q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
 
 
--- FIXME: we can fix this one to avoid quadratic slowdown!
---
 -- | Update the 'maxAssoc' and return the old 'maxAssoc'.
---
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the key.
 --
 -- @since 0.2.2
 updateMaxViewBy :: (ByteString -> a -> Maybe a)
                 -> Trie a -> Maybe (ByteString, a, Trie a)
-updateMaxViewBy f = go S.empty
+updateMaxViewBy f = go Epsilon
     where
-    go _ Empty                  = Nothing
-    go q (Arc k (Just v) Empty) = Just (q',v, arc k (f q' v) Empty) where q' = q <> k
-    go q (Arc k mv       t)     = mapView (arc k mv) (go (q <> k) t)
-    go q (Branch p m l r)       = mapView (branch p m l) (go q r)
+    go !_ Empty                  = Nothing
+    go  q (Arc k (Just v) Empty) = let q' = toStrict (q +>? k)
+                                   in Just (q',v, arc k (f q' v) Empty)
+    go  q (Arc k mv@(Just _) t)  = mapView (Arc k mv) (go (q +>? k) t)
+    go  q (Arc k Nothing     t)  = mapView (arc_ k)   (go (q +>! k) t)
+    go  q (Branch p m l r)       = mapView (branch p m l) (go q r)
 
 ------------------------------------------------------------
 ------------------------------------------------------- fin.

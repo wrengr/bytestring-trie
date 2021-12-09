@@ -21,7 +21,7 @@
 module Data.Trie.ByteStringInternal
     ( ByteString, ByteStringElem
     , breakMaximalPrefix
-    , RevLazyByteString(..), (+>), fromStrict, toStrict
+    , RevLazyByteString(..), (+>!), (+>?), fromStrict, toStrict
     ) where
 
 import qualified Data.ByteString          as S
@@ -252,15 +252,21 @@ data RevLazyByteString
     | RevLazyByteString :+> {-# UNPACK #-} !S.ByteString
     -- Invariant: every 'S.ByteString' is non-null.
 
+-- | Append a BS to the RLBS, asserting that the 'S.ByteString' is
+-- indeed non-null.
+(+>!) :: RevLazyByteString -> S.ByteString -> RevLazyByteString
+xs +>! x = xs :+> x
+{-# INLINE (+>!) #-}
+
 -- | Append a BS to the RLBS, maintaining the invariant.
-(+>) :: RevLazyByteString -> S.ByteString -> RevLazyByteString
-xs +> PS _ _ 0 = xs
-xs +> x        = xs :+> x
-{-# INLINE (+>) #-}
+(+>?) :: RevLazyByteString -> S.ByteString -> RevLazyByteString
+xs +>? PS _ _ 0 = xs
+xs +>? x        = xs :+> x
+{-# INLINE (+>?) #-}
 
 -- | Convert a strict BS to RLBS, guaranteeing the invariant.
 fromStrict :: S.ByteString -> RevLazyByteString
-fromStrict = (Epsilon +>)
+fromStrict = (Epsilon +>?)
 {-# INLINE fromStrict #-}
 
 -- See commentary at LazyByteString's version of @toStrict@.  This

@@ -622,6 +622,13 @@ prop_breakMaximalPrefix (WS s) (WS z) =
     in (pre <> s') == s
     && (pre <> z') == z
 
+{-
+-- FIXME: need to export the RLBS stuff if we are to test it...
+prop_toStrict :: [WS] -> Bool
+prop_toStrict =
+    (S.concat .==. (TI.toStrict . foldl' (+>) Epsilon)) . map unWS
+-}
+
 -- | A singleton, is.
 prop_singleton :: (Eq a) => WS -> a -> Bool
 prop_singleton (WS k) v =

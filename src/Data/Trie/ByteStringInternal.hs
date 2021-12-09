@@ -6,7 +6,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.12.05
+--                                              ~ 2021.12.08
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
 -- Copyright   :  2008--2021 wren romano
@@ -21,9 +21,11 @@
 module Data.Trie.ByteStringInternal
     ( ByteString, ByteStringElem
     , breakMaximalPrefix
+    , RevLazyByteString(..), (+>), fromStrict, toStrict
     ) where
 
-import qualified Data.ByteString as S
+import qualified Data.ByteString          as S
+import qualified Data.ByteString.Internal as S
 import Data.ByteString.Internal (ByteString(PS))
 import Data.Word
 import Foreign.ForeignPtr       (ForeignPtr)
@@ -239,6 +241,63 @@ indexOfDifference !p1 !p2 !limit = goByte 0
 -- direct/simpler: using @readWord8OffAddr# p# n# s@ instead of
 -- @readWord8OffAddr# (plusAddr# p# n# ) 0# s@, though surely GHC
 -- will optimize those to generate the same assembly.
+
+------------------------------------------------------------
+------------------------------------------------------------
+
+-- | A \"reversed\" variant of lazy bytestrings; i.e., a snoc-list
+-- of strict bytestrings.
+data RevLazyByteString
+    = Epsilon
+    | RevLazyByteString :+> {-# UNPACK #-} !S.ByteString
+    -- Invariant: every 'S.ByteString' is non-null.
+
+-- | Append a BS to the RLBS, maintaining the invariant.
+(+>) :: RevLazyByteString -> S.ByteString -> RevLazyByteString
+xs +> PS _ _ 0 = xs
+xs +> x        = xs :+> x
+{-# INLINE (+>) #-}
+
+-- | Convert a strict BS to RLBS, guaranteeing the invariant.
+fromStrict :: S.ByteString -> RevLazyByteString
+fromStrict = (Epsilon +>)
+{-# INLINE fromStrict #-}
+
+-- See commentary at LazyByteString's version of @toStrict@.  This
+-- implementation is from Git SHA 688f3c0887f2ca0623f2f54f78e8f675f92e31bf,
+-- modulo the necessary changes for using a snoc-list in lieu of a
+-- cons-list.
+toStrict :: RevLazyByteString -> S.ByteString
+toStrict = \cs0 -> goLen0 cs0 cs0
+    where
+    (+?) = S.checkedAdd "RevLazyByteString.toStrict"
+    {-# INLINE (+?) #-}
+    -- It's still possible that the result is empty.
+    goLen0 _               Epsilon            = S.empty
+    goLen0 cs0             (cs :+> PS _ _ 0)  = goLen0 cs0 cs
+    goLen0 cs0             (cs :+> c)         = goLen1 cs0 c cs
+    -- It's still possible that the result is a single chunk.
+    goLen1 _   b           Epsilon            = b
+    goLen1 cs0 b           (cs :+> PS _ _ 0)  = goLen1 cs0 b cs
+    goLen1 cs0 (S.BS _ bl) (cs :+> PS _ _ cl) = goLen  cs0 (bl +? cl) cs
+    -- General case, just find the total length we'll need.
+    goLen  cs0 !total      (cs :+> PS _ _ cl) = goLen  cs0 (total +? cl) cs
+    goLen  cs0  total      Epsilon            =
+        S.unsafeCreate total $ \ptr ->
+            -- FIXME: this gives the correct behavior (re off-by-one
+            -- concerns); however, it is bad praxis to use a pointer
+            -- to something outside the allocated region; even if
+            -- it is just pointing to the first invalid byte after
+            -- the allocated region.
+            goCopy cs0 (ptr `ptrElemOff` total)
+    -- Copy the data
+    goCopy Epsilon                !_   = return ()
+    goCopy (cs :+> PS _  _   0  ) !ptr = goCopy cs ptr
+    goCopy (cs :+> PS fp off len) !ptr =
+        unsafeWithForeignPtr fp $ \p -> do
+            let ptr' = ptr `ptrElemOff` negate len
+            S.memcpy ptr' (p `ptrElemOff` off) len
+            goCopy cs ptr'
 
 ------------------------------------------------------------
 ------------------------------------------------------- fin.

@@ -9,10 +9,10 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.12.05
+--                                                  ~ 2021.12.07
 -- |
 -- Module      :  Data.Trie.BitTwiddle
--- Copyright   :  Copyright (c) Clark Gaebel 2012, Johan Tibel 2012, 2002 Daan Leijen
+-- Copyright   :  2012 Clark Gaebel, 2012 Johan Tibel, 2002 Daan Leijen
 -- License     :  BSD3
 -- Maintainer  :  libraries@haskell.org, wren@cpan.org
 -- Stability   :  stable
@@ -112,7 +112,9 @@ shiftRL x i = unsafeShiftR x i
 -- If we shouldn't, then we should probably send a patch upstream
 -- to fix the (Bits Word8) instance.
 
--- | Is the key zero under the masking bit?
+-- | Is the key zero under the masking bit?  If true then whatever
+-- is associated with that key should go to the left, otherwise it
+-- should go to the right.
 zero :: KeyElem -> Mask -> Bool
 {-# INLINE zero #-}
 zero i m = (elemToNat i) .&. (elemToNat m) == 0

@@ -4,10 +4,10 @@
 {-# LANGUAGE Safe #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.12.05
+--                                                  ~ 2021.12.07
 -- |
 -- Module      :  Data.Trie
--- Copyright   :  Copyright (c) 2008--2021 wren romano
+-- Copyright   :  2008--2021 wren romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional

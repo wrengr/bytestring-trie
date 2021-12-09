@@ -9,7 +9,7 @@
 --                                              ~ 2021.12.05
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
--- Copyright   :  Copyright (c) 2008--2021 wren romano
+-- Copyright   :  2008--2021 wren romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  stable

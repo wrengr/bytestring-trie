@@ -1,21 +1,26 @@
 -- Not using -Wcompat, because it wants outdated things for GHC 8.0/8.2
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+-- Note: can also pass show-extensions to get Haddock to show
+-- everything implicit/entailed by the things we actually request.
+-- Apparently we're getting: MonoLocalBinds, KindSignatures,
+-- ExplicitNamespaces; regardless of whether we set the default to Haskell98 or Haskell2010
 {-# OPTIONS_HADDOCK not-home #-}
 
 {-# LANGUAGE NoImplicitPrelude, CPP, BangPatterns #-}
-#if __GLASGOW_HASKELL__ >= 701
--- Alas, "GHC.Exts" isn't considered safe, even though 'build' surely is.
-{-# LANGUAGE Trustworthy #-}
-#endif
 #if __GLASGOW_HASKELL__ >= 708
--- For 'GHC.Exts.IsList'
+-- For defining the 'IsList' instance.
 {-# LANGUAGE TypeFamilies #-}
 #endif
+#if __GLASGOW_HASKELL__ >= 701
+-- Alas, "GHC.Exts" isn't considered safe, even though 'build' and
+-- 'IsList'(..) surely are.
+{-# LANGUAGE Trustworthy #-}
+#endif
 ------------------------------------------------------------
---                                              ~ 2021.12.05
+--                                              ~ 2021.12.08
 -- |
 -- Module      :  Data.Trie.Internal
--- Copyright   :  Copyright (c) 2008--2021 wren romano
+-- Copyright   :  2008--2021 wren romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  experimental
@@ -24,8 +29,8 @@
 -- Internal definition of the 'Trie' data type and generic functions
 -- for manipulating them. Almost everything here is re-exported
 -- from "Data.Trie", which is the preferred API for users. This
--- module is for developers who need deeper (and potentially fragile)
--- access to the abstract type.
+-- module is for developers who need deeper (and less stable) access
+-- to the abstract type.
 --
 -- @since 0.1.3
 ------------------------------------------------------------
@@ -33,19 +38,10 @@
 module Data.Trie.Internal
     (
     -- * Data types
-      Trie(), showTrie
-
-    -- * Functions for 'ByteString's
-    , breakMaximalPrefix
+      Trie()
 
     -- * Basic functions
     , empty, null, singleton, size
-
-    -- * Conversion and folding functions
-    , fromList
-    , toList, toListBy, elems
-    , foldrWithKey -- TODO: foldrWithKey', foldlWithKey, foldlWithKey'
-    , cata_, cata
 
     -- * Query functions
     , lookupBy_, submap
@@ -57,20 +53,38 @@ module Data.Trie.Internal
     -- * Combining tries
     , mergeBy, intersectBy
 
-    -- * Mapping functions
-    , mapBy
+    -- * Filtering and mapping functions
+    , traverseWithKey
+    , filter
+    , filterA
     , filterMap
+    , wither
+    , mapBy
+    -- TODO: effectful 'mapBy'
+    -- ** Contextual filtering\/mapping functions
     , contextualMap
     , contextualMap'
     , contextualFilterMap
+    -- TODO: effectful 'contextualFilterMap'
     , contextualMapBy
+    -- TODO: effectful 'contextualMapBy'
+
+    -- * Folding and list-conversion functions
+    , fromList
+    , toList, toListBy, elems
+    , foldrWithKey -- TODO: foldrWithKey', foldlWithKey, foldlWithKey'
+    , cata_, cata
 
     -- * Priority-queue functions
     , minAssoc, maxAssoc
     , updateMinViewBy, updateMaxViewBy
+
+    -- * Internal utility functions
+    , showTrie
+    , breakMaximalPrefix
     ) where
 
-import Prelude hiding      (null, lookup)
+import Prelude hiding      (null, lookup, filter)
 
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Unsafe as SU
@@ -111,9 +125,16 @@ import Control.DeepSeq     (NFData(rnf))
 import Control.Monad       (liftM3, liftM4)
 
 import qualified Data.Foldable as F
+-- [base-4.10.0.0 / GHC 8.2.1] moved 'liftA2' into the 'Applicative'
+-- class for performance reasons; so we want to use it wherever
+-- possible, for those same performance reasons.  However, while
+-- the Prelude re-exports all the other methods of 'Applicative'
+-- since base-4.8, it does not re-export 'liftA2' (at least not up
+-- through base-4.16.0.0 / GHC 9.2.1).
+import Control.Applicative (liftA2)
 #if MIN_VERSION_base(4,8,0)
 -- [aka GHC 7.10.1]: Prelude re-exports 'Applicative', @(<$>)@,
--- 'Foldable', and 'Traversable'.
+-- 'Foldable', and 'Traversable'. But not 'liftA2'.
 #else
 import Control.Applicative (Applicative(..), (<$>))
 import Data.Foldable       (Foldable())
@@ -289,9 +310,9 @@ data Trie a
 -- | Smart constructor to prune @Empty@ from @Branch@es.
 branch :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
 {-# INLINE branch #-}
-branch _ _ Empty r     = r
-branch _ _ l     Empty = l
-branch p m l     r     = Branch p m l r
+branch !_ !_ Empty r     = r
+branch  _  _ l     Empty = l
+branch  p  m l     r     = Branch p m l r
 
 {-
 -- | A common precondition for ensuring the safety of the following
@@ -307,8 +328,8 @@ ifJustThenNoEpsilon _ _ = True
 -- * @arc _ mv t | ifJustThenNoEpsilon mv t@
 arc :: ByteString -> Maybe a -> Trie a -> Trie a
 {-# INLINE arc #-}
-arc k mv@(Just _) = Arc k mv
-arc k    Nothing  = arc_ k
+arc !k mv@(Just _) = Arc k mv
+arc  k    Nothing  = arc_ k
 
 -- | > arc_ k ≡ arc k Nothing
 --
@@ -328,8 +349,8 @@ arc_ k
 -- * @arcNN _ mv t | ifJustThenNoEpsilon mv t@
 arcNN :: ByteString -> Maybe a -> Trie a -> Trie a
 {-# INLINE arcNN #-}
-arcNN k mv@(Just _) = Arc k mv
-arcNN k    Nothing  = prepend k
+arcNN !k mv@(Just _) = Arc k mv
+arcNN  k    Nothing  = prepend k
 
 -- | Prepend a non-empty string to a trie.
 --
@@ -337,18 +358,31 @@ arcNN k    Nothing  = prepend k
 -- * @prepend k _ | not (S.null k)@
 prepend :: ByteString -> Trie a -> Trie a
 {-# INLINE prepend #-}
-prepend _ t@Empty         = t
-prepend k t@(Branch{})    = Arc k Nothing t
-prepend k (Arc k' mv' t') = Arc (k <> k') mv' t'
+prepend !_ t@Empty      = t
+prepend  q t@(Branch{}) = Arc q Nothing t
+prepend  q (Arc k mv s) = Arc (q <> k) mv s
 
--- | > epsilon mv ≡ arc S.empty mv
+-- | > mayEpsilon mv ≡ arc S.empty mv
+--
+-- __Preconditions__
+-- * @mayEpsilon mv t | ifJustThenNoEpsilon mv t@
+mayEpsilon :: Maybe a -> Trie a -> Trie a
+{-# INLINE mayEpsilon #-}
+mayEpsilon mv@(Just _) = epsilon mv
+mayEpsilon    Nothing  = id
+
+-- | Canonical name for the empty arc at the top of the trie.
+-- N.B., this function only takes 'Maybe' for the sake of avoiding
+-- allocation; the argument must always actually be 'Just'.
+--
+-- > epsilon ≡ Arc S.empty
 --
 -- __Preconditions__
 -- * @epsilon mv t | ifJustThenNoEpsilon mv t@
+-- * @epsilon (Just _) _@
 epsilon :: Maybe a -> Trie a -> Trie a
 {-# INLINE epsilon #-}
-epsilon Nothing     = id
-epsilon mv@(Just _) = Arc S.empty mv
+epsilon = Arc S.empty
 
 
 -- | Smart constructor to join two tries into a @Branch@ with maximal
@@ -359,11 +393,11 @@ epsilon mv@(Just _) = Arc S.empty mv
 -- * /do not/ use if prefixes could match entirely!
 branchMerge :: Prefix -> Trie a -> Prefix -> Trie a -> Trie a
 {-# INLINE branchMerge #-}
-branchMerge _ Empty _ t2    = t2
-branchMerge _  t1   _ Empty = t1
-branchMerge p1 t1  p2 t2
-    | zero p1 m             = Branch p m t1 t2
-    | otherwise             = Branch p m t2 t1
+branchMerge !_  Empty !_  !t2   = t2
+branchMerge  _  t1     _  Empty = t1
+branchMerge  p1 t1     p2 t2
+    | zero p1 m                 = Branch p m t1 t2
+    | otherwise                 = Branch p m t2 t1
     where
     m = branchMask p1 p2
     p = mask p1 m
@@ -467,8 +501,10 @@ equal1 _ _     _     = False
 -- Instances: Ord, Ord1
 -----------------------------------------------------------}
 
--- TODO: Both of these instances are terribly inefficient, because
--- they unnecessarily reconstruct the keys.
+-- BUG: Both of these instances suffer from
+-- <https://github.com/wrengr/bytestring-trie/issues/25>. And
+-- unnecessarily so, since we should be able to perform the comparison
+-- without ever reconstructing the keys at all.
 --
 -- | @since 0.2.7
 instance Ord a => Ord (Trie a) where
@@ -487,8 +523,11 @@ instance Ord1 Trie where
 
 -- This instance does not unveil the innards of our abstract type.
 -- It doesn't emit truly proper Haskell code though, since ByteStrings
--- are printed as (ASCII) Strings, but that's not our fault. (Also
--- 'fromList' is in "Data.Trie" instead of here.)
+-- are printed as (ASCII) Strings, but that's not our fault.
+--
+-- BUG: Both of these instances suffer from
+-- <https://github.com/wrengr/bytestring-trie/issues/25>, because
+-- 'toList' does.
 --
 -- | @since 0.2.2
 instance (Show a) => Show (Trie a) where
@@ -558,7 +597,20 @@ instance Read1 Trie where
 -- Instances: Binary
 -----------------------------------------------------------}
 
--- TODO: consider an instance more like the new one for Data.Map. Better?
+{-
+-- TODO: consider an instance more like the new one for Data.Map
+-- (also for Data.IntMap), that is:
+instance (Binary a) => Binary (Set.Set a) where
+    put s = put (size s) <> mapM_ put (toAscList s)
+    get   = liftM fromDistinctAscList get
+-- It would require redoing all the work to split bytestrings, and
+-- have the overhead from storing duplicated prefixes, but is forward
+-- compatible to whatever representation changes, and doesn't have
+-- the invariants problem.
+-- BUG: However, that would suffer from 
+-- <https://github.com/wrengr/bytestring-trie/issues/25>, because
+-- 'toList'\/@toAscList@ does.
+-}
 instance (Binary a) => Binary (Trie a) where
     put Empty            = do put (0 :: Word8)
     put (Arc k mv t)     = do put (1 :: Word8); put k; put mv; put t
@@ -571,6 +623,12 @@ instance (Binary a) => Binary (Trie a) where
                  1 -> liftM3 Arc    get get get
                  _ -> liftM4 Branch get get get get
 
+-- TODO: consider adding *cereal*:'Serialize' instance. (Though that adds dependencies on: array, bytestring-builder, fail, ghc-prim). THe instances for Map/IntMap are similar to the commented ones above, though the getter uses 'fromList' rather than assuming distinct or ascending.
+
+-- TODO: potentially consider <https://github.com/mgsloan/store#readme> as well, though probably not since that has a ton of dependencies.
+
+-- TODO: also consider 'Storable', though that seems less appropriate for data structures than for structs and scalars...
+
 {-----------------------------------------------------------
 -- Instances: NFData
 -----------------------------------------------------------}
@@ -582,11 +640,16 @@ instance NFData a => NFData (Trie a) where
     rnf (Branch _ _ l r) = rnf l `seq` rnf r
 
 {-
--- TODO: do we want/need this one?
+-- TODO: do we want/need these?
 #if __GLASGOW_HASKELL__
 instance Data.Data.Data (Trie a) where ...
 -- See 'IntMap' for how to do this without sacrificing abstraction.
 #endif
+
+-- I think this macro is defined in "containers.h"?
+INSTANCE_TYPEABLE(Trie)
+
+-- What about deriving Generic?
 -}
 
 {-----------------------------------------------------------
@@ -613,134 +676,33 @@ instance Functor Trie where
 #endif
 
 {-----------------------------------------------------------
--- Instances: Foldable
------------------------------------------------------------}
--- TODO: move this one to the bottom, or there abouts
-
-instance Foldable Trie where
-    {-# INLINABLE fold #-}
-    fold = go
-        where
-        go Empty              = mempty
-        go (Arc _ Nothing  t) = go t
-        go (Arc _ (Just v) t) = v `mappend` go t
-        go (Branch _ _ l r)   = go l `mappend` go r
-    -- If our definition of foldr is so much faster than the Endo
-    -- default, then maybe we should remove this and use the default
-    -- foldMap based on foldr
-    {-# INLINE foldMap #-}
-    foldMap f = go
-        where
-        go Empty              = mempty
-        go (Arc _ Nothing  t) = go t
-        go (Arc _ (Just v) t) = f v `mappend` go t
-        go (Branch _ _ l r)   = go l `mappend` go r
-    -- TODO: benchmark this one against the Endo-based default.
-    -- TODO: if it's slower, try expanding out the CPS stuff again.
-    -- (Though to be sure that doesn't interfere with being a
-    -- good-producer for list fusion.)
-    -- TODO: is this safe for deep-strict @f@, or only WHNF-strict?
-    -- (Cf., the bug note at 'foldrWithKeys')
-    -- TODO: do we need to float this definition out of the class
-    --  in order to get it to inline appropriately for list fusion etc?
-    {-# INLINE foldr #-}
-    foldr f z0 = \t -> go t z0 -- eta for better inlining
-        where
-        -- TODO: would it be better to eta-expand this?
-        go Empty              = id
-        go (Arc _ Nothing  t) =       go t
-        go (Arc _ (Just v) t) = f v . go t
-        go (Branch _ _ l r)   = go l . go r
-    {-# INLINE foldr' #-}
-    foldr' f z0 = \t -> go z0 t -- eta for better inlining
-        where
-        go !z Empty              = z
-        go  z (Arc _ Nothing  t) = go z t
-        go  z (Arc _ (Just v) t) = f v $! go z t
-        go  z (Branch _ _ l r)   = go (go z r) l
-    {-
-    -- TODO: benchmark this variant vs the above.
-    foldr' f z0 = \t -> go t z0 id -- eta for better inlining
-        where
-        go Empty              !z c = c z
-        go (Arc _ Nothing  t)  z c = go t z c
-        go (Arc _ (Just v) t)  z c = go t z (\ !z' -> c $! f v z')
-        go (Branch _ _ l r)    z c = go r z (\ !z' -> go l z' c)
-    -}
-    {-# INLINE foldl #-}
-    foldl f z0 = \t -> go z0 t -- eta for better inlining
-        where
-        -- TODO: CPS to restore the tail-call for @Branch@?
-        go z Empty              = z
-        go z (Arc _ Nothing  t) = go z t
-        go z (Arc _ (Just v) t) = go (f z v) t
-        go z (Branch _ _ l r)   = go (go z l) r
-    {-# INLINE foldl' #-}
-    foldl' f z0 = \t -> go z0 t -- eta for better inlining
-        where
-        -- TODO: CPS to restore the tail-call for @Branch@?
-        go !z Empty              = z
-        go  z (Arc _ Nothing  t) = go z t
-        go  z (Arc _ (Just v) t) = go (f z v) t
-        go  z (Branch _ _ l r)   = go (go z l) r
-#if MIN_VERSION_base(4,8,0)
-    {-# INLINE length #-}
-    length = size
-    {-# INLINE null #-}
-    null   = null -- FIXME: ensure this isn't cyclic definition!
-    {-# INLINE toList #-}
-    toList = elems -- NB: Foldable.toList /= Trie.toList
-    {-
-    -- TODO: need to move these definitions here...
-    -- TODO: may want to give a specialized implementation of 'member' then
-    {-# INLINE elem #-}
-    elem = member
-    -}
-    -- TODO: why does IntMap define these two specially, rather than using foldl' or foldl1' ?
-    {-# INLINABLE maximum #-}
-    maximum = start
-        where
-        start Empty              = error "Data.Foldable.maximum @Trie: empty trie"
-        start (Arc _ Nothing  t) = start t
-        start (Arc _ (Just v) t) = go v t
-        start (Branch _ _ l r)   = go (start l) r
-        go !w Empty              = w
-        go  w (Arc _ Nothing  t) = go w t
-        go  w (Arc _ (Just v) t) = go (max w v) t
-        go  w (Branch _ _ l r)   = go (go w l) r
-    {-# INLINABLE minimum #-}
-    minimum = start
-        where
-        start Empty              = error "Data.Foldable.minimum @Trie: empty trie"
-        start (Arc _ Nothing  t) = start t
-        start (Arc _ (Just v) t) = go v t
-        start (Branch _ _ l r)   = go (start l) r
-        go !w Empty              = w
-        go  w (Arc _ Nothing  t) = go w t
-        go  w (Arc _ (Just v) t) = go (min w v) t
-        go  w (Branch _ _ l r)   = go (go w l) r
-    {-# INLINABLE sum #-}
-    sum = F.foldl' (+) 0
-    {-# INLINABLE product #-}
-    product = F.foldl' (*) 1
-#endif
-
--- TODO: newtype Keys = K Trie  ; instance Foldable Keys
--- TODO: newtype Assoc = A Trie ; instance Foldable Assoc
-
-{-----------------------------------------------------------
 -- Instances: Traversable, Applicative, Monad
 -----------------------------------------------------------}
 
 instance Traversable Trie where
     traverse f = go
         where
-        go Empty              = pure Empty
-        go (Arc k Nothing  t) = Arc k Nothing        <$> go t
-        go (Arc k (Just v) t) = Arc k . Just <$> f v <*> go t
-        go (Branch p m l r)   = Branch p m <$> go l <*> go r
+        go Empty              = pure   Empty
+        go (Arc k Nothing  t) = fmap   (Arc k Nothing)      (go t)
+        go (Arc k (Just v) t) = liftA2 (Arc k . Just) (f v) (go t)
+        go (Branch p m l r)   = liftA2 (Branch p m) (go l) (go r)
 
--- TODO: 'traverseWithKey', like 'IntMap' has...
+-- | Keyed version of 'traverse'.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the keys.
+--
+-- @since 0.2.7
+traverseWithKey
+    :: Applicative f => (ByteString -> a -> f b) -> Trie a -> f (Trie b)
+{-# INLINE traverseWithKey #-}
+traverseWithKey f = go S.empty
+    where
+    go _ Empty              = pure   Empty
+    go q (Arc k Nothing  t) = fmap   (Arc k Nothing)         (go q' t) where q' = q <> k
+    go q (Arc k (Just v) t) = liftA2 (Arc k . Just) (f q' v) (go q' t) where q' = q <> k
+    go q (Branch p m l r)   = liftA2 (Branch p m) (go q l) (go q r)
 
 ------------------------------------------------------------
 -- | @since 0.2.2
@@ -749,8 +711,10 @@ instance Applicative Trie where
     t0 <*> t1 = t0 >>= (<$> t1)
     -- TODO: can we do better than these defaults?
     -- t0 *> t1       = (id    <$  t0) <*> t1
-    -- t0 <* t1       = (const <$> t0) <*> t1
+    -- t0 <* t1       = (const <$> t0) <*> t1 -- actually uses @liftA2 const t0 t1@
+#if MIN_VERSION_base(4,10,0)
     -- liftA2 f t0 t1 = (f     <$> t0) <*> t1
+#endif
     {-
     -- Inlining and case-of-case yields the following (which GHC
     -- could surely derive on its own):
@@ -814,33 +778,17 @@ instance Monad Trie where
 -- The "Data.Semigroup" module is in base since 4.9.0.0; but having
 -- the 'Semigroup' superclass for the 'Monoid' instance only comes
 -- into force in base 4.11.0.0.
--- | @since 0.2.5.0
+-- | @since 0.2.5
 instance (Semigroup a) => Semigroup (Trie a) where
     (<>) = mergeBy $ \x y -> Just (x <> y)
     -- Non-default definition since 0.2.7
-    stimes n = fmap (stimes n)
+    stimes = fmap . stimes
 #endif
-{-
--- TODO: We surely don't want to use this definition for the instance,
--- because it would only be cheaper when the semigroup's 'sconcat'
--- is overwhelmingly cheaper than iterating @(<>)@; however, we
--- might consider exposing it as an auxilliary function, if there
--- are any such semigroups worth considering...
-sconcatExpensive :: Semigroup a => NonEmpty (Trie a) -> Trie a
-sconcatExpensive (t :| ts) = (sconcat . mkNE) <$> aggregate (t:ts)
-    where
-    mkNE []     = impossible "sconcatExpensive"
-    mkNE (v:vs) = v :| vs
-
-aggregate :: [Trie a] -> Trie [a]
-aggregate = foldr (mergeBy (\x y -> Just (x ++ y)) . fmap return) empty
--}
 
 
 -- This instance is more sensible than Data.IntMap and Data.Map's
 instance (Monoid a) => Monoid (Trie a) where
     mempty = empty
-    -- TODO: optimized implementation of 'mconcat'
 #if MIN_VERSION_base(4,11,0)
     -- Now that the canonical instance is the default, don't define
     -- 'mappend', in anticipation of Phase 4 of:
@@ -889,124 +837,34 @@ instance MonadPlus Trie where
 
 
 {-----------------------------------------------------------
--- Extra mapping functions
+-- Extra mapping and filtering functions
 -----------------------------------------------------------}
 
-{-
--- TODO: This one is less popular, but imposes few additional constraints.
--- <https://hackage.haskell.org/package/filtrable>
-instance Filterable Trie where
-    mapMaybe  = filterMap
-    -- > catMaybes = filterMap id
-    -- > filter p = mapMaybe ((<$) <*> guard . p)
-    --            ≡ mapMaybe (\x -> if p x then Just x else Nothing)
+{-----------------------------------------------------------
+-- Pseudo-instances: Filterable, Witherable
+-----------------------------------------------------------}
 
-    -- The @witherable@ package breaks these two out into a separate class
-    mapMaybeA -- aka 'wither'
-        :: (Applicative f) => (a -> f (Maybe b)) -> Trie a -> f (Trie b)
-    -- > mapMaybeA f xs = catMaybes <$> traverse f xs
-    filterA    :: (Applicative f) => (a -> f Bool) -> Trie a -> f (Trie a)
-    -- > filterA f = mapMaybeA (\ x -> (x <$) . guard <$> f x)
-    --             ≡ mapMaybeA $ \x -> (\b -> if b then Just x else Nothing) <$> f x
-
-
-    mapEither :: (a -> Either b c) -> f a -> (f b, f c)
-    -- > mapEither f = (,) <$> mapMaybe (either Just (pure Nothing) . f) <*> mapMaybe (either (pure Nothing) Just . f)
-    partitionEithers :: f (Either a b) -> (f a, f b)
-    -- > partitionEithers = mapEither id
-    mapEitherA :: (Applicative f) => (a -> f (Either b c)) -> Trie a -> f (Trie b, Trie c)
-    -- > mapEitherA f = liftA2 (,) <$> mapMaybeA (fmap (Just `either` pure Nothing) . f) <*> mapMaybeA (fmap (pure Nothing `either` Just) . f)
-
-    -- [Laws]
-    -- > mapMaybe Just ≡ id                                        -- special case of the \"conservation\" below.
-    -- > mapMaybe f ≡ catMaybes . fmap f                           -- default definition
-    -- > catMaybes  ≡ mapMaybe id                                  -- default definition
-    -- > filter f   ≡ mapMaybe (\x -> bool Nothing (Just x) (f x)) -- default definition, for @witherable@
-    -- > mapMaybe g . mapMaybe f ≡ mapMaybe (g <=< f)
-    -- > foldMap g . filter f ≡ foldMap (\x -> bool mempty (g x) (f x))
-
--- TODO: This one is more popular, but has many many dependencies.
--- <https://hackage.haskell.org/package/witherable>
-instance Filterable Trie where
-    mapMaybe = filterMap
-    -- The default implementations should be perfectly efficient,
-    -- just so long as the 'filterMap' gets inlined so that the
-    -- function argument can get counter-inlined into the loop and
-    -- thus doesn't generate a closure nor lambda-call overhead.
-    -- > catMaybes = filterMap id
-    -- > filter p  = filterMap (\v -> if p v then Just v else Nothing)
-
-    -- [Laws]
-    -- > mapMaybe (Just . f) ≡ fmap f                  -- \"conservation\"
-    -- > mapMaybe f . mapMaybe g ≡ mapMaybe (f <=< g)  -- \"composition\"
-
--- minimal instance requires nothing...
-instance Witherable Trie where
-    wither :: Applicative f => (a -> f (Maybe b)) -> Trie a -> f (Trie b)
-    -- > wither f = fmap catMaybes . traverse f
-    witherM :: Monad m => (a -> m (Maybe b)) -> Trie a -> m (Trie b)
-    -- > witherM = wither
-    filterA :: Applicative f => (a -> f Bool) -> Trie a -> f (Trie a)
-    -- > filterA p = wither $ \x -> (\b -> if b then Just x else Nothing) <$> p x
-    witherMap :: Applicative f => (Trie b -> r) -> (a -> f (Maybe b)) -> Trie a -> f r
-    -- > witherMap f g = fmap f . wither g
-
-    -- [Laws]
-    -- > wither (Identity . Just) ≡ Identity
-    -- > Compose . fmap (wither f) . wither g ≡ wither (Compose . fmap (wither f) . g)
-    -- > wither (fmap Just . f) ≡ traverse f
-    -- > wither (Identity . f) ≡ Identity . mapMaybe f
-    -- And naturality provides:
-    -- > t . wither f ≡ wither (t . f) -- if @t@ is an applicative-transformation
-
-
--- TODO: even if we don't do those instances, maybe we ought to
--- provide 'filter' and 'wither' or 'witherMap' directly anyways.
+-- We avoid depending on the *filterable* package because it combines
+-- too many things into its @Filterable@ class.  And we avoid using
+-- the *witherable* package because it has too many dependencies,
+-- and too many orphan instances.  However, we go with the names
+-- (mostly[1]) and laws as phrased by *witherable*.
 --
--- Assuming I didn't make a mistake somewhere:
-wither :: Applicative f => (a -> f (Maybe b)) -> Trie a -> f (Trie b)
-wither f = go
-    where
-    go Empty              = pure Empty
-    go (Arc k Nothing  t) = prepend k     <$> go t
-    go (Arc k (Just v) t) = arc k <$> f v <*> go t
-    go (Branch p m l r)   = branch p m <$> go l <*> go r
--- And hence
-witherMap g f = go
-    where
-    go Empty              = pure (g Empty)
-    go (Arc k Nothing  t) = g . prepend k         <$> go t
-    go (Arc k (Just v) t) = (g .) . arc k <$> f v <*> go t
-    go (Branch p m l r)   = (g .) . branch p m <$> go l <*> go r
-filterA p = go
-    where
-    go Empty              = pure Empty
-    go (Arc k Nothing  t) = prepend k        <$> go t
-    go (Arc k (Just v) t) = arcB k v <$> p v <*> go t
-    go (Branch p m l r)   = branch p m <$> go l <*> go r
--- And separately derived we have:
-filter :: (a -> Bool) -> Trie a -> Trie b
-filter p = go
-    where
-    go Empty              = empty
-    go (Arc k Nothing  t) = prepend k      (go t)
-    go (Arc k (Just v) t) = arcB k v (p v) (go t)
-    go (Branch p m l r)   = branch p m (go l) (go r)
-
--- > arcB k v b ≡ arc k (if b then Just v else Nothing)
-arcB k v True  = Arc k (Just v)
-arcB k _ False = arc_ k
--}
+-- [1]: I'm rather not a fan of @mapMaybe@, despite its pervasiveness.
+-- And similarly for @catMaybes@ etc.  That's actually one of the
+-- reasons I prefer the *witherable* package over *filterable*:
+-- because of the name 'wither' instead of @mapMaybeA@ :)
 
 
 -- | Apply a function to all values, potentially removing them.
 -- This function satisfies the laws:
 --
--- [/conservation/]
---   @'filterMap' ('Just' '.' f) ≡ 'fmap' f@
+-- [/Conservation/]
+--   @'filterMap' ('Just' . f) ≡ 'fmap' f@
 --
--- [/composition/]
---   @'filterMap' f '.' 'filterMap' g ≡ 'filterMap' (f '<=<' g)@
+-- [/Composition/]
+--   @'filterMap' f . 'filterMap' g ≡ 'filterMap' (f 'Control.Monad.<=<' g)@
+--
 filterMap :: (a -> Maybe b) -> Trie a -> Trie b
 filterMap f = go
     where
@@ -1015,14 +873,114 @@ filterMap f = go
     go (Arc k (Just v) t) = arc k (f v) (go t)
     go (Branch p m l r)   = branch p m (go l) (go r)
 -- TODO: rewrite rule for both laws.
-
 -- TODO: why not implement as @contextualFilterMap (const . f)@ ?
 -- Does that actually incur additional overhead?
 
 
--- | Generic version of 'fmap'. This function is notably more
--- expensive than 'fmap' or 'filterMap' because we have to reconstruct
--- the keys.
+-- Some other spellings of the translation:
+--   @'filter' f ≡ 'filterMap' (('<$') '<*>' 'Control.Monad.guard' . f)@
+--
+-- | Retain only those values which satisfy some predicate.
+--
+--   @'filter' f ≡ 'filterMap' (\\v -> if f v then 'Just' v else 'Nothing')@
+--
+--   @'filter' f ≡ 'filterMap' (\\v -> v '<$' 'Control.Monad.guard' (f v))@
+--
+-- [/Composition/]
+--   @'filter' f . 'filter' g ≡ 'filter' ('liftA2' ('&&') f g)@
+--
+-- @since 0.2.7
+filter :: (a -> Bool) -> Trie a -> Trie a
+filter f = go
+    where
+    go Empty              = empty
+    go (Arc k Nothing  t) = prepend k      (go t)
+    go (Arc k (Just v) t) = arcB k v (f v) (go t)
+    go (Branch p m l r)   = branch p m (go l) (go r)
+
+-- | > arcB k v b ≡ arc k (v <$ guard b)
+arcB :: ByteString -> a -> Bool -> Trie a -> Trie a
+{-# INLINE arcB #-}
+arcB k v True  = Arc k (Just v)
+arcB k _ False = arc_ k
+
+
+{-
+#if MIN_VERSION_base(4,9,0)
+import Data.Functor.Compose (Compose(Compose))
+#endif
+#if MIN_VERSION_base(4,8,0)
+import Data.Functor.Identity (Identity(Identity))
+#endif
+-}
+
+-- BUG: Is there any other way to get the Haddock to force linebreaks,
+-- other than using birdtracks which have a whole different
+-- stylization?
+--
+-- | An effectful version of 'filterMap'.  This function satisfies
+-- the laws:
+--
+-- [/Naturality/]
+--   @t . 'wither' f ≡ 'wither' (t . f)@
+--   for every /applicative-transformation/ @t@
+--
+-- [/Conservation/]
+--   @'wither' ('fmap' 'Just' . f) ≡ 'traverse' f@
+--
+-- [/Identity/, or /Purity/]
+--   @'wither' ('pure' . f) ≡ 'pure' . 'filterMap' f@
+--
+-- [/Horizontal Composition/, or /Strength/]
+--   @'wither' f \`under\` 'wither' g ≡ 'wither' (wither_Maybe f \`under\` g)@
+--
+--     where: @under p q = 'Data.Functor.Compose.Compose' . 'fmap' p . q@;
+--     and:   @wither_Maybe f = 'fmap' 'Control.Monad.join' . 'traverse' f@
+--
+-- Note that the horizontal composition law is using two different
+-- applicative functors.  Conversely, a vertical composition law
+-- would have the form: @'wither' f 'Control.Monad.<=<' 'wither' g ≡ ...@;
+-- however, we have no such law except when the applicative functor
+-- is in fact a commutative monad.
+--
+-- (The terminology of 
+-- <https://ncatlab.org/nlab/show/horizontal+composition \"horizontal\" composition> vs 
+-- <https://ncatlab.org/nlab/show/vertical+composition \"vertical\" composition>
+-- comes from category theory.)
+--
+-- @since 0.2.7
+wither :: Applicative f => (a -> f (Maybe b)) -> Trie a -> f (Trie b)
+wither f = go
+    where
+    go Empty              = pure   empty
+    go (Arc k Nothing  t) = fmap   (prepend k)   (go t)
+    go (Arc k (Just v) t) = liftA2 (arc k) (f v) (go t)
+    go (Branch p m l r)   = liftA2 (branch p m) (go l) (go r)
+
+-- Some other spellings of the translation:
+--   @'filterA' p ≡ 'wither' (\\v -> (\\b -> if b then 'Just' v else 'Nothing') '<$>' p v)@
+--   @'filterA' p ≡ 'wither' (\\v -> (\\b -> v '<$' 'Control.Monad.guard' b) '<$>' p v)@
+--   @'filterA' p ≡ 'wither' ('fmap' . (. 'Control.Monad.guard') . ('<$') '<*>' p)@
+--
+-- | An effectful version of 'filter'.
+--
+--   @'filterA' p ≡ 'wither' (\\v -> (v '<$') . 'Control.Monad.guard' '<$>' p v)@
+--
+-- @since 0.2.7
+filterA :: Applicative f => (a -> f Bool) -> Trie a -> f (Trie a)
+filterA f = go
+    where
+    go Empty              = pure Empty
+    go (Arc k Nothing  t) = prepend k        <$> go t
+    go (Arc k (Just v) t) = arcB k v <$> f v <*> go t
+    go (Branch p m l r)   = branch p m <$> go l <*> go r
+
+
+-- | Keyed version of 'filterMap'.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the keys.
 mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
 mapBy f = go S.empty
     where
@@ -1030,7 +988,6 @@ mapBy f = go S.empty
     go q (Arc k Nothing  t) = prepend k      (go q' t) where q' = q <> k
     go q (Arc k (Just v) t) = arc k (f q' v) (go q' t) where q' = q <> k
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
-
 -- TODO: why not implement as @contextualMapBy (\k v _ -> f k v)@ ?
 -- Does that actually incur additional overhead?
 
@@ -1048,7 +1005,7 @@ contextualMap f = go
     go (Branch p m l r)   = Branch p m (go l) (go r)
 
 
--- | A variant of 'contextualMap' which applies the function strictly.
+-- | A variant of 'contextualMap' which evaluates the function strictly.
 --
 -- @since 0.2.3
 contextualMap' :: (a -> Trie a -> b) -> Trie a -> Trie b
@@ -1060,7 +1017,7 @@ contextualMap' f = go
     go (Branch p m l r)   = Branch p m (go l) (go r)
 
 
--- | A contextual variant of 'filterMap'.
+-- | Contextual variant of 'filterMap'.
 --
 -- @since 0.2.3
 contextualFilterMap :: (a -> Trie a -> Maybe b) -> Trie a -> Trie b
@@ -1072,8 +1029,11 @@ contextualFilterMap f = go
     go (Branch p m l r)   = branch p m (go l) (go r)
 
 
--- | A contextual variant of 'mapBy'. Again note that this is
--- expensive since we must reconstruct the keys.
+-- | Contextual variant of 'mapBy', aka keyed variant of 'contextualFilterMap'.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the keys.
 --
 -- @since 0.2.3
 contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
@@ -1090,32 +1050,32 @@ contextualMapBy f = go S.empty
 -----------------------------------------------------------}
 -- TODO: probably want to hoist this up top
 
--- | /O(1)/, Construct the empty trie.
+-- | \(\mathcal{O}(1)\). Construct the empty trie.
 empty :: Trie a
 {-# INLINE empty #-}
 empty = Empty
 
 
--- | /O(1)/, Is the trie empty?
+-- | \(\mathcal{O}(1)\). Is the trie empty?
 null :: Trie a -> Bool
 {-# INLINE null #-}
 null Empty = True
 null _     = False
 
 
--- | /O(1)/, Construct a singleton trie.
+-- | \(\mathcal{O}(1)\). Construct a singleton trie.
 singleton :: ByteString -> a -> Trie a
 {-# INLINE singleton #-}
 singleton k v = Arc k (Just v) Empty
 -- For singletons, don't need to verify invariant on arc length >0
 
 
--- | /O(n)/, Get count of elements in trie.
+-- | \(\mathcal{O}(n)\). Get count of elements in trie.
 size  :: Trie a -> Int
 {-# INLINE size #-}
 size t = size' t id 0
 
--- | /O(n)/, CPS accumulator helper for calculating 'size'.
+-- | \(\mathcal{O}(n)\). CPS accumulator helper for calculating 'size'.
 size' :: Trie a -> (Int -> Int) -> Int -> Int
 size' Empty              f !n = f n
 size' (Branch _ _ l r)   f  n = size' l (size' r f) n
@@ -1125,29 +1085,144 @@ size' (Arc _ (Just _) t) f  n = size' t f (n + 1)
 
 
 {-----------------------------------------------------------
+-- Instances: Foldable
+-----------------------------------------------------------}
+
+instance Foldable Trie where
+    {-# INLINABLE fold #-}
+    fold = go
+        where
+        go Empty              = mempty
+        go (Arc _ Nothing  t) = go t
+        go (Arc _ (Just v) t) = v `mappend` go t
+        go (Branch _ _ l r)   = go l `mappend` go r
+    -- If our definition of foldr is so much faster than the Endo
+    -- default, then maybe we should remove this and use the default
+    -- foldMap based on foldr
+    {-# INLINE foldMap #-}
+    foldMap f = go
+        where
+        go Empty              = mempty
+        go (Arc _ Nothing  t) = go t
+        go (Arc _ (Just v) t) = f v `mappend` go t
+        go (Branch _ _ l r)   = go l `mappend` go r
+    -- TODO: base>=4.13.0.0: foldMap'
+    --
+    -- TODO: benchmark this one against the Endo-based default.
+    -- TODO: if it's slower, try expanding out the CPS stuff again.
+    -- (Though to be sure that doesn't interfere with being a
+    -- good-producer for list fusion.)
+    -- TODO: is this safe for deep-strict @f@, or only WHNF-strict?
+    -- (Cf., the bug note at 'foldrWithKeys')
+    -- TODO: do we need to float this definition out of the class
+    --  in order to get it to inline appropriately for list fusion etc?
+    {-# INLINE foldr #-}
+    foldr f z0 = \t -> go t z0 -- eta for better inlining
+        where
+        -- TODO: would it be better to eta-expand this?
+        go Empty              = id
+        go (Arc _ Nothing  t) =       go t
+        go (Arc _ (Just v) t) = f v . go t
+        go (Branch _ _ l r)   = go l . go r
+#if MIN_VERSION_base(4,6,0)
+    {-# INLINE foldr' #-}
+    foldr' f z0 = \t -> go z0 t -- eta for better inlining
+        where
+        go !z Empty              = z
+        go  z (Arc _ Nothing  t) = go z t
+        go  z (Arc _ (Just v) t) = f v $! go z t
+        go  z (Branch _ _ l r)   = go (go z r) l
+    {-
+    -- TODO: benchmark this variant vs the above.
+    foldr' f z0 = \t -> go t z0 id -- eta for better inlining
+        where
+        go Empty              !z c = c z
+        go (Arc _ Nothing  t)  z c = go t z c
+        go (Arc _ (Just v) t)  z c = go t z (\ !z' -> c $! f v z')
+        go (Branch _ _ l r)    z c = go r z (\ !z' -> go l z' c)
+    -}
+#endif
+    {-# INLINE foldl #-}
+    foldl f z0 = \t -> go z0 t -- eta for better inlining
+        where
+        -- TODO: CPS to restore the tail-call for @Branch@?
+        go z Empty              = z
+        go z (Arc _ Nothing  t) = go z t
+        go z (Arc _ (Just v) t) = go (f z v) t
+        go z (Branch _ _ l r)   = go (go z l) r
+#if MIN_VERSION_base(4,6,0)
+    {-# INLINE foldl' #-}
+    foldl' f z0 = \t -> go z0 t -- eta for better inlining
+        where
+        -- TODO: CPS to restore the tail-call for @Branch@?
+        go !z Empty              = z
+        go  z (Arc _ Nothing  t) = go z t
+        go  z (Arc _ (Just v) t) = go (f z v) t
+        go  z (Branch _ _ l r)   = go (go z l) r
+#endif
+    -- TODO: any point in doing foldr1,foldl1?
+#if MIN_VERSION_base(4,8,0)
+    {-# INLINE length #-}
+    length = size
+    {-# INLINE null #-}
+    null   = null -- FIXME: ensure this isn't cyclic definition!
+    {-# INLINE toList #-}
+    toList = elems -- NB: Foldable.toList /= Trie.toList
+    {-
+    -- TODO: need to move these definitions here...
+    -- TODO: may want to give a specialized implementation of 'member' then
+    {-# INLINE elem #-}
+    elem = member
+    -}
+    -- TODO: why does IntMap define these two specially, rather than using foldl' or foldl1' ?
+    {-# INLINABLE maximum #-}
+    maximum = start
+        where
+        start Empty              = error "Data.Foldable.maximum @Trie: empty trie"
+        start (Arc _ Nothing  t) = start t
+        start (Arc _ (Just v) t) = go v t
+        start (Branch _ _ l r)   = go (start l) r
+        go !w Empty              = w
+        go  w (Arc _ Nothing  t) = go w t
+        go  w (Arc _ (Just v) t) = go (max w v) t
+        go  w (Branch _ _ l r)   = go (go w l) r
+    {-# INLINABLE minimum #-}
+    minimum = start
+        where
+        start Empty              = error "Data.Foldable.minimum @Trie: empty trie"
+        start (Arc _ Nothing  t) = start t
+        start (Arc _ (Just v) t) = go v t
+        start (Branch _ _ l r)   = go (start l) r
+        go !w Empty              = w
+        go  w (Arc _ Nothing  t) = go w t
+        go  w (Arc _ (Just v) t) = go (min w v) t
+        go  w (Branch _ _ l r)   = go (go w l) r
+    {-# INLINABLE sum #-}
+    sum = F.foldl' (+) 0
+    {-# INLINABLE product #-}
+    product = F.foldl' (*) 1
+#endif
+
+-- TODO: newtype Keys = K Trie  ; instance Foldable Keys
+-- TODO: newtype Assoc = A Trie ; instance Foldable Assoc
+
+{-----------------------------------------------------------
 -- Extra folding functions
 -----------------------------------------------------------}
 
--- Still rather inefficient
---
--- TODO: rewrite list-catenation to be lazier (real CPS instead of
--- function building? is the function building really better than
--- (++) anyways?)
--- N.B. If our manual definition of foldr/foldl (using function
+-- TODO: If our manual definition of foldr/foldl (using function
 -- application) is so much faster than the default Endo definition
 -- (using function composition), then we should make this use
 -- application instead too.
 --
--- TODO: the @q@ accumulator should be lazy ByteString and only
--- forced by @f@. It's already non-strict, but we should ensure
--- O(n) not O(n^2) when it's forced.
---
 -- BUG: not safe for deep strict @f@, only for WHNF-strict like (:)
 -- Where to put the strictness to amortize it?
 --
--- | Variant of 'foldr' which passes the keys too.  This function
--- is notably more expensive than 'foldr', because we have to
--- reconstruct the keys.
+-- | Keyed variant of 'foldr'.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the keys.
 --
 -- @since 0.2.2
 foldrWithKey :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
@@ -1164,9 +1239,11 @@ foldrWithKey f z0 = \t -> go S.empty t z0 -- eta for better inlining
 -- TODO: benchmark the non-WithKey variants so we can be comfortable
 -- in our implementation choices, before uncommenting these.
 
--- | Variant of 'foldr'' which passes the keys too.  This function
--- is notably more expensive than 'foldr'', because we have to
--- reconstruct the keys.
+-- | Keyed variant of 'foldr''.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the keys.
 --
 -- @since 0.2.7
 foldrWithKey' :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
@@ -1179,9 +1256,11 @@ foldrWithKey' f z0 = \t -> go S.empty z0 t -- eta for better inlining
     go q  z (Arc k Nothing  t) =           go q' z t where q' = q <> k
     go q  z (Arc k (Just v) t) = f q' v $! go q' z t where q' = q <> k
 
--- | Variant of 'foldl' which passes the keys too.  This function
--- is notably more expensive than 'foldl', because we have to
--- reconstruct the keys.
+-- | Keyed variant of 'foldl'.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the keys.
 --
 -- @since 0.2.7
 foldlWithKey :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
@@ -1194,9 +1273,11 @@ foldlWithKey f z0 = \t -> go S.empty z0 t -- eta for better inlining
     go q z (Arc k (Just v) t) = go q' (f z q' v) t where q' = q <> k
     go q z (Branch _ _ l r)   = go q (go q z l) r
 
--- | Variant of 'foldl'' which passes the keys too.  This function
--- is notably more expensive than 'foldl'', because we have to
--- reconstruct the keys.
+-- | Keyed variant of 'foldl''.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the keys.
 --
 -- @since 0.2.7
 foldlWithKey' :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
@@ -1267,7 +1348,12 @@ cata a b e = start
 -----------------------------------------------------------}
 
 #if __GLASGOW_HASKELL__ >= 708
--- | @since 0.2.7
+-- |
+-- __Warning__: 'toList' currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the keys.
+-- 
+-- @since 0.2.7
 instance GHC.Exts.IsList (Trie a) where
     type Item (Trie a) = (ByteString, a)
     fromList = fromList
@@ -1294,6 +1380,10 @@ fromList = foldr (uncurry insert) empty
 --
 -- | Convert trie into association list.  The list is ordered
 -- according to the keys.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the keys.
 toList :: Trie a -> [(ByteString,a)]
 {-# INLINE toList #-}
 toList = toListBy (,)
@@ -1304,6 +1394,10 @@ toList = toListBy (,)
 --
 -- | Convert a trie into a list using a function. Resulting values
 -- are in key-sorted order.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the keys.
 toListBy :: (ByteString -> a -> b) -> Trie a -> [b]
 {-# INLINE toListBy #-}
 #if !defined(__GLASGOW_HASKELL__)
@@ -1336,6 +1430,10 @@ elems t = build (\cons nil -> F.foldr cons nil t)
 #else
 elems = F.foldr (:) []
 #endif
+
+
+------------------------------------------------------------
+------------------------------------------------------------
 
 
 {-----------------------------------------------------------
@@ -1377,8 +1475,9 @@ lookupBy_ found missing clash = start
     go q t_@(Branch{}) = findArc t_
         where
         qh = errorLogHead "lookupBy_" q
-        -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
-        -- branching, and /W/ is the word size of the Prefix,Mask type.
+        -- | \(\mathcal{O}(\min(m,W))\), where \(m\) is number of
+        -- @Arc@s in this branching, and \(W\) is the word size of
+        -- the Prefix,Mask type.
         findArc (Branch p m l r)
             | nomatch qh p m  = clash
             | zero qh m       = findArc l
@@ -1431,8 +1530,9 @@ lookup = start
     go q t_@(Branch{}) = findArc t_
         where
         qh = errorLogHead "lookup" q
-        -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
-        -- branching, and /W/ is the word size of the Prefix,Mask type.
+        -- | \(\mathcal{O}(\min(m,W))\), where \(m\) is number of
+        -- @Arc@s in this branching, and \(W\) is the word size of
+        -- the Prefix,Mask type.
         findArc (Branch p m l r)
             | nomatch qh p m  = Nothing
             | zero qh m       = findArc l
@@ -1480,8 +1580,9 @@ match_ = flip start
     match1 n q t_@(Branch{}) = findArc t_
         where
         qh = errorLogHead "match_" q
-        -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
-        -- branching, and /W/ is the word size of the Prefix,Mask type.
+        -- | \(\mathcal{O}(\min(m,W))\), where \(m\) is number of
+        -- @Arc@s in this branching, and \(W\) is the word size of
+        -- the Prefix,Mask type.
         findArc (Branch p m l r)
             | nomatch qh p m  = Nothing
             | zero qh m       = findArc l
@@ -1506,8 +1607,9 @@ match_ = flip start
     matchN n0 v0 n q t_@(Branch{}) = findArc t_
         where
         qh = errorLogHead "match_" q
-        -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
-        -- branching, and /W/ is the word size of the Prefix,Mask type.
+        -- | \(\mathcal{O}(\min(m,W))\), where \(m\) is number of
+        -- @Arc@s in this branching, and \(W\) is the word size of
+        -- the Prefix,Mask type.
         findArc (Branch p m l r)
             | nomatch qh p m  = Just (n0,v0)
             | zero qh m       = findArc l
@@ -1558,8 +1660,9 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
         go n q t_@(Branch{}) = findArc t_
             where
             qh = errorLogHead "matches_" q
-            -- | /O(min(m,W))/, where /m/ is number of @Arc@s in this
-            -- branching, and /W/ is the word size of the Prefix,Mask type.
+            -- | \(\mathcal{O}(\min(m,W))\), where \(m\) is number
+            -- of @Arc@s in this branching, and \(W\) is the word
+            -- size of the Prefix,Mask type.
             findArc (Branch p m l r)
                 | nomatch qh p m  = id
                 | zero qh m       = findArc l
@@ -1594,7 +1697,7 @@ alterBy f q x = alterBy_ (\mv t -> (f q x mv, t)) q
 
 
 -- | A variant of 'alterBy' which also allows modifying the sub-trie.
--- If the function returns @(Just v, t)@ and @lookup S.empty t == Just w@,
+-- If the function returns @(Just v, t)@ and @lookup 'S.empty' t == Just w@,
 -- then the @w@ will be overwritten by @v@.
 --
 -- @since 0.2.3
@@ -1605,8 +1708,8 @@ alterBy_
 alterBy_ f = start
     where
     start q t            | not (S.null q) = go q t
-    start _ (Arc k mv s) | S.null k       = epsilon $$ f mv      s
-    start _ t                             = epsilon $$ f Nothing t
+    start _ (Arc k mv s) | S.null k       = mayEpsilon $$ f mv      s
+    start _ t                             = mayEpsilon $$ f Nothing t
 
     -- @go@ is always called with non-null @q@, therefore @nothing@ is too.
     nothing q = arcNN q $$ f Nothing Empty
@@ -1676,6 +1779,14 @@ adjust f = start
 -- Trie-combining functions
 -----------------------------------------------------------}
 
+-- TODO: it may be helpful to have a version of 'mergeBy' where the
+-- function doesn't return 'Maybe' (i.e., 'Data.Trie.Convenience.unionWith');
+-- because knowing we can't delete elements would allow to use true
+-- constructors directly, rather than smart constructors that patch
+-- up the deletion cases.  Especially since the vast majority of
+-- our own uses of 'mergeBy' fall into this category.
+
+
 -- TEST CASES: foldr (unionL . uncurry singleton) empty t
 --             foldr (uncurry insert) empty t
 --    where t = map (\s -> (pk s, 0))
@@ -1689,26 +1800,18 @@ mergeBy :: (a -> a -> Maybe a) -> Trie a -> Trie a -> Trie a
 mergeBy f = start
     where
     -- | Deals with epsilon entries, before recursing into @go@
-    start
-        t0@(Arc k0 mv0 s0)
-        t1@(Arc k1 mv1 s1)
-        | S.null k0 && S.null k1 = epsilon (mergeMaybe f mv0 mv1) (go s0 s1)
-        | S.null k0              = epsilon mv0 (go s0 t1)
-        |              S.null k1 = epsilon mv1 (go t0 s1)
-    start
-        (Arc k0 mv0@(Just _) s0)
-        t1@(Branch{})
-        | S.null k0              = Arc k0 mv0 (go s0 t1)
-    start
-        t0@(Branch{})
-        (Arc k1 mv1@(Just _) s1)
-        | S.null k1              = Arc k1 mv1 (go t0 s1)
-    start t0 t1                  = go t0 t1
+    -- TODO: for all of these, add assertions that null bytestring entails must be Just; instead of pattern matching on it directly.
+    start (Arc k0 (Just v0) s0) (Arc k1 (Just v1) s1) | S.null k0 && S.null k1
+                                                  = mayEpsilon (f v0 v1) (go s0 s1)
+    start (Arc k0 mv0@(Just _) s0) t1 | S.null k0 = epsilon mv0 (go s0 t1)
+    start t0 (Arc k1 mv1@(Just _) s1) | S.null k1 = epsilon mv1 (go t0 s1)
+    start t0 t1                                   = go t0 t1
 
     -- | The main recursion
     go Empty t1    = t1
     go t0    Empty = t0
-    -- /O(n+m)/ for this part where /n/ and /m/ are sizes of the branchings
+    -- \(\mathcal{O}(n+m)\) for this part where \(n\) and \(m\) are
+    -- sizes of the branchings.
     go t0@(Branch p0 m0 l0 r0)
        t1@(Branch p1 m1 l1 r1)
         | shorter m0 m1  = union0
@@ -1779,7 +1882,7 @@ intersectBy f = start
     where
     -- | Deals with epsilon entries, before recursing into @go@
     start (Arc k0 mv0 s0) (Arc k1 mv1 s1) | S.null k0 && S.null k1
-        = epsilon (intersectMaybe f mv0 mv1)   (go s0 s1)
+        = mayEpsilon (intersectMaybe f mv0 mv1) (go s0 s1)
     start (Arc k0 (Just _) s0) t1 | S.null k0 = go s0 t1
     start t0 (Arc k1 (Just _) s1) | S.null k1 = go t0 s1
     start t0 t1                               = go t0 t1
@@ -1848,9 +1951,15 @@ intersectMaybe _ _         _         = Nothing
 -- Priority-queue functions
 -----------------------------------------------------------}
 
+-- FIXME: we can fix this one to avoid quadratic slowdown!
+--
 -- | Return the lexicographically smallest 'ByteString' and the
 -- value it's mapped to; or 'Nothing' for the empty trie.  When one
 -- entry is a prefix of another, the prefix will be returned.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the key.
 --
 -- @since 0.2.2
 minAssoc :: Trie a -> Maybe (ByteString, a)
@@ -1862,9 +1971,15 @@ minAssoc = go S.empty
     go q (Branch _ _ l _)   = go q l
 
 
+-- FIXME: we can fix this one to avoid quadratic slowdown!
+--
 -- | Return the lexicographically largest 'ByteString' and the
 -- value it's mapped to; or 'Nothing' for the empty trie.  When one
 -- entry is a prefix of another, the longer one will be returned.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the key.
 --
 -- @since 0.2.2
 maxAssoc :: Trie a -> Maybe (ByteString, a)
@@ -1883,7 +1998,13 @@ mapView _ Nothing        = Nothing
 mapView f (Just (k,v,t)) = Just (k,v, f t)
 
 
+-- FIXME: we can fix this one to avoid quadratic slowdown!
+--
 -- | Update the 'minAssoc' and return the old 'minAssoc'.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the key.
 --
 -- @since 0.2.2
 updateMinViewBy :: (ByteString -> a -> Maybe a)
@@ -1896,7 +2017,13 @@ updateMinViewBy f = go S.empty
     go q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
 
 
+-- FIXME: we can fix this one to avoid quadratic slowdown!
+--
 -- | Update the 'maxAssoc' and return the old 'maxAssoc'.
+--
+-- __Warning__: This function currently suffers from an
+-- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
+-- due to its need to reconstruct the key.
 --
 -- @since 0.2.2
 updateMaxViewBy :: (ByteString -> a -> Maybe a)

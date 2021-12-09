@@ -21,6 +21,10 @@
 * Prove (or at the very least test!) that the Prefix and Mask are
   deterministic regardless of insertion order.
 
+* Benchmark using Lazy ByteStrings for all the functions where we need to rebuild keys (since Lazy ByteStrings are literally just (head-unpacked) lists of strict bytestrings, which is what we would've done), so we can just do the actual copy/construction at the point where the keys are actually used.
+    * Maybe also consider variants of these functions which provide the lazy bytestring directly to the caller, rather than converting them at all!
+    * N.B., 'toStrict' performs an overflow check on every addition when computing the total length!  So we might consider a wrapper/variant of the Trie type which stores the maximum key length, so that when reconstructing keys we can use a wrapper/variant of lazy bytestrings which doesn't need those checks every time.  Moreover, that would allow to allocate a single reusable buffer of the maximum size, and each call just gets a prefix slice and we write the suffix later; though we would need to make new buffers whenever we backtrack to go to a new branch, since otherwise the caller may see our mutations.
+
 
 ------------------------------------------------------------
 Test Coverage:

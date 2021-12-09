@@ -4,10 +4,10 @@
 {-# LANGUAGE Safe #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.12.05
+--                                                  ~ 2021.12.07
 -- |
 -- Module      :  Data.Trie.Convenience
--- Copyright   :  Copyright (c) 2008--2021 wren romano
+-- Copyright   :  2008--2021 wren romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
@@ -85,9 +85,9 @@ fromListR = fromList -- ≡ foldr (uncurry insert) empty
 -- TODO: compare performance against a fromListL variant, adjusting the sort appropriately
 --
 -- | This variant sorts the list before folding over it. This adds
--- /O(n log n)/ overhead and requires the whole list be in memory
--- at once, but it ensures that the list is in best-case order. The
--- benefits generally outweigh the costs.
+-- \(\mathcal{O}(n \log n)\) overhead and requires the whole list
+-- be in memory at once, but it ensures that the list is in best-case
+-- order. The benefits generally outweigh the costs.
 fromListS :: [(ByteString,a)] -> Trie a
 {-# INLINE fromListS #-}
 fromListS = fromListR . sortBy (comparing fst)

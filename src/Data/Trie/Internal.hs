@@ -17,7 +17,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.12.08
+--                                              ~ 2021.12.10
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  2008--2021 wren romano
@@ -98,26 +98,13 @@ import Data.Bits           (xor)
 #if MIN_VERSION_base(4,9,0)
 -- [aka GHC 8.0.1]: "Data.Semigroup" added to base.
 --
--- Note: Until [base-4.11 / GHC 8.4.1] there's a naming conflict
--- between 'Data.Semigroup.<>' vs 'Data.Monoid.<>'.  From this
--- version onward we'll prefer the semigroup one since it's future
--- compatible.  And besides, other than giving our instance, we
--- only actually *use* @(<>)@ as an alias for 'S.append', and
--- "Data.ByteString" nicely defines both 'Data.Semigroup.<>' and
--- 'Data.Monoid.mappend' to resolve to 'S.append'.
---
 -- Note: [base-4.13.0 / GHC 8.8.1] has Prelude re-export 'Semigroup'
 -- (the class name) and 'Data.Semigroup.<>'; however it does not
 -- re-export 'stimes' nor (I assume) 'sconcat'!
 import Data.Semigroup      (Semigroup(..))
-#elif MIN_VERSION_base(4,8,0)
--- [aka GHC 7.10.1]: Prelude re-exports 'Monoid', but not 'Data.Monoid.<>'.
-import Data.Monoid         ((<>))
-#elif MIN_VERSION_base(4,5,0)
--- [aka GHC 7.4.1]: @(<>)@ added to "Data.Monoid".
-import Data.Monoid         (Monoid(..), (<>))
-#else
--- We'll just define our own @(<>)@...
+#endif
+#if !(MIN_VERSION_base(4,8,0))
+-- [aka GHC 7.10.1]: Prelude re-exports 'Monoid'.
 import Data.Monoid         (Monoid(..))
 #endif
 
@@ -156,14 +143,6 @@ import qualified GHC.Exts (IsList(..))
 
 ------------------------------------------------------------
 ------------------------------------------------------------
-
-#if (!(MIN_VERSION_base(4,5,0)))
-infixr 6 <>
--- | Only ever used to abbreviate 'S.append'
-(<>) :: Monoid m => m -> m -> m
-(<>) = mappend
-{-# INLINE (<>) #-}
-#endif
 
 -- | Infix variant of `uncurry`.  Currently only used in 'alterBy_'.
 -- The fixity-level is like @(<$>)@; but I'm making it nonassociative
@@ -360,7 +339,9 @@ prepend :: ByteString -> Trie a -> Trie a
 {-# INLINE prepend #-}
 prepend !_ t@Empty      = t
 prepend  q t@(Branch{}) = Arc q Nothing t
-prepend  q (Arc k mv s) = Arc (q <> k) mv s
+prepend  q (Arc k mv s) = Arc (S.append q k) mv s
+    -- TODO: should ensure that callers do not nest calls to this
+    -- function, to avoid quadratic slowdown from repeated 'S.append'.
 
 -- | > mayEpsilon mv ≡ arc S.empty mv
 --
@@ -607,7 +588,7 @@ instance (Binary a) => Binary (Set.Set a) where
 -- have the overhead from storing duplicated prefixes, but is forward
 -- compatible to whatever representation changes, and doesn't have
 -- the invariants problem.
--- BUG: However, that would suffer from 
+-- BUG: However, that would suffer from
 -- <https://github.com/wrengr/bytestring-trie/issues/25>, because
 -- 'toList'\/@toAscList@ does.
 -}
@@ -697,12 +678,21 @@ instance Traversable Trie where
 traverseWithKey
     :: Applicative f => (ByteString -> a -> f b) -> Trie a -> f (Trie b)
 {-# INLINE traverseWithKey #-}
-traverseWithKey f = go S.empty
+traverseWithKey f = go Epsilon
     where
+    -- See [Note2].
     go _ Empty              = pure   Empty
-    go q (Arc k Nothing  t) = fmap   (Arc k Nothing)         (go q' t) where q' = q <> k
-    go q (Arc k (Just v) t) = liftA2 (Arc k . Just) (f q' v) (go q' t) where q' = q <> k
     go q (Branch p m l r)   = liftA2 (Branch p m) (go q l) (go q r)
+    go q (Arc k Nothing  t) = fmap   (Arc k Nothing) (go (q +>! k) t)
+    go q (Arc k (Just v) t) =
+        let q' = toStrict (q +>? k)
+        in liftA2 (Arc k . Just) (f q' v) (go (fromStrict q') t)
+
+-- [Note2]: We avoid making the RLBS parameter strict, to avoid
+-- incuring the cost of 'toStrict' if the user's function does not
+-- force it.  However, if they do force it, then we'll still have
+-- the <https://github.com/wrengr/bytestring-trie/issues/25> problem.
+-- Using RLBS only reduces the constant factor of the quadratic.
 
 ------------------------------------------------------------
 -- | @since 0.2.2
@@ -943,8 +933,8 @@ import Data.Functor.Identity (Identity(Identity))
 -- however, we have no such law except when the applicative functor
 -- is in fact a commutative monad.
 --
--- (The terminology of 
--- <https://ncatlab.org/nlab/show/horizontal+composition \"horizontal\" composition> vs 
+-- (The terminology of
+-- <https://ncatlab.org/nlab/show/horizontal+composition \"horizontal\" composition> vs
 -- <https://ncatlab.org/nlab/show/vertical+composition \"vertical\" composition>
 -- comes from category theory.)
 --
@@ -982,14 +972,16 @@ filterA f = go
 -- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
 -- due to its need to reconstruct the keys.
 mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
-mapBy f = go S.empty
-    where
-    go _ Empty              = empty
-    go q (Arc k Nothing  t) = prepend k      (go q' t) where q' = q <> k
-    go q (Arc k (Just v) t) = arc k (f q' v) (go q' t) where q' = q <> k
-    go q (Branch p m l r)   = branch p m (go q l) (go q r)
 -- TODO: why not implement as @contextualMapBy (\k v _ -> f k v)@ ?
 -- Does that actually incur additional overhead?
+mapBy f = go Epsilon
+    where
+    -- See [Note2].
+    go _ Empty              = empty
+    go q (Branch p m l r)   = branch p m (go q l) (go q r)
+    go q (Arc k Nothing  t) = prepend k (go (q +>! k) t)
+    go q (Arc k (Just v) t) = arc k (f q' v) (go (fromStrict q') t)
+                            where q' = toStrict (q +>? k)
 
 
 -- | A variant of 'fmap' which provides access to the subtrie rooted
@@ -1037,12 +1029,14 @@ contextualFilterMap f = go
 --
 -- @since 0.2.3
 contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
-contextualMapBy f = go S.empty
+contextualMapBy f = go Epsilon
     where
+    -- See [Note2].
     go _ Empty              = empty
-    go q (Arc k Nothing  t) = prepend k        (go q' t) where q' = q <> k
-    go q (Arc k (Just v) t) = arc k (f q' v t) (go q' t) where q' = q <> k
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
+    go q (Arc k Nothing  t) = prepend k (go (q +>! k) t)
+    go q (Arc k (Just v) t) = arc k (f q' v t) (go (fromStrict q') t)
+                            where q' = toStrict (q +>? k)
 
 
 {-----------------------------------------------------------
@@ -1227,13 +1221,15 @@ instance Foldable Trie where
 -- @since 0.2.2
 foldrWithKey :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
 {-# INLINE foldrWithKey #-}
-foldrWithKey f z0 = \t -> go S.empty t z0 -- eta for better inlining
+foldrWithKey f z0 = \t -> go Epsilon t z0 -- eta for better inlining
     where
     -- TODO: eta-expand and/or CPS?
+    -- See [Note2].
     go _ Empty              = id
     go q (Branch _ _ l r)   = go q l . go q r
-    go q (Arc k Nothing  t) =          go q' t where q' = q <> k
-    go q (Arc k (Just v) t) = f q' v . go q' t where q' = q <> k
+    go q (Arc k Nothing  t) =          go (q +>! k) t
+    go q (Arc k (Just v) t) = f q' v . go (fromStrict q') t
+                            where q' = toStrict (q +>? k)
 
 {-
 -- TODO: benchmark the non-WithKey variants so we can be comfortable
@@ -1248,13 +1244,15 @@ foldrWithKey f z0 = \t -> go S.empty t z0 -- eta for better inlining
 -- @since 0.2.7
 foldrWithKey' :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
 {-# INLINE foldrWithKey' #-}
-foldrWithKey' f z0 = \t -> go S.empty z0 t -- eta for better inlining
+foldrWithKey' f z0 = \t -> go Epsilon z0 t -- eta for better inlining
     where
     -- TODO: benchmark this vs the CPS'ed variant, a~la foldr' above.
+    -- See [Note2].
     go _ !z Empty              = z
     go q  z (Branch _ _ l r)   = go q (go q z r) l
-    go q  z (Arc k Nothing  t) =           go q' z t where q' = q <> k
-    go q  z (Arc k (Just v) t) = f q' v $! go q' z t where q' = q <> k
+    go q  z (Arc k Nothing  t) =           go (q +>! k) z t
+    go q  z (Arc k (Just v) t) = f q' v $! go (fromStrict q') z t
+                                where q' = toStrict (q +>? k)
 
 -- | Keyed variant of 'foldl'.
 --
@@ -1265,13 +1263,15 @@ foldrWithKey' f z0 = \t -> go S.empty z0 t -- eta for better inlining
 -- @since 0.2.7
 foldlWithKey :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
 {-# INLINE foldlWithKey #-}
-foldlWithKey f z0 = \t -> go S.empty z0 t -- eta for better inlining
+foldlWithKey f z0 = \t -> go Epsilon z0 t -- eta for better inlining
     where
     -- TODO: CPS to restore the tail-call for @Branch@?
+    -- See [Note2].
     go _ z Empty              = z
-    go q z (Arc k Nothing  t) = go q'    z       t where q' = q <> k
-    go q z (Arc k (Just v) t) = go q' (f z q' v) t where q' = q <> k
     go q z (Branch _ _ l r)   = go q (go q z l) r
+    go q z (Arc k Nothing  t) = go (q +>! k) z t
+    go q z (Arc k (Just v) t) = go (fromStrict q') (f z q' v) t
+                                where q' = toStrict (q +>? k)
 
 -- | Keyed variant of 'foldl''.
 --
@@ -1282,13 +1282,15 @@ foldlWithKey f z0 = \t -> go S.empty z0 t -- eta for better inlining
 -- @since 0.2.7
 foldlWithKey' :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
 {-# INLINE foldlWithKey' #-}
-foldlWithKey' f z0 = \t -> go z0 t -- eta for better inlining
+foldlWithKey' f z0 = \t -> go Epsilon z0 t -- eta for better inlining
     where
     -- TODO: CPS to restore the tail-call for @Branch@?
+    -- See [Note2].
     go _ !z Empty              = z
-    go q  z (Arc k Nothing  t) = go q'    z       t where q' = q <> k
-    go q  z (Arc k (Just v) t) = go q' (f z q' v) t where q' = q <> k
     go q  z (Branch _ _ l r)   = go q (go q z l) r
+    go q  z (Arc k Nothing  t) = go (q +>! k) z t
+    go q  z (Arc k (Just v) t) = go (fromStrict q') (f z q' v) t
+                                where q' = toStrict (q +>? k)
 -}
 
 -- | Catamorphism for tries.  Unlike most other functions (`mapBy`,
@@ -1352,7 +1354,7 @@ cata a b e = start
 -- __Warning__: 'toList' currently suffers from an
 -- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
 -- due to its need to reconstruct the keys.
--- 
+--
 -- @since 0.2.7
 instance GHC.Exts.IsList (Trie a) where
     type Item (Trie a) = (ByteString, a)

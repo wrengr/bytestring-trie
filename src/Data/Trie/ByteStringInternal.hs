@@ -252,19 +252,22 @@ data RevLazyByteString
     | RevLazyByteString :+> {-# UNPACK #-} !S.ByteString
     -- Invariant: every 'S.ByteString' is non-null.
 
--- | Append a BS to the RLBS, asserting that the 'S.ByteString' is
--- indeed non-null.
+-- | \(\mathcal{O}(1)\). Unsafely\/uncheckedly append a BS to the
+-- RLBS.  It is up to the caller to maintain the invariant that
+-- 'S.ByteString' is indeed non-null.
 (+>!) :: RevLazyByteString -> S.ByteString -> RevLazyByteString
 xs +>! x = xs :+> x
 {-# INLINE (+>!) #-}
 
--- | Append a BS to the RLBS, maintaining the invariant.
+-- | \(\mathcal{O}(1)\). Safely append a BS to the RLBS, maintaining
+-- the invariant.
 (+>?) :: RevLazyByteString -> S.ByteString -> RevLazyByteString
 xs +>? PS _ _ 0 = xs
 xs +>? x        = xs :+> x
 {-# INLINE (+>?) #-}
 
--- | Convert a strict BS to RLBS, guaranteeing the invariant.
+-- | \(\mathcal{O}(1)\). Safely convert a strict BS to RLBS,
+-- maintaining the invariant.
 fromStrict :: S.ByteString -> RevLazyByteString
 fromStrict = (Epsilon +>?)
 {-# INLINE fromStrict #-}
@@ -273,6 +276,7 @@ fromStrict = (Epsilon +>?)
 -- implementation is from Git SHA 688f3c0887f2ca0623f2f54f78e8f675f92e31bf,
 -- modulo the necessary changes for using a snoc-list in lieu of a
 -- cons-list.
+-- | \(\mathcal{O}(n)\). Convert the RLBS to a strict BS, by copying it.
 toStrict :: RevLazyByteString -> S.ByteString
 toStrict = \cs0 -> goLen0 cs0 cs0
     where
@@ -290,7 +294,7 @@ toStrict = \cs0 -> goLen0 cs0 cs0
     goLen  cs0 !total      (cs :+> PS _ _ cl) = goLen  cs0 (total +? cl) cs
     goLen  cs0  total      Epsilon            =
         S.unsafeCreate total $ \ptr ->
-            -- FIXME: this gives the correct behavior (re off-by-one
+            -- TODO: this gives the correct behavior (re off-by-one
             -- concerns); however, it is bad praxis to use a pointer
             -- to something outside the allocated region; even if
             -- it is just pointing to the first invalid byte after

@@ -1100,7 +1100,16 @@ instance Foldable Trie where
         go (Arc _ Nothing  t) = go t
         go (Arc _ (Just v) t) = f v `mappend` go t
         go (Branch _ _ l r)   = go l `mappend` go r
-    -- TODO: base>=4.13.0.0: foldMap'
+#if MIN_VERSION_base(4,6,0)
+    {-# INLINE foldMap' #-}
+    foldMap' f = go mempty
+        where
+        -- TODO: CPS to restore the purely tail-call for @Branch@?
+        go !m Empty              = m
+        go  m (Arc _ Nothing  t) = go m t
+        go  m (Arc _ (Just v) t) = go (f v `mappend` m) t
+        go  m (Branch _ _ l r)   = go (go m l) r
+#endif
     --
     -- TODO: benchmark this one against the Endo-based default.
     -- TODO: if it's slower, try expanding out the CPS stuff again.
@@ -1139,7 +1148,7 @@ instance Foldable Trie where
     {-# INLINE foldl #-}
     foldl f z0 = \t -> go z0 t -- eta for better inlining
         where
-        -- TODO: CPS to restore the tail-call for @Branch@?
+        -- TODO: CPS to restore the purely tail-call for @Branch@?
         go z Empty              = z
         go z (Arc _ Nothing  t) = go z t
         go z (Arc _ (Just v) t) = go (f z v) t
@@ -1148,7 +1157,7 @@ instance Foldable Trie where
     {-# INLINE foldl' #-}
     foldl' f z0 = \t -> go z0 t -- eta for better inlining
         where
-        -- TODO: CPS to restore the tail-call for @Branch@?
+        -- TODO: CPS to restore the purely tail-call for @Branch@?
         go !z Empty              = z
         go  z (Arc _ Nothing  t) = go z t
         go  z (Arc _ (Just v) t) = go (f z v) t

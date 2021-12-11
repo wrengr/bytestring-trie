@@ -49,7 +49,7 @@ import Data.Monoid         ((<>))
 #endif
 
 #if MIN_VERSION_base(4,9,0)
-import Data.Semigroup      (Sum)
+import Data.Semigroup      (Sum(..))
 #else
 data Sum a = Sum a
     deriving (Eq, Ord, Read, Show, Bounded, Num)
@@ -245,15 +245,6 @@ quickcheckTests
     , QC.testProperty
         "prop_elems"
         (prop_elems :: WTrie Int -> Bool)
-    , QC.testProperty
-        "prop_foldr_vs_foldrWithKey"
-        (prop_foldr_vs_foldrWithKey :: WTrie Int -> Bool)
-    , QC.testProperty
-        "prop_foldr_vs_foldr'"
-        (prop_foldr_vs_foldr' :: WTrie Int -> Bool)
-    , QC.testProperty
-        "prop_foldl_vs_foldl'"
-        (prop_foldl_vs_foldl' :: WTrie Int -> Bool)
     ]
   , Tasty.testGroup "fromList (@Int)"
     [ QC.testProperty
@@ -304,7 +295,23 @@ quickcheckTests
           (prop_MonadIdentityR :: WTrie Int -> Bool)
       -- TODO: prop_MonadIdentityL, prop_MonadAssoc
       ]
-    -- TODO: Foldable, Traversable
+    , Tasty.testGroup "Foldable (@Int)"
+      [ QC.testProperty
+          "prop_foldr_vs_foldrWithKey"
+          (prop_foldr_vs_foldrWithKey :: WTrie Int -> Bool)
+#if MIN_VERSION_base(4,6,0)
+      , QC.testProperty
+          "prop_foldr_vs_foldr'"
+          (prop_foldr_vs_foldr' :: WTrie Int -> Bool)
+      , QC.testProperty
+          "prop_foldl_vs_foldl'"
+          (prop_foldl_vs_foldl' :: WTrie Int -> Bool)
+      , QC.testProperty
+          "prop_foldMap_vs_foldMap'"
+          (prop_foldMap_vs_foldMap' :: WTrie Int -> Bool)
+#endif
+      ]
+    -- TODO: Traversable
 #if MIN_VERSION_base(4,9,0)
     , Tasty.testGroup "Semigroup (@Sum Int)"
       [ QC.testProperty
@@ -484,15 +491,19 @@ smallcheckTests
     , SC.testProperty
         "prop_elems"
         (prop_elems :: WTrie W -> Bool)
+    -- TODO: move these into the section for 'Foldable', to agree with QC
     , SC.testProperty
         "prop_foldr_vs_foldrWithKey"
         (prop_foldr_vs_foldrWithKey :: WTrie W -> Bool)
+#if MIN_VERSION_base(4,6,0)
     , SC.testProperty
         "prop_foldr_vs_foldr'"
         (prop_foldr_vs_foldr' :: WTrie W -> Bool)
     , SC.testProperty
         "prop_foldl_vs_foldl'"
         (prop_foldl_vs_foldl' :: WTrie W -> Bool)
+    -- TODO: prop_foldMap_vs_foldMap' requires (Num W) if we want to use W.
+#endif
     ]
   , Tasty.adjustOption (+ (1::SC.SmallCheckDepth))
   $ Tasty.testGroup "fromList (@()/@W)"
@@ -803,6 +814,7 @@ prop_foldr_vs_foldrWithKey :: Eq a => WTrie a -> Bool
 prop_foldr_vs_foldrWithKey =
     (F.foldr (:) [] .==. TI.foldrWithKey (\_ v vs -> v:vs) []) . unWT
 
+#if MIN_VERSION_base(4,6,0)
 prop_foldr_vs_foldr' :: (Eq a) => WTrie a -> Bool
 prop_foldr_vs_foldr' = (F.foldr (:) [] .==. F.foldr' (:) []) . unWT
 
@@ -811,7 +823,14 @@ prop_foldl_vs_foldl' = (F.foldl snoc [] .==. F.foldl' snoc []) . unWT
     where
     snoc = flip (:)
 
--- TODO: how can we best test that fold{l,r}{,'} are sufficiently lazy\/strict?
+-- TODO: use a non-commutative Monoid, to ensure the order is the same.
+prop_foldMap_vs_foldMap' ::  (Num a, Eq a) => WTrie a -> Bool
+prop_foldMap_vs_foldMap' = (F.foldMap Sum .==. F.foldMap' Sum) . unWT
+#endif
+
+-- TODO: how can we best test that fold{l,r,Map}{,'} are sufficiently lazy\/strict?
+
+-- TODO: #if MIN_VERSION_base(4,8,0), check that 'F.null' isn't cyclic definition
 
 -- | If there are duplicate keys in the @assocs@, then @f@ will
 -- take the first value.

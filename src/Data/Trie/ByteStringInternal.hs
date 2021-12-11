@@ -6,7 +6,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.12.08
+--                                              ~ 2021.12.10
 -- |
 -- Module      :  Data.Trie.ByteStringInternal
 -- Copyright   :  2008--2021 wren romano
@@ -289,7 +289,7 @@ toStrict = \cs0 -> goLen0 cs0 cs0
     -- It's still possible that the result is a single chunk.
     goLen1 _   b           Epsilon            = b
     goLen1 cs0 b           (cs :+> PS _ _ 0)  = goLen1 cs0 b cs
-    goLen1 cs0 (S.BS _ bl) (cs :+> PS _ _ cl) = goLen  cs0 (bl +? cl) cs
+    goLen1 cs0 (PS _ _ bl) (cs :+> PS _ _ cl) = goLen  cs0 (bl +? cl) cs
     -- General case, just find the total length we'll need.
     goLen  cs0 !total      (cs :+> PS _ _ cl) = goLen  cs0 (total +? cl) cs
     goLen  cs0  total      Epsilon            =

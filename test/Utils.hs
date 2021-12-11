@@ -6,7 +6,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.21
+--                                                  ~ 2021.12.10
 -- |
 -- Module      :  test/Utils.hs
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -48,6 +48,7 @@ import qualified Test.SmallCheck.Series as SC
 ----------------------------------------------------------------
 ----------------------------------------------------------------
 
+-- TODO: apparently this is exported as 'Data.ByteString.Internal.packChars'
 -- | Construct a bytestring from the first byte of each 'Char'.
 packC2W :: String -> S.ByteString
 packC2W  = S.pack . map S.c2w

@@ -272,6 +272,27 @@ fromStrict :: S.ByteString -> RevLazyByteString
 fromStrict = (Epsilon +>?)
 {-# INLINE fromStrict #-}
 
+-- HACK: bytestring-0.10.8.1 (GHC 8.0.2) used 'S.checkedSum' (and
+-- a simpler algorithm), whereas bytestring-0.10.8.2 (GHC 8.2.1)
+-- introduced 'S.checkedAdd' instead; alas, those version numbers
+-- cannot be differentiated by the MIN_VERSION_bytestring macro.
+-- Thus, we'll simply define it ourselves.
+-- TODO: since we built the trie from bytestrings that were short
+-- enough to have a valid length, do we actually need to perform
+-- this check at all?
+--
+-- | Add two non-negative numbers. Errors out on overflow.
+(+?) :: Int -> Int -> Int
+x +? y
+  | r >= 0    = r
+  | otherwise = error overflowError
+  where r = x + y
+{-# INLINE (+?) #-}
+
+overflowError :: String
+overflowError = "Data.Trie.ByteStringInternal.toStrict: size overflow"
+{-# NOINLINE overflowError #-}
+
 -- See commentary at LazyByteString's version of @toStrict@.  This
 -- implementation is from Git SHA 688f3c0887f2ca0623f2f54f78e8f675f92e31bf,
 -- modulo the necessary changes for using a snoc-list in lieu of a
@@ -280,8 +301,6 @@ fromStrict = (Epsilon +>?)
 toStrict :: RevLazyByteString -> S.ByteString
 toStrict = \cs0 -> goLen0 cs0 cs0
     where
-    (+?) = S.checkedAdd "RevLazyByteString.toStrict"
-    {-# INLINE (+?) #-}
     -- It's still possible that the result is empty.
     goLen0 _               Epsilon            = S.empty
     goLen0 cs0             (cs :+> PS _ _ 0)  = goLen0 cs0 cs

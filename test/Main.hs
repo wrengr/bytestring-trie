@@ -306,6 +306,8 @@ quickcheckTests
       , QC.testProperty
           "prop_foldl_vs_foldl'"
           (prop_foldl_vs_foldl' :: WTrie Int -> Bool)
+#endif
+#if MIN_VERSION_base(4,13,0)
       , QC.testProperty
           "prop_foldMap_vs_foldMap'"
           (prop_foldMap_vs_foldMap' :: WTrie Int -> Bool)
@@ -502,8 +504,8 @@ smallcheckTests
     , SC.testProperty
         "prop_foldl_vs_foldl'"
         (prop_foldl_vs_foldl' :: WTrie W -> Bool)
-    -- TODO: prop_foldMap_vs_foldMap' requires (Num W) if we want to use W.
 #endif
+    -- TODO: prop_foldMap_vs_foldMap' requires (Num W) if we want to use W.
     ]
   , Tasty.adjustOption (+ (1::SC.SmallCheckDepth))
   $ Tasty.testGroup "fromList (@()/@W)"
@@ -822,7 +824,9 @@ prop_foldl_vs_foldl' :: (Eq a) => WTrie a -> Bool
 prop_foldl_vs_foldl' = (F.foldl snoc [] .==. F.foldl' snoc []) . unWT
     where
     snoc = flip (:)
+#endif
 
+#if MIN_VERSION_base(4,13,0)
 -- TODO: use a non-commutative Monoid, to ensure the order is the same.
 prop_foldMap_vs_foldMap' ::  (Num a, Eq a) => WTrie a -> Bool
 prop_foldMap_vs_foldMap' = (F.foldMap Sum .==. F.foldMap' Sum) . unWT

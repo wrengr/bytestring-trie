@@ -1100,7 +1100,7 @@ instance Foldable Trie where
         go (Arc _ Nothing  t) = go t
         go (Arc _ (Just v) t) = f v `mappend` go t
         go (Branch _ _ l r)   = go l `mappend` go r
-#if MIN_VERSION_base(4,6,0)
+#if MIN_VERSION_base(4,13,0)
     {-# INLINE foldMap' #-}
     foldMap' f = go mempty
         where

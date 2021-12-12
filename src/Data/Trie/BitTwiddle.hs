@@ -9,7 +9,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.12.07
+--                                                  ~ 2021.12.11
 -- |
 -- Module      :  Data.Trie.BitTwiddle
 -- Copyright   :  2012 Clark Gaebel, 2012 Johan Tibel, 2002 Daan Leijen
@@ -27,10 +27,13 @@
 ----------------------------------------------------------------
 
 module Data.Trie.BitTwiddle
-    ( Prefix, Mask
-    , elemToNat
-    , zero, nomatch
-    , mask, shorter, branchMask
+    (
+    -- * Type aliases
+      KeyElem, Prefix, Mask
+    -- * Predicates
+    , zero, nomatch, shorter
+    -- * Constructors
+    , applyMask, getMask
     ) where
 
 import Data.Trie.ByteStringInternal (ByteStringElem)
@@ -63,8 +66,17 @@ import Data.Word (Word)
 
 ----------------------------------------------------------------
 
+-- | 'KeyElem' is what we actually use for 'Prefix' and 'Mask'.
+-- For now we're using 'ByteStringElem' ('Data.Word.Word8') for
+-- simplicity, but in the future we might switch to a larger word
+-- size.
 type KeyElem = ByteStringElem
+
+-- | Some prefix of the 'KeyElem', as constructed by 'mask'.
 type Prefix  = KeyElem
+
+-- | A single bit, signifying a mask (of all the bits preceding the
+-- masking bit).
 type Mask    = KeyElem
 
 elemToNat :: KeyElem -> Word
@@ -123,14 +135,14 @@ zero i m = (elemToNat i) .&. (elemToNat m) == 0
 -- matching the value doesn't exist.)
 nomatch :: KeyElem -> Prefix -> Mask -> Bool
 {-# INLINE nomatch #-}
-nomatch i p m = mask i m /= p
+nomatch i p m = applyMask i m /= p
 
 -- | Convert a masking bit to the full mask it represents, and then
 -- return the prefix of the key under that mask (i.e., all the bits
 -- preceding the masking bit).
-mask :: KeyElem -> Mask -> Prefix
-{-# INLINE mask #-}
-mask i m = maskW (elemToNat i) (elemToNat m)
+applyMask :: KeyElem -> Mask -> Prefix
+{-# INLINE applyMask #-}
+applyMask i m = maskW (elemToNat i) (elemToNat m)
 
 
 {---------------------------------------------------------------
@@ -156,10 +168,9 @@ shorter :: Mask -> Mask -> Bool
 shorter m1 m2 = elemToNat m1 > elemToNat m2
 
 -- | Determine first differing bit of two prefixes.
-branchMask :: Prefix -> Prefix -> Mask
-{-# INLINE branchMask #-}
-branchMask p1 p2
-    = natToElem (highestBitMask (elemToNat p1 `xor` elemToNat p2))
+getMask :: Prefix -> Prefix -> Mask
+{-# INLINE getMask #-}
+getMask p1 p2 = natToElem (highestBitMask (elemToNat p1 `xor` elemToNat p2))
 
 {---------------------------------------------------------------
   Finding the highest bit (mask) in a word [x] can be done efficiently

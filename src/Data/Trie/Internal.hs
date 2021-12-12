@@ -17,7 +17,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.12.10
+--                                              ~ 2021.12.11
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  2008--2021 wren romano
@@ -380,8 +380,8 @@ branchMerge  p1 t1     p2 t2
     | zero p1 m                 = Branch p m t1 t2
     | otherwise                 = Branch p m t2 t1
     where
-    m = branchMask p1 p2
-    p = mask p1 m
+    m = getMask p1 p2
+    p = applyMask p1 m
 
 
 -- It would be better if Arc used
@@ -1860,8 +1860,8 @@ mergeBy f = start
         where
         p0 = arcPrefix k0
         p1 = arcPrefix k1
-        m' = branchMask p0 p1
-        p' = mask p0 m'
+        m' = getMask p0 p1
+        p' = applyMask p0 m'
     go t0@(Arc k0 _ _)
        t1@(Branch p1 m1 l r)
         | nomatch p0 p1 m1 = branchMerge p1 t1  p0 t0
@@ -1916,7 +1916,7 @@ intersectBy f = start
                 | otherwise         = go t0 r1
     go (Arc k0 mv0 s0)
        (Arc k1 mv1 s1)
-        -- We can simplify 'branchMask' to 'xor' here, avoiding the
+        -- We can simplify 'getMask' to 'xor' here, avoiding the
         -- cost of the 'highestBitMask'; because we don't care about
         -- the actual mask itself, just the nonzero-ness.
         | xor (arcPrefix k0) (arcPrefix k1) /= 0 = Empty

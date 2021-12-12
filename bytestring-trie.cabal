@@ -64,11 +64,11 @@ Library
     Default-Language: Haskell2010
     Hs-Source-Dirs:  src
     Exposed-Modules: Data.Trie
-                   , Data.Trie.Internal
                    , Data.Trie.Convenience
-    Other-Modules:   Data.Trie.BitTwiddle
-                   , Data.Trie.ByteStringInternal
-                   , Data.Trie.Errors
+                   , Data.Trie.Internal
+    Other-Modules:   Data.Trie.Internal.BitTwiddle
+                   , Data.Trie.Internal.ByteString
+                   , Data.Trie.Internal.Errors
     -- The lower bounds are more restrictive than necessary.
     -- But then, we don't maintain any CI tests for older
     -- versions, so these are the lowest bounds we've verified.

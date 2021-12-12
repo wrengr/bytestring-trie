@@ -5,9 +5,9 @@
 {-# LANGUAGE Safe #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.12.07
+--                                                  ~ 2021.12.11
 -- |
--- Module      :  Data.Trie.Errors
+-- Module      :  Data.Trie.Internal.Errors
 -- Copyright   :  2008--2021 wren romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
@@ -17,7 +17,7 @@
 -- Internal convenience functions for giving error messages.
 ----------------------------------------------------------------
 
-module Data.Trie.Errors (impossible) where
+module Data.Trie.Internal.Errors (impossible) where
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------

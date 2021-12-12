@@ -6,9 +6,9 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.12.10
+--                                              ~ 2021.12.11
 -- |
--- Module      :  Data.Trie.ByteStringInternal
+-- Module      :  Data.Trie.Internal.ByteString
 -- Copyright   :  2008--2021 wren romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
@@ -18,10 +18,12 @@
 -- Helper functions on 'ByteString's for "Data.Trie.Internal".
 ------------------------------------------------------------
 
-module Data.Trie.ByteStringInternal
+module Data.Trie.Internal.ByteString
     ( ByteString, ByteStringElem
     , breakMaximalPrefix
     , RevLazyByteString(..), (+>!), (+>?), fromStrict, toStrict
+        -- TODO: we want to export the 'Epsilon' constructor; but
+        -- do we want to export the patterns?
     ) where
 
 import qualified Data.ByteString          as S
@@ -252,6 +254,7 @@ data RevLazyByteString
     | RevLazyByteString :+> {-# UNPACK #-} !S.ByteString
     -- Invariant: every 'S.ByteString' is non-null.
 
+-- TODO: should we add an 'assert' even though we don't check in general?
 -- | \(\mathcal{O}(1)\). Unsafely\/uncheckedly append a BS to the
 -- RLBS.  It is up to the caller to maintain the invariant that
 -- 'S.ByteString' is indeed non-null.

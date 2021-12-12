@@ -11,7 +11,7 @@
 ----------------------------------------------------------------
 --                                                  ~ 2021.12.11
 -- |
--- Module      :  Data.Trie.BitTwiddle
+-- Module      :  Data.Trie.Internal.BitTwiddle
 -- Copyright   :  2012 Clark Gaebel, 2012 Johan Tibel, 2002 Daan Leijen
 -- License     :  BSD3
 -- Maintainer  :  libraries@haskell.org, wren@cpan.org
@@ -26,7 +26,7 @@
 -- being specialized to 'Int'.
 ----------------------------------------------------------------
 
-module Data.Trie.BitTwiddle
+module Data.Trie.Internal.BitTwiddle
     (
     -- * Type aliases
       KeyElem, Prefix, Mask
@@ -36,7 +36,7 @@ module Data.Trie.BitTwiddle
     , applyMask, getMask
     ) where
 
-import Data.Trie.ByteStringInternal (ByteStringElem)
+import Data.Trie.Internal.ByteString (ByteStringElem)
 
 -- It's too much noise to fully restrict this import, so just note
 -- the requirements:

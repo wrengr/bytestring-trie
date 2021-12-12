@@ -88,9 +88,9 @@ import Prelude hiding      (null, lookup, filter)
 
 import qualified Data.ByteString as S
 import qualified Data.ByteString.Unsafe as SU
-import Data.Trie.ByteStringInternal
-import Data.Trie.BitTwiddle
-import Data.Trie.Errors    (impossible)
+import Data.Trie.Internal.ByteString
+import Data.Trie.Internal.BitTwiddle
+import Data.Trie.Internal.Errors    (impossible)
 
 import Data.Binary         (Binary(..), Get, Word8)
 import Data.Bits           (xor)

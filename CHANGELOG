@@ -3,8 +3,9 @@
     - Cleaning up Haddock and adding more @since annotations
     - Added instances: Eq1, Ord, Ord1, IsList, Show1, Read, Read1, NFData
     - Changed the type of Data.Trie.Internal.lookupBy_
-    - Identified a critical bug: <https://github.com/wrengr/bytestring-trie/issues/25>
-    - Some work towards mitigating that bug
+    - Performance improvements for functions that reconstruct keys.
+      However, there remains a critical bug in their asymptotic complexity:
+      <https://github.com/wrengr/bytestring-trie/issues/25>
 0.2.6 (2021.11.22):
     - Adjusting the instances for Applicative/Monad and Monoid, to
       avoid warnings from GHC 9.2.1 regarding:

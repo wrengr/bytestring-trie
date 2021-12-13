@@ -48,10 +48,13 @@ jobs:
       run: cabal update
     - name: Configure
       # Generates the `cabal.project.local` file.
-      # We make sure to enable tests & benchmarks here so that when
-      # we run the tests/benchmarks they don't reconfigure things
-      # and thus cause rebuilding.
-      run: cabal configure --enable-tests --enable-benchmarks --test-show-details=direct
+      #
+      # We make sure to enable tests (and benchmarks) here so that
+      # when we run the tests/benchmarks they don't reconfigure
+      # things and thus cause rebuilding.  However, since criterion
+      # has a huge number of dependencies, we're disabling benchmarks
+      # for now; since there's no need to run them on every commit.
+      run: cabal configure --enable-tests --test-show-details=direct
     - name: Freeze
       # Generates the `cabal.project.freeze` file.
       run: cabal freeze
@@ -71,7 +74,7 @@ jobs:
     - name: Build
       run: cabal build all
     # TODO(2021-10-23): if we run into issues with Windows builds
-    # being flaky, then we should use Bytestring's hack of:
+    # being flaky, then we should use ByteString's hack of:
     #   ```
     #   bld() { cabal build .:tests; }
     #   bld || bld || bld
@@ -80,7 +83,9 @@ jobs:
     # <https://github.com/haskell/actions/issues/36>
     - name: Test
       run: cabal test all -j1
-    ## TODO: Add benchmarks!
+    # TODO(2021-12-11): Set up a separate GitHub Actions workflow
+    # to run these on demand (instead of running them on every
+    # commit, as they would be here).
     #- name: Bench
     #  run: cabal bench --benchmark-option=-l all
     - name: Haddock

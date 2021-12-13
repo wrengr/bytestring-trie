@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.12.12
+--                                                  ~ 2021.12.13
 -- |
 -- Module      :  bench/Foldable
 -- Copyright   :  2008--2021 wren gayle romano
@@ -56,18 +56,36 @@ instance NFData a => NFData (Trie a) where
     rnf (Branch _ _ l r) = rnf l `seq` rnf r
 
 ----------------------------------------------------------------
-foldr_EndoDefault, foldr_compose, foldr_eta, foldr_cps_eta, foldr_cps, foldr_noClosure
+-- | From "Data.Functor.Utils", but isn't exported.  Is used heavily
+-- by the default implementations, since they use so many newtype
+-- wrappers.
+(#.) :: Coercible b c => (b -> c) -> (a -> b) -> (a -> c)
+(#.) _f = coerce
+{-# INLINE (#.) #-}
+
+----------------------------------------------------------------
+fold_base41600, fold_inlined
+    :: Monoid m => Trie a -> m
+
+-- The default definition as of base-4.16.0.0
+fold_base41600 = foldMap_bytestringtrie000207 id
+
+-- bytestring-trie-0.2.7 definition
+fold_inlined = go
+    where
+    go Empty              = mempty
+    go (Arc _ Nothing  t) = go t
+    go (Arc _ (Just v) t) = v `mappend` go t
+    go (Branch _ _ l r)   = go l `mappend` go r
+
+----------------------------------------------------------------
+foldr_base41600, foldr_compose, foldr_eta, foldr_cps_eta, foldr_cps, foldr_noClosure
     :: (a -> b -> b) -> b -> Trie a -> b
 
 -- The default definition as of base-4.16.0.0
 -- Actually a pretty solid baseline.
-foldr_EndoDefault f z t =
+foldr_base41600 f z t =
     appEndo (foldMap_bytestringtrie000207 (Endo #. f) t) z
-
--- From "Data.Functor.Utils", but isn't exported.
-(#.) :: Coercible b c => (b -> c) -> (a -> b) -> (a -> c)
-(#.) _f = coerce
-{-# INLINE (#.) #-}
 
 -- bytestring-trie-0.2.7 definition
 foldMap_bytestringtrie000207 :: Monoid m => (a -> m) -> Trie a -> m
@@ -200,13 +218,17 @@ main :: IO ()
 main = C.defaultMain
   [ C.env (QC.generate $ QC.vectorOf 5 $ arbitraryTrie 50 20) $ \ ts ->
     C.bgroup "arbitrary"
-    [ C.bgroup "foldr"
-      [ C.bench "EndoDefault" $ C.nf (foldr_EndoDefault (+) 0 <$>) ts
-      , C.bench "compose"     $ C.nf (foldr_compose     (+) 0 <$>) ts
-      , C.bench "eta"         $ C.nf (foldr_eta         (+) 0 <$>) ts
-      , C.bench "cps_eta"     $ C.nf (foldr_cps_eta     (+) 0 <$>) ts
-      , C.bench "cps"         $ C.nf (foldr_cps         (+) 0 <$>) ts
-      , C.bench "noClosure"   $ C.nf (foldr_noClosure   (+) 0 <$>) ts
+    [ C.bgroup "fold"
+      [ C.bench "base-4.16 default" $ C.nf (fold_base41600 <$>) ts
+      , C.bench "inlined"           $ C.nf (fold_inlined   <$>) ts
+      ]
+    , C.bgroup "foldr"
+      [ C.bench "base-4.16 default" $ C.nf (foldr_base41600   (+) 0 <$>) ts
+      , C.bench "compose"           $ C.nf (foldr_compose     (+) 0 <$>) ts
+      , C.bench "eta"               $ C.nf (foldr_eta         (+) 0 <$>) ts
+      , C.bench "cps_eta"           $ C.nf (foldr_cps_eta     (+) 0 <$>) ts
+      , C.bench "cps"               $ C.nf (foldr_cps         (+) 0 <$>) ts
+      , C.bench "noClosure"         $ C.nf (foldr_noClosure   (+) 0 <$>) ts
       ]
     ]
   ]

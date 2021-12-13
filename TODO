@@ -29,17 +29,19 @@
 ------------------------------------------------------------
 Test Coverage:
 * Data.Trie:
-    elems, adjustBy
+    adjustBy
     lookupBy: with a function that inspects the second argument.
 * Data.Trie.Convenience:
     fromListWith', fromListWithL', lookupWithDefault, insertWith, insertWith', insertWithKey, insertWithKey', adjustWithKey, update, updateWithKey, unionWith, unionWith', intersectWith, intersectWith'
     fromListWith, fromListWithL: use @f@ that evaluates the second argument
 * Data.Trie.Internal:
-    showsPrec, showTrie, put, get, foldMap, traverse, cata_, cata, adjust:
+    liftEq, compare, liftCompare, showsPrec, liftShowsPrec, showTrie, readPrec, readListPrec, (readsPrec), liftReadsPrec, put, get, rnf, traverse, traverseWithKey, stimes, filter, wither, filterA, Foldable(fold, length, null, toList, minimum, maximum, sum, product), cata_, cata, IsList(toList,fromList), adjust:
         at all
     (>>=):
         a case where the function argument to mergeBy is used.
-    mapBy, contextualMap, contextualMap', contextualFilterMap, contextualMapBy:
+    mapBy:
+        with functions that touches the old value.
+    contextualMap, contextualMap', contextualFilterMap, contextualMapBy:
         with functions that touch the trie argument.
     branchMerge:
         with Empty first argument; or better would be to adjust this helper for how it's actually used.

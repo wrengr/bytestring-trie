@@ -1082,6 +1082,9 @@ size' (Arc _ (Just _) t) f  n = size' t f (n + 1)
 -- Instances: Foldable
 -----------------------------------------------------------}
 
+-- TODO: thoroughly benchmark all of these vs their default
+-- definitions; to see which are actually worth bothering to
+-- implement!
 instance Foldable Trie where
     {-# INLINABLE fold #-}
     fold = go
@@ -1090,9 +1093,6 @@ instance Foldable Trie where
         go (Arc _ Nothing  t) = go t
         go (Arc _ (Just v) t) = v `mappend` go t
         go (Branch _ _ l r)   = go l `mappend` go r
-    -- If our definition of foldr is so much faster than the Endo
-    -- default, then maybe we should remove this and use the default
-    -- foldMap based on foldr
     {-# INLINE foldMap #-}
     foldMap f = go
         where
@@ -1101,13 +1101,14 @@ instance Foldable Trie where
         go (Arc _ (Just v) t) = f v `mappend` go t
         go (Branch _ _ l r)   = go l `mappend` go r
 #if MIN_VERSION_base(4,13,0)
+    -- TODO: verify order of 'mappend' on some non-commutative monoid!
     {-# INLINE foldMap' #-}
     foldMap' f = go mempty
         where
         -- TODO: CPS to restore the purely tail-call for @Branch@?
         go !m Empty              = m
         go  m (Arc _ Nothing  t) = go m t
-        go  m (Arc _ (Just v) t) = go (f v `mappend` m) t
+        go  m (Arc _ (Just v) t) = go (m `mappend` f v) t
         go  m (Branch _ _ l r)   = go (go m l) r
 #endif
     --

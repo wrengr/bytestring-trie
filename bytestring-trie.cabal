@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren gayle romano <wren@cpan.org>                ~ 2021.12.11
+-- wren gayle romano <wren@cpan.org>                ~ 2021.12.12
 ----------------------------------------------------------------
 
 -- Cabal >=1.10 is required by Hackage.
@@ -13,7 +13,7 @@ Homepage:       https://wrengr.org/software/hackage.html
 Bug-Reports:    https://github.com/wrengr/bytestring-trie/issues
 Author:         wren gayle romano
 Maintainer:     wren@cpan.org
-Copyright:      Copyright (c) 2008–2021 wren gayle romano
+Copyright:      2008–2021 wren gayle romano
 License:        BSD3
 License-File:   LICENSE
 

@@ -1,10 +1,10 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.11.14
+--                                                  ~ 2021.12.12
 -- |
 -- Module      :  test/ByteStringInternal
--- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
+-- Copyright   :  2008--2021 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional

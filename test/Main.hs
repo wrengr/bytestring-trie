@@ -5,10 +5,10 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.12.04
+--                                                  ~ 2021.12.12
 -- |
 -- Module      :  test/Main
--- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
+-- Copyright   :  2008--2021 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional

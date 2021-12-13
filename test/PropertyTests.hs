@@ -212,7 +212,13 @@ quickcheckTests
       , QC.testProperty
           "prop_fmap_keys"
           (prop_fmap_keys (undefined :: Int -> Int) :: WTrie Int -> Bool)
+      -- TODO: prop_fmap_elems
       -}
+#if __GLASGOW_HASKELL__
+      , QC.testProperty
+          "prop_fmapConst"
+          (prop_fmapConst :: Int -> WTrie Int -> Bool)
+#endif
       , QC.testProperty
           -- TODO: generalize to other functions.
           "prop_fmap_toList"
@@ -731,6 +737,12 @@ prop_FunctorIdentity = (fmap id .==. id) . unWT
 prop_FunctorCompose :: Eq c => (b -> c) -> (a -> b) -> WTrie a -> Bool
 prop_FunctorCompose f g = (fmap (f . g) .==. (fmap f . fmap g)) . unWT
 -}
+
+#if __GLASGOW_HASKELL__
+-- | @(<$)@ agrees with its default definition.
+prop_fmapConst :: Eq a => a -> WTrie b -> Bool
+prop_fmapConst v = ((v <$) .==. fmap (const v)) . unWT
+#endif
 
 {-
 -- Both of these test only a subset of what 'prop_fmap_toList' tests.  I was hoping they'd help simplify the function-generation problem, but if we're testing 'prop_fmap_toList' anyways then there's no point in testing these too.

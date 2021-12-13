@@ -5,9 +5,9 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.12.12
+--                                                  ~ 2021.12.13
 -- |
--- Module      :  test/PropertyTests
+-- Module      :  Test.Properties
 -- Copyright   :  2008--2021 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
@@ -16,9 +16,9 @@
 --
 -- Property testing 'Trie's.
 ----------------------------------------------------------------
-module PropertyTests (smallcheckTests, quickcheckTests) where
+module Test.Properties (smallcheckTests, quickcheckTests) where
 
-import Utils
+import Test.Utils
 
 import qualified Data.Trie              as T
 import qualified Data.Trie.Internal     as TI

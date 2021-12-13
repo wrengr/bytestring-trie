@@ -5,9 +5,9 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.12.12
+--                                                  ~ 2021.12.13
 -- |
--- Module      :  test/Main
+-- Module      :  Test.Main
 -- Copyright   :  2008--2021 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
@@ -18,8 +18,8 @@
 ----------------------------------------------------------------
 module Main (main) where
 
-import Utils
-import PropertyTests (smallcheckTests, quickcheckTests)
+import Test.Utils
+import Test.Properties (smallcheckTests, quickcheckTests)
 
 import qualified Data.Trie              as T
 import qualified Data.ByteString        as S

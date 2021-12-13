@@ -1,5 +1,5 @@
 ----------------------------------------------------------------
--- wren gayle romano <wren@cpan.org>                ~ 2021.12.12
+-- wren gayle romano <wren@cpan.org>                ~ 2021.12.13
 ----------------------------------------------------------------
 
 -- Cabal >=1.10 is required by Hackage.
@@ -83,15 +83,16 @@ Library
 Test-Suite test-all
     Type:           exitcode-stdio-1.0
     Default-Language: Haskell2010
-    Hs-Source-Dirs: test
+    Hs-Source-Dirs: dev
     -- NOTE: For test-suites, Main-Is is relative to Hs-Source-Dirs;
     -- unlike for executables where it's relative to this file's
     -- directory instead.
-    Main-Is:        Main.hs
-    Other-Modules:  Utils
-                 ,  PropertyTests
-                 -- Validity
-                 -- ByteStringInternal
+    Main-Is:        Test/Main.hs
+    -- TODO: Other-Modules:  Shared.Utils
+    Other-Modules:  Test.Utils
+                 ,  Test.Properties
+                 -- Test.Validity
+                 -- Test.ByteStringInternal
     -- TODO: need we really repeat the bounds for all of the library's
     -- deps?  For that matter, need we actually repeat the library's
     -- deps at all (if we don't use them directly)?
@@ -102,7 +103,7 @@ Test-Suite test-all
                  -- We must include our own library for the tests
                  -- to use it; but we must not give a version
                  -- restriction lest Cabal give warnings.
-                 ,  bytestring-trie
+                 ,  bytestring-trie   -any
                  ,  tasty             >= 0.10.1.2 && < 1.5
                  ,  tasty-smallcheck  >= 0.8.0.1  && < 0.9
                  ,  tasty-quickcheck  >= 0.8.3.2  && < 0.11
@@ -116,15 +117,16 @@ Test-Suite test-all
 Benchmark criterion-Foldable
     Type:           exitcode-stdio-1.0
     Default-Language: Haskell2010
-    Hs-Source-Dirs: bench
+    Hs-Source-Dirs: dev
     -- TODO: re Main-Is, do benchmarks behave like test-suites or executables?
-    Main-Is:        Foldable.hs
+    Main-Is:        Bench/Foldable.hs
+    -- TODO: Other-Modules:  Shared.Utils
     Build-Depends:  base        >= 4.5   && < 4.17
                  ,  bytestring  >= 0.9.2 && < 0.12
                  ,  binary      >= 0.5.1 && < 0.11
                  ,  deepseq     >= 1.2   && < 1.5
                  -- TODO: I assume I need this here too?
-                 ,  bytestring-trie
+                 ,  bytestring-trie -any
                  ,  criterion
                  ,  criterion-measurement
                  ,  QuickCheck  >= 2.10  && < 2.15

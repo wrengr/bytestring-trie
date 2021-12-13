@@ -1,7 +1,7 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.10.17
+--                                                  ~ 2021.12.13
 -- |
 -- Module      :  Bench.FromList
 -- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
@@ -13,7 +13,7 @@
 -- Benchmarking for left- vs right-fold for @fromList@.
 ----------------------------------------------------------------
 
-module Main where
+module Bench.FromList (main) where
 
 import qualified Data.Trie as T
 import Data.Trie.Convenience (insertIfAbsent)

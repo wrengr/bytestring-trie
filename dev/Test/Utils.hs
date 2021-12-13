@@ -6,9 +6,9 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.12.12
+--                                                  ~ 2021.12.13
 -- |
--- Module      :  test/Utils.hs
+-- Module      :  Test.Utils
 -- Copyright   :  2008--2021 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
@@ -17,7 +17,7 @@
 --
 -- Utilities for testing 'Trie's.
 ----------------------------------------------------------------
-module Utils
+module Test.Utils
     ( packC2W, vocab2trie
     , localQuickCheckOptions
     , testEqual

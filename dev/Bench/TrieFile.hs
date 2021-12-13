@@ -1,10 +1,10 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.10.17
+--                                                  ~ 2021.12.13
 -- |
 -- Module      :  Bench.TrieFile
--- Copyright   :  Copyright (c) 2008--2021 wren gayle romano
+-- Copyright   :  2008--2021 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
@@ -16,7 +16,7 @@
 -- and Trie implementation in general.
 ----------------------------------------------------------------
 
-module Main (main, readTrieFromFile) where
+module Bench.TrieFile (main, readTrieFromFile) where
 
 import qualified Data.Trie             as T
 import qualified Data.Trie.Internal    as T

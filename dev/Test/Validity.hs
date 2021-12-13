@@ -1,9 +1,9 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.12.12
+--                                                  ~ 2021.12.13
 -- |
--- Module      :  test/Validity
+-- Module      :  Test.Validity
 -- Copyright   :  2021 wren gayle romano, 2004--2021 libraries@haskell.org
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
@@ -13,7 +13,10 @@
 -- Verify the invariants of 'Trie', a~la
 -- <https://github.com/haskell/containers/blob/master/containers-tests/tests/IntMapValidity.hs>
 ----------------------------------------------------------------
-module Validity (valid) where
+module Test.Validity
+    ( BrokenInvariant(..), validate
+    , valid
+    ) where
 
 -- BUG: requires exporting the constructors!
 import           Data.Trie.Internal           (Trie(..))
@@ -41,6 +44,7 @@ data BrokenInvariant
 et :: Maybe e -> Maybe e -> Maybe e
 et m@(Just _) _ = m
 et Nothing    n = n
+{-# INLINE et #-}
 
 -- This combines all the invariant checks into a single pass.
 -- However, the improved performance may not be worth the added

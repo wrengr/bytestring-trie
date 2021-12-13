@@ -3,7 +3,7 @@
 ----------------------------------------------------------------
 --                                                  ~ 2021.12.13
 -- |
--- Module      :  bench/Foldable
+-- Module      :  Bench.Foldable
 -- Copyright   :  2008--2021 wren gayle romano
 -- License     :  BSD3
 -- Maintainer  :  wren@cpan.org
@@ -64,8 +64,10 @@ instance NFData a => NFData (Trie a) where
 {-# INLINE (#.) #-}
 
 ----------------------------------------------------------------
+{-
+-- TODO:
 fold_base41600, fold_inlined
-    :: Monoid m => Trie a -> m
+    :: Monoid m => Trie m -> m
 
 -- The default definition as of base-4.16.0.0
 fold_base41600 = foldMap_bytestringtrie000207 id
@@ -77,6 +79,7 @@ fold_inlined = go
     go (Arc _ Nothing  t) = go t
     go (Arc _ (Just v) t) = v `mappend` go t
     go (Branch _ _ l r)   = go l `mappend` go r
+-}
 
 ----------------------------------------------------------------
 foldr_base41600, foldr_compose, foldr_eta, foldr_cps_eta, foldr_cps, foldr_noClosure
@@ -218,11 +221,14 @@ main :: IO ()
 main = C.defaultMain
   [ C.env (QC.generate $ QC.vectorOf 5 $ arbitraryTrie 50 20) $ \ ts ->
     C.bgroup "arbitrary"
+    {-
+    -- TODO:
     [ C.bgroup "fold"
       [ C.bench "base-4.16 default" $ C.nf (fold_base41600 <$>) ts
       , C.bench "inlined"           $ C.nf (fold_inlined   <$>) ts
       ]
-    , C.bgroup "foldr"
+    -}
+    [ C.bgroup "foldr"
       [ C.bench "base-4.16 default" $ C.nf (foldr_base41600   (+) 0 <$>) ts
       , C.bench "compose"           $ C.nf (foldr_compose     (+) 0 <$>) ts
       , C.bench "eta"               $ C.nf (foldr_eta         (+) 0 <$>) ts

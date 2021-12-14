@@ -1105,6 +1105,11 @@ instance Foldable Trie where
     {-# INLINE foldMap' #-}
     foldMap' f = go mempty
         where
+        -- Benchmarking on GHC 9.2.1 indicates that for this function
+        -- the (m,t) argument ordering is somewhat (~3%) faster
+        -- than the (t,m) order; and both allocate the same.
+        -- This differs from the case for 'foldr'' and 'foldl';
+        -- though I'm not sure why.
         go !m Empty              = m
         go  m (Arc _ Nothing  t) = go m t
         go  m (Arc _ (Just v) t) = go (m `mappend` f v) t
@@ -1126,25 +1131,34 @@ instance Foldable Trie where
         go (Branch _ _ l r)   = go l . go r
 #if MIN_VERSION_base(4,6,0)
     {-# INLINE foldr' #-}
-    foldr' f z0 = go z0 -- take only 2 arguments, for better inlining.
+    foldr' f z0 = \t -> go t z0 -- take only 2 arguments, for better inlining.
         where
-        go !z Empty              = z
-        go  z (Arc _ Nothing  t) = go z t
-        go  z (Arc _ (Just v) t) = f v $! go z t
-        go  z (Branch _ _ l r)   = go (go z r) l
+        -- Benchmarking on GHC 9.2.1 indicates that for this function
+        -- the (t,z) argument order is ~10% faster than (z,t).
+        -- Allocation is the same for both.
+        go Empty              !z = z
+        go (Arc _ Nothing  t)  z = go t z
+        go (Arc _ (Just v) t)  z = f v $! go t z
+        go (Branch _ _ l r)    z = go l (go r z)
 #endif
     {-# INLINE foldl #-}
-    foldl f z0 = go z0 -- take only 2 arguments, for better inlining.
+    foldl f z0 = \t -> go t z0 -- take only 2 arguments, for better inlining.
         where
-        go z Empty              = z
-        go z (Arc _ Nothing  t) = go z t
-        go z (Arc _ (Just v) t) = go (f z v) t
-        go z (Branch _ _ l r)   = go (go z l) r
+        -- Benchmarking on GHC 9.2.1 indicates that for this function
+        -- the (t,z) argument order is slightly faster (~0.8%) and
+        -- allocates ~8.4% less, compared to the (z,t) order.
+        -- I've no idea why the allocation would differ, especially
+        -- when it doesn't for 'foldr'' and 'foldMap''.
+        go Empty              z = z
+        go (Arc _ Nothing  t) z = go t z
+        go (Arc _ (Just v) t) z = go t (f z v)
+        go (Branch _ _ l r)   z = go r (go l z)
 #if MIN_VERSION_base(4,6,0)
     {-# INLINE foldl' #-}
     foldl' f z0 = go z0 -- take only 2 arguments, for better inlining
         where
         -- TODO: CPS to restore the purely tail-call for @Branch@?
+        -- TODO: should we flop this?
         go !z Empty              = z
         go  z (Arc _ Nothing  t) = go z t
         go  z (Arc _ (Just v) t) = go (f z v) t

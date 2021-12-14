@@ -1157,8 +1157,10 @@ instance Foldable Trie where
     {-# INLINE foldl' #-}
     foldl' f z0 = go z0 -- take only 2 arguments, for better inlining
         where
-        -- TODO: CPS to restore the purely tail-call for @Branch@?
-        -- TODO: should we flop this?
+        -- Benchmarking on GHC 9.2.1 indicates that for this function
+        -- the (z,t) argument order is significantly faster (~10%) and
+        -- allocates half as much.
+        -- TODO: figure out why\/how the allocation could differ so much; bogus?
         go !z Empty              = z
         go  z (Arc _ Nothing  t) = go z t
         go  z (Arc _ (Just v) t) = go (f z v) t

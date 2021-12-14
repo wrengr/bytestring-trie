@@ -69,18 +69,7 @@ instance NFData a => NFData (Trie a) where
 {-# INLINE (#.) #-}
 
 ----------------------------------------------------------------
--- | bytestring-trie-0.2.7 definition, used for defaults.
-foldl'_v027 :: (b -> a -> b) -> b -> Trie a -> b
-foldl'_v027 f z0 = \t -> go z0 t -- eta for better inlining
-    where
-    -- TODO: CPS to restore the purely tail-call for @Branch@?
-    go !z Empty              = z
-    go  z (Arc _ Nothing  t) = go z t
-    go  z (Arc _ (Just v) t) = go (f z v) t
-    go  z (Branch _ _ l r)   = go (go z l) r
-
-----------------------------------------------------------------
-fold_foldMap, fold_foldr_compose, fold_foldr_eta, fold_v027
+fold_foldMap, fold_foldrCompose, fold_foldrEta, fold_v027
     :: Monoid m => Trie m -> m
 
 -- | The default 'fold' definition as of base-4.16.0.0
@@ -89,12 +78,12 @@ fold_foldMap = foldMap_v027 id
 -- | Default 'fold' via default 'foldMap' (using 'foldr_compose'),
 -- but inlining the 'id' away.
 -- Far worse than 'fold_foldMap', both for runtime and allocation.
-fold_foldr_compose = foldr_compose mappend mempty
+fold_foldrCompose = foldr_compose mappend mempty
 
 -- | Default 'fold' via default 'foldMap' (using 'foldr_eta'),
 -- but inlining the 'id' away.
--- This is somewhat worse than 'fold_foldr_compose' even.
-fold_foldr_eta = foldr_eta mappend mempty
+-- This is somewhat worse than 'fold_foldrCompose' even.
+fold_foldrEta = foldr_eta mappend mempty
 
 -- | bytestring-trie-0.2.7 definition.
 -- This is a clear win over 'fold_foldMap': about half the runtime,
@@ -107,13 +96,13 @@ fold_v027 = go
     go (Branch _ _ l r)   = go l `mappend` go r
 
 ----------------------------------------------------------------
-foldMap_foldr_compose, foldMap_foldr_eta, foldMap_v027
+foldMap_foldrCompose, foldMap_foldrEta, foldMap_v027
     :: Monoid m => (a -> m) -> Trie a -> m
 
 -- | The default 'fold' definition as of base-4.16.0.0 (using 'foldr_compose').
-foldMap_foldr_compose f = foldr_compose (mappend . f) mempty
+foldMap_foldrCompose f = foldr_compose (mappend . f) mempty
 -- | The default 'fold' definition as of base-4.16.0.0 (using 'foldr_eta').
-foldMap_foldr_eta     f = foldr_eta     (mappend . f) mempty
+foldMap_foldrEta     f = foldr_eta     (mappend . f) mempty
 
 -- | bytestring-trie-0.2.7 definition, also used elsewhere for defaults.
 -- (This was also the bytestring-trie-0.2.6 definition; the only
@@ -303,9 +292,51 @@ foldl_v027_flop f z0 = \t -> go t z0 -- eta for better inlining
 -- that's worse everywhere else, there seems little point.
 
 ----------------------------------------------------------------
+foldl'_defaultCompose, foldl'_defaultEta, foldl'_v027, foldl'_v027_flop, foldl'_v027_flop_bang
+    :: (b -> a -> b) -> b -> Trie a -> b
+
+-- | The default  definition as of base-4.16.0.0 (using 'foldr_compose').
+foldl'_defaultCompose f z0 xs =
+    foldr_compose f' id xs z0
+    where f' x k z = k $! f z x
+
+-- | The default  definition as of base-4.16.0.0 (using 'foldr_eta').
+-- Much worse than 'foldl'_defaultCompose'.
+foldl'_defaultEta f z0 xs =
+    foldr_eta f' id xs z0
+    where f' x k z = k $! f z x
+
+-- | bytestring-trie-0.2.7 definition, also used for defaults.
+-- Clear winner.
+foldl'_v027 f z0 = go z0 -- eta for better inlining
+    where
+    go !z Empty              = z
+    go  z (Arc _ Nothing  t) = go z t
+    go  z (Arc _ (Just v) t) = go (f z v) t
+    go  z (Branch _ _ l r)   = go (go z l) r
+
+-- | Worse than 'foldl'_v027': ~10% slower, ~119% more allocation.
+foldl'_v027_flop f z0 = \t -> go t z0 -- eta for better inlining
+    where
+    go Empty              !z = z
+    go (Arc _ Nothing  t)  z = go t z
+    go (Arc _ (Just v) t)  z = go t (f z v)
+    go (Branch _ _ l r)    z = go r (go l z)
+
+-- HACK: why does this perform better?!
+-- ~4.4% faster than 'foldl'_v027'; but allocates ~32% more still.
+foldl'_v027_flop_bang f z0 = \t -> go t z0 -- eta for better inlining
+    where
+    go Empty              !z = z
+    go (Arc _ Nothing  t)  z = go t z
+    go (Arc _ (Just v) t)  z = go t $! f z v
+    go (Branch _ _ l r)    z = go r $! go l z
+
+-- TODO: CPS to restore the purely tail-call for @Branch@?
+
+----------------------------------------------------------------
 {-
 -- TODO: the base-4.16.0.0 defaults are shown
-foldl' f z0 xs = foldr f' id xs z0 where f' x k z = k $! f z x
 {-# INLINE toList #-} toList t = build (\ c n -> foldr c n t)
 null = foldr (\_ _ -> False) True
 length = foldl' (\c _ -> c+1) 0
@@ -376,13 +407,13 @@ main = C.defaultMain
     C.bgroup "arbitrary"
     [ C.bgroup "fold"
       [ C.bench "default (foldMap)"       $ C.nf (intToSum fold_foldMap      ) ts
-      , C.bench "default (foldr_compose)" $ C.nf (intToSum fold_foldr_compose) ts
-      , C.bench "default (foldr_eta)"     $ C.nf (intToSum fold_foldr_eta    ) ts
+      , C.bench "default (foldr_compose)" $ C.nf (intToSum fold_foldrCompose) ts
+      , C.bench "default (foldr_eta)"     $ C.nf (intToSum fold_foldrEta    ) ts
       , C.bench "v0.2.7"                  $ C.nf (intToSum fold_v027         ) ts
       ]
     , C.bgroup "foldMap"
-      [ C.bench "default (foldr_compose)" $ C.nf (intToSum (foldMap_foldr_compose id)) ts
-      , C.bench "default (foldr_eta)"     $ C.nf (intToSum (foldMap_foldr_eta     id)) ts
+      [ C.bench "default (foldr_compose)" $ C.nf (intToSum (foldMap_foldrCompose id)) ts
+      , C.bench "default (foldr_eta)"     $ C.nf (intToSum (foldMap_foldrEta     id)) ts
       , C.bench "v0.2.7"                  $ C.nf (intToSum (foldMap_v027          id)) ts
       ]
     , C.bgroup "foldMap'"
@@ -395,11 +426,9 @@ main = C.defaultMain
       [ C.bench "default (foldMap)" $ C.nf (foldr_default     (+) 0 <$>) ts
       , C.bench "compose"           $ C.nf (foldr_compose     (+) 0 <$>) ts
       , C.bench "eta"               $ C.nf (foldr_eta         (+) 0 <$>) ts
-      {- -- Commented out because they're terrible.
       , C.bench "cps_eta"           $ C.nf (foldr_cps_eta     (+) 0 <$>) ts
       , C.bench "cps"               $ C.nf (foldr_cps         (+) 0 <$>) ts
       , C.bench "noClosure"         $ C.nf (foldr_noClosure   (+) 0 <$>) ts
-      -- -}
       ]
     , C.bgroup "foldr'"
       [ C.bench "default"           $ C.nf (foldr'_default     (+) 0 <$>) ts
@@ -413,6 +442,13 @@ main = C.defaultMain
       , C.bench "default +Coerce"   $ C.nf (foldl_default_Coerce (+) 0 <$>) ts
       , C.bench "v0.2.7"            $ C.nf (foldl_v027           (+) 0 <$>) ts
       , C.bench "v0.2.7 +flopped"   $ C.nf (foldl_v027_flop      (+) 0 <$>) ts
+      ]
+    , C.bgroup "foldl'"
+      [ C.bench "default (foldr_compose)" $ C.nf (foldl'_defaultCompose (+) 0 <$>) ts
+      , C.bench "default (foldr_eta)"     $ C.nf (foldl'_defaultEta     (+) 0 <$>) ts
+      , C.bench "v0.2.7"                  $ C.nf (foldl'_v027           (+) 0 <$>) ts
+      , C.bench "v0.2.7 +flopped"         $ C.nf (foldl'_v027_flop      (+) 0 <$>) ts
+      , C.bench "v0.2.7 +flopped +($!)"   $ C.nf (foldl'_v027_flop_bang (+) 0 <$>) ts
       ]
     ]
   ]

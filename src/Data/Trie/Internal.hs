@@ -287,13 +287,6 @@ data Trie a
 -- Smart constructors
 -----------------------------------------------------------}
 
--- | Smart constructor to prune @Empty@ from @Branch@es.
-branch :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
-{-# INLINE branch #-}
-branch !_ !_ Empty r     = r
-branch  _  _ l     Empty = l
-branch  p  m l     r     = Branch p m l r
-
 {-
 -- | A common precondition for ensuring the safety of the following
 -- smart constructors.
@@ -367,19 +360,28 @@ epsilon :: Maybe a -> Trie a -> Trie a
 epsilon = Arc S.empty
 
 
+-- | Smart 'Branch' constructor: prunes 'Empty'.  This function
+-- does no other work besides pruning, so the 'Prefix', 'Mask', and
+-- ordering of the 'Trie's must all be as if calling the 'Branch'
+-- constructor directly.
+branch :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
+{-# INLINE branch #-}
+branch !_ !_ Empty r     = r
+branch  _  _ l     Empty = l
+branch  p  m l     r     = Branch p m l r
+
 -- | Smart constructor to join two tries into a @Branch@ with maximal
--- prefix sharing. Requires knowing the prefixes, but can combine
+-- prefix sharing.  Requires knowing the prefixes, but can combine
 -- either @Branch@es or @Arc@s.
 --
 -- __Preconditions__
--- * /do not/ use if prefixes could match entirely!
-branchMerge :: Prefix -> Trie a -> Prefix -> Trie a -> Trie a
-{-# INLINE branchMerge #-}
-branchMerge !_  Empty !_  !t2   = t2
-branchMerge  _  t1     _  Empty = t1
-branchMerge  p1 t1     p2 t2
-    | zero p1 m                 = Branch p m t1 t2
-    | otherwise                 = Branch p m t2 t1
+-- * Both tries must be non-@Empty@.
+-- * The two prefixes /must not/ be able to match entirely!
+mergeNE :: Prefix -> Trie a -> Prefix -> Trie a -> Trie a
+{-# INLINE mergeNE #-}
+mergeNE p1 t1 p2 t2
+    | zero p1 m = Branch p m t1 t2
+    | otherwise = Branch p m t2 t1
     where
     m = getMask p1 p2
     p = applyMask p1 m
@@ -1736,11 +1738,13 @@ alterBy_ f = start
 
     go q Empty            = nothing q
     go q t@(Branch p m l r)
-        | nomatch qh p m  = branchMerge p t  qh (nothing q)
+        | nomatch qh p m  =
+            case nothing q of
+            Empty -> t
+            s     -> mergeNE p t qh s
         | zero qh m       = branch p m (go q l) r
         | otherwise       = branch p m l (go q r)
-        where
-        qh = errorLogHead "alterBy_" q
+        where qh = errorLogHead "alterBy_" q
     go q t@(Arc k mv s) =
         let (p,k',q') = breakMaximalPrefix k q in
         case (S.null k', S.null q') of
@@ -1759,7 +1763,7 @@ alterBy_ f = start
                 -- must begin with @q'@, which is non-null here and
                 -- therefore @arcPrefix q'@ is equivalent to taking
                 -- the 'arcPrefix' of the string in @l@.
-                $ (branchMerge (arcPrefix q') l (arcPrefix k') (Arc k' mv s))
+                $ (mergeNE (arcPrefix q') l (arcPrefix k') (Arc k' mv s))
         (True, True)  -> arc k $$ f mv s
         (True, False) -> arc k mv (go q' s)
 
@@ -1829,13 +1833,12 @@ wip_unionWith f = start
         | shorter m0 m1  = union0
         | shorter m1 m0  = union1
         | p0 == p1       = Branch p0 m0 (go l0 l1) (go r0 r1)
-        -- TODO: a variant of 'branchMerge' which doesn't check for Empty; only does the 'zero' check.
-        | otherwise      = branchMerge p0 t0 p1 t1
+        | otherwise      = mergeNE p0 t0 p1 t1
         where
-        union0  | nomatch p1 p0 m0  = branchMerge p0 t0 p1 t1
+        union0  | nomatch p1 p0 m0  = mergeNE p0 t0 p1 t1
                 | zero p1 m0        = Branch p0 m0 (go l0 t1) r0
                 | otherwise         = Branch p0 m0 l0 (go r0 t1)
-        union1  | nomatch p0 p1 m1  = branchMerge p0 t0 p1 t1
+        union1  | nomatch p0 p1 m1  = mergeNE p0 t0 p1 t1
                 | zero p0 m1        = Branch p1 m1 (go t0 l1) r1
                 | otherwise         = Branch p1 m1 l1 (go t0 r1)
     --
@@ -1867,15 +1870,13 @@ wip_unionWith f = start
         p' = applyMask p0 m'
     go t0@(Arc k0 _ _)
        t1@(Branch p1 m1 l r)
-       -- TODO: again, 'branchMerge' without Empty check.
-        | nomatch p0 p1 m1 = branchMerge p1 t1  p0 t0
+        | nomatch p0 p1 m1 = mergeNE p1 t1  p0 t0
         | zero p0 m1       = Branch p1 m1 (go t0 l) r
         | otherwise        = Branch p1 m1 l (go t0 r)
         where p0 = arcPrefix k0
     go t0@(Branch p0 m0 l r)
        t1@(Arc k1 _ _)
-       -- TODO: again, 'branchMerge' without Empty check.
-        | nomatch p1 p0 m0 = branchMerge p0 t0  p1 t1
+        | nomatch p1 p0 m0 = mergeNE p0 t0  p1 t1
         | zero p1 m0       = Branch p0 m0 (go l t1) r
         | otherwise        = Branch p0 m0 l (go r t1)
         where p1 = arcPrefix k1
@@ -1911,12 +1912,12 @@ mergeBy f = start
         | shorter m0 m1  = union0
         | shorter m1 m0  = union1
         | p0 == p1       = branch p0 m0 (go l0 l1) (go r0 r1)
-        | otherwise      = branchMerge p0 t0 p1 t1
+        | otherwise      = mergeNE p0 t0 p1 t1
         where
-        union0  | nomatch p1 p0 m0  = branchMerge p0 t0 p1 t1
+        union0  | nomatch p1 p0 m0  = mergeNE p0 t0 p1 t1
                 | zero p1 m0        = branch p0 m0 (go l0 t1) r0
                 | otherwise         = branch p0 m0 l0 (go r0 t1)
-        union1  | nomatch p0 p1 m1  = branchMerge p0 t0 p1 t1
+        union1  | nomatch p0 p1 m1  = mergeNE p0 t0 p1 t1
                 | zero p0 m1        = branch p1 m1 (go t0 l1) r1
                 | otherwise         = branch p1 m1 l1 (go t0 r1)
     --
@@ -1947,13 +1948,13 @@ mergeBy f = start
         p' = applyMask p0 m'
     go t0@(Arc k0 _ _)
        t1@(Branch p1 m1 l r)
-        | nomatch p0 p1 m1 = branchMerge p1 t1  p0 t0
+        | nomatch p0 p1 m1 = mergeNE p1 t1  p0 t0
         | zero p0 m1       = branch p1 m1 (go t0 l) r
         | otherwise        = branch p1 m1 l (go t0 r)
         where p0 = arcPrefix k0
     go t0@(Branch p0 m0 l r)
        t1@(Arc k1 _ _)
-        | nomatch p1 p0 m0 = branchMerge p0 t0  p1 t1
+        | nomatch p1 p0 m0 = mergeNE p0 t0  p1 t1
         | zero p1 m0       = branch p0 m0 (go l t1) r
         | otherwise        = branch p0 m0 l (go r t1)
         where p1 = arcPrefix k1

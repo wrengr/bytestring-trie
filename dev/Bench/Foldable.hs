@@ -116,7 +116,7 @@ foldMap_v027 f = go
     go (Branch _ _ l r)   = go l `mappend` go r
 
 ----------------------------------------------------------------
-foldMap'_default, foldMap'_v027, foldMap'_v027_cps, foldMap'_v027_flop
+foldMap'_default, foldMap'_v027, foldMap'_v027_cps, foldMap'_v027_flop, foldMap'_v027_bang, foldMap'_v027_flop_bang
     :: Monoid m => (a -> m) -> Trie a -> m
 
 -- | default definition.
@@ -148,6 +148,28 @@ foldMap'_v027_flop f = \t -> go t mempty
     go (Arc _ Nothing  t)  m = go t m
     go (Arc _ (Just v) t)  m = go t (m `mappend` f v)
     go (Branch _ _ l r)    m = go r (go l m)
+
+-- | This really shouldn't matter, but given our experience with 'foldl'_v027_flop_bang'...
+-- And yet, is slightly better than 'foldMap'_v027_flop', slightly
+-- worse than 'foldMap'_v027_flop_bang'; identical allocation for
+-- all these variants.
+foldMap'_v027_bang f = go mempty
+    where
+    go !m Empty              = m
+    go  m (Arc _ Nothing  t) = go m t
+    go  m (Arc _ (Just v) t) = (go $! mappend m (f v)) t
+    go  m (Branch _ _ l r)   = (go $! go m l) r
+
+-- | This really shouldn't matter, but given our experience with 'foldl'_v027_flop_bang'...
+-- And yet, is slightly better than 'foldMap'_v027_bang', slightly
+-- worse than 'foldMap'_v027'; identical allocation for all these
+-- variants.
+foldMap'_v027_flop_bang f = \t -> go t mempty
+    where
+    go Empty              !m = m
+    go (Arc _ Nothing  t)  m = go t m
+    go (Arc _ (Just v) t)  m = go t $! mappend m (f v)
+    go (Branch _ _ l r)    m = go r $! go l m
 
 ----------------------------------------------------------------
 foldr_default, foldr_compose, foldr_eta, foldr_cps_eta, foldr_cps, foldr_noClosure
@@ -206,7 +228,7 @@ foldr_noClosure f z (Branch _ _ l r)   =
     foldr_noClosure f (foldr_noClosure f z r) l
 
 ----------------------------------------------------------------
-foldr'_default, foldr'_v027, foldr'_v027_cps, foldr'_cps, foldr'_v027_flop
+foldr'_default, foldr'_v027, foldr'_v027_cps, foldr'_cps, foldr'_v027_flop, foldr'_v027_bang, foldr'_v027_flop_bang
     :: (a -> b -> b) -> b -> Trie a -> b
 
 -- | The default definition as of base-4.16.0.0 (including the phrasing
@@ -249,6 +271,25 @@ foldr'_v027_flop f z0 = \t -> go t z0 -- eta for better inlining
     go (Arc _ Nothing  t)  z = go t z
     go (Arc _ (Just v) t)  z = f v $! go t z
     go (Branch _ _ l r)    z = go l (go r z)
+
+-- | This really shouldn't matter, but given our experience with 'foldl'_v027_flop_bang'...
+-- And yet, faster than 'foldr'_cps', slower than 'foldr'_v027_flop'.
+foldr'_v027_bang f z0 = go z0 -- eta for better inlining
+    where
+    go !z Empty              = z
+    go  z (Arc _ Nothing  t) = go z t
+    go  z (Arc _ (Just v) t) = f v $! go z t
+    go  z (Branch _ _ l r)   = (go $! go z r) l
+
+-- | This really shouldn't matter, but given our experience with 'foldl'_v027_flop_bang'...
+-- And yet, marginally faster than 'foldr'_v027_flop', more
+-- significantly slower than 'foldr'_v027'.
+foldr'_v027_flop_bang f z0 = \t -> go t z0 -- eta for better inlining
+    where
+    go Empty              !z = z
+    go (Arc _ Nothing  t)  z = go t z
+    go (Arc _ (Just v) t)  z = f v $! go t z
+    go (Branch _ _ l r)    z = go l $! go r z
 
 ----------------------------------------------------------------
 foldl_default, foldl_default_Coerce, foldl_v027, foldl_v027_flop
@@ -421,6 +462,8 @@ main = C.defaultMain
       , C.bench "v0.2.7"            $ C.nf (intToSum (foldMap'_v027      id)) ts
       , C.bench "v0.2.7 +cps"       $ C.nf (intToSum (foldMap'_v027_cps  id)) ts
       , C.bench "v0.2.7 +flopped"   $ C.nf (intToSum (foldMap'_v027_flop id)) ts
+      , C.bench "v0.2.7 +($!)"      $ C.nf (intToSum (foldMap'_v027_bang id)) ts
+      , C.bench "v0.2.7 +flopped +($!)" $ C.nf (intToSum (foldMap'_v027_flop_bang id)) ts
       ]
     , C.bgroup "foldr"
       [ C.bench "default (foldMap)" $ C.nf (foldr_default     (+) 0 <$>) ts
@@ -436,6 +479,8 @@ main = C.defaultMain
       , C.bench "v0.2.7 +cps"       $ C.nf (foldr'_v027_cps    (+) 0 <$>) ts
       , C.bench "cps, no eta"       $ C.nf (foldr'_cps         (+) 0 <$>) ts
       , C.bench "v0.2.7 +flopped"   $ C.nf (foldr'_v027_flop   (+) 0 <$>) ts
+      , C.bench "v0.2.7 +($!)"      $ C.nf (foldr'_v027_bang   (+) 0 <$>) ts
+      , C.bench "v0.2.7 +flopped +($!)" $ C.nf (foldr'_v027_flop_bang (+) 0 <$>) ts
       ]
     , C.bgroup "foldl"
       [ C.bench "default (foldMap)" $ C.nf (foldl_default        (+) 0 <$>) ts

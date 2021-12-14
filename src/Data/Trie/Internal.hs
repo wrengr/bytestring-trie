@@ -1134,12 +1134,15 @@ instance Foldable Trie where
     foldr' f z0 = \t -> go t z0 -- take only 2 arguments, for better inlining.
         where
         -- Benchmarking on GHC 9.2.1 indicates that for this function
-        -- the (t,z) argument order is ~10% faster than (z,t).
-        -- Allocation is the same for both.
+        -- the (t,z) argument order is ~10% faster than (z,t);
+        -- allocation is the same for both.  Also, weirdly,
+        -- benchmarking indicates that the @($!)@ in the Branch
+        -- case slightly improved things.
+        -- TODO: what's going on with the @($!)@; bogus?
         go Empty              !z = z
         go (Arc _ Nothing  t)  z = go t z
         go (Arc _ (Just v) t)  z = f v $! go t z
-        go (Branch _ _ l r)    z = go l (go r z)
+        go (Branch _ _ l r)    z = go l $! go r z
 #endif
     {-# INLINE foldl #-}
     foldl f z0 = \t -> go t z0 -- take only 2 arguments, for better inlining.
@@ -1161,6 +1164,8 @@ instance Foldable Trie where
         -- the (z,t) argument order is significantly faster (~10%) and
         -- allocates half as much.
         -- TODO: figure out why\/how the allocation could differ so much; bogus?
+        -- TODO: figure out why benchmarking indicates the \"flop_bang\"
+        -- version is ~4% faster (albeit ~32% more allocation); bogus?
         go !z Empty              = z
         go  z (Arc _ Nothing  t) = go z t
         go  z (Arc _ (Just v) t) = go (f z v) t

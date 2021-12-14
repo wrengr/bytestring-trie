@@ -25,9 +25,11 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        # Note(2021-10-23): All these versions resolve to using the
-        #   latest Cabal (3.4.0.0); they do *not* use the version of
-        #   Cabal that originally shipped with the version of GHC.
+        # Note: All these versions resolve to using the latest Cabal
+        # (3.6.2.0 as of 2021-12-14); they do *not* use the version
+        # of Cabal that originally shipped with the version of GHC.
+        # Which is good, because we require Cabal>=2.2 which only
+        # ships with GHC>=8.4
         os: [ubuntu-latest]
         ghc: ['8.0.2', '8.2.2', '8.4.4', '8.6.5', '8.8.4', '8.10.3', '9.0.1', '9.2.1']
         include:

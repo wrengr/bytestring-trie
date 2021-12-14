@@ -1105,7 +1105,6 @@ instance Foldable Trie where
     {-# INLINE foldMap' #-}
     foldMap' f = go mempty
         where
-        -- TODO: CPS to restore the purely tail-call for @Branch@?
         go !m Empty              = m
         go  m (Arc _ Nothing  t) = go m t
         go  m (Arc _ (Just v) t) = go (m `mappend` f v) t

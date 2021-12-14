@@ -2,7 +2,7 @@
 {-# LANGUAGE CPP, BangPatterns #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.12.13
+--                                                  ~ 2021.12.14
 -- |
 -- Module      :  Bench.Foldable
 -- Copyright   :  2008--2021 wren gayle romano
@@ -36,6 +36,8 @@ import qualified Criterion.Measurement.Types.Internal as C (nf')
 -- having reduced dependencies.  It doesn't do the HTML output, but
 -- otherwise should be fine for our needs.  It's what the @containers@
 -- library is using these days.
+-- BUG: @gauge@ depends on @basement@ which as of version 0.0.12
+-- doesn't support GHC 9.2; so we'll have to revisit this later.
 ----------------------------------------------------------------
 
 -- | Reference definition, to avoid needing to expose constructors
@@ -445,7 +447,7 @@ intToSum f = fmap f . coerce
 main :: IO ()
 main = C.defaultMain
   [ C.env (QC.generate $ QC.vectorOf 10 $ arbitraryTrie 30 10) $ \ ts ->
-    C.bgroup "arbitrary"
+    C.bgroup "Foldable"
     [ C.bgroup "fold"
       [ C.bench "default (foldMap)"       $ C.nf (intToSum fold_foldMap      ) ts
       , C.bench "default (foldr_compose)" $ C.nf (intToSum fold_foldrCompose) ts

@@ -148,7 +148,7 @@ Test-Suite test-all
                  -- lazysmallcheck    >= 0.6      && < 0.7
 
 ----------------------------------------------------------------
-Benchmark criterion-Foldable
+Benchmark bench-Foldable
     Import:         library-build-depends
     Type:           exitcode-stdio-1.0
     Hs-Source-Dirs: dev
@@ -159,6 +159,9 @@ Benchmark criterion-Foldable
     Build-Depends:  bytestring-trie -any
                  -- TODO: try using @gauge@ instead of @criterion@,
                  -- to reduce the transitive dependencies.
+                 -- BUG: @gauge@ depends on @basement@ which as of
+                 -- version 0.0.12 doesn't support GHC 9.2; so we'll
+                 -- have to revisit this later.
                  ,  criterion
                  ,  criterion-measurement
                  ,  QuickCheck  >= 2.10  && < 2.15

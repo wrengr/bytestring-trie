@@ -4,8 +4,8 @@
 --                                                  ~ 2021.12.14
 -- |
 -- Module      :  Unused.CriterionExts
--- Copyright   :  2008--2021 wren gayle romano
--- License     :  BSD3
+-- Copyright   :  2008--2021 wren romano
+-- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
 -- Portability :  portable

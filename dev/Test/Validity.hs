@@ -1,11 +1,11 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.12.13
+--                                                  ~ 2021.12.14
 -- |
 -- Module      :  Test.Validity
--- Copyright   :  2021 wren gayle romano, 2004--2021 libraries@haskell.org
--- License     :  BSD3
+-- Copyright   :  2021 wren romano, 2004--2021 libraries@haskell.org
+-- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
 -- Portability :  portable

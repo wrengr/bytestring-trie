@@ -9,11 +9,11 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ----------------------------------------------------------------
---                                                  ~ 2021.12.11
+--                                                  ~ 2021.12.14
 -- |
 -- Module      :  Data.Trie.Internal.BitTwiddle
 -- Copyright   :  2012 Clark Gaebel, 2012 Johan Tibel, 2002 Daan Leijen
--- License     :  BSD3
+-- License     :  BSD-3-Clause
 -- Maintainer  :  libraries@haskell.org, wren@cpan.org
 -- Stability   :  stable
 -- Portability :  portable (with CPP)

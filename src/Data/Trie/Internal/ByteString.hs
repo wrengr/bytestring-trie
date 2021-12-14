@@ -6,11 +6,11 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.12.11
+--                                              ~ 2021.12.14
 -- |
 -- Module      :  Data.Trie.Internal.ByteString
 -- Copyright   :  2008--2021 wren romano
--- License     :  BSD3
+-- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  stable
 -- Portability :  GHC-only

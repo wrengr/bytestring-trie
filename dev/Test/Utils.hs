@@ -6,11 +6,11 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.12.13
+--                                                  ~ 2021.12.14
 -- |
 -- Module      :  Test.Utils
--- Copyright   :  2008--2021 wren gayle romano
--- License     :  BSD3
+-- Copyright   :  2008--2021 wren romano
+-- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
 -- Portability :  semi-portable (MPTC,...)

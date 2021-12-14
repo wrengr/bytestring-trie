@@ -102,8 +102,8 @@ Test-Suite test-all
     -- unlike Executable Main-Is, which is relative to this cabal
     -- file's directory instead.
     Main-Is:        Test/Main.hs
-    -- TODO: Other-Modules:  Shared.Utils
-    Other-Modules:  Test.Utils
+    Other-Modules:  Shared.Sum
+                 ,  Test.Utils
                  ,  Test.Properties
                  -- Test.Validity
                  -- Test.ByteStringInternal

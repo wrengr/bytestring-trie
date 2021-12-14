@@ -18,6 +18,12 @@
 ----------------------------------------------------------------
 module Main (main) where
 
+#if !(MIN_VERSION_base(4,13,0))
+-- [aka GHC 8.8.1]: For some reason we get an \"unused import\"
+-- warning for these versions, even though the Prelude doesn't
+-- actually re-export 'Data.Semigroup.Sum'.
+import Shared.Sum
+#endif
 import Test.Utils
 import Test.Properties (smallcheckTests, quickcheckTests)
 
@@ -41,18 +47,6 @@ import Data.Semigroup      (Semigroup((<>)))
 #elif MIN_VERSION_base(4,5,0)
 -- [aka GHC 7.4.1]: @(<>)@ added to "Data.Monoid".
 import Data.Monoid         ((<>))
-#endif
-
-#if MIN_VERSION_base(4,13,0)
--- TODO: apparently base-4.13.0 re-exports 'Sum' as well?
-#elif MIN_VERSION_base(4,9,0)
-import Data.Semigroup      (Sum(..))
-#else
-data Sum a = Sum a
-    deriving (Eq, Ord, Read, Show, Bounded, Num)
-instance Num a => Monoid (Sum a) where
-    mempty = Sum 0
-    mappend (Sum x) (Sum y) = Sum (x + y)
 #endif
 
 ----------------------------------------------------------------

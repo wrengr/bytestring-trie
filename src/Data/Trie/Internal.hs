@@ -51,6 +51,7 @@ module Data.Trie.Internal
     , alterBy, alterBy_, adjust
 
     -- * Combining tries
+    , wip_unionWith
     , mergeBy, intersectBy
 
     -- * Filtering and mapping functions
@@ -1804,6 +1805,80 @@ adjust f = start
 -- constructors directly, rather than smart constructors that patch
 -- up the deletion cases.  Especially since the vast majority of
 -- our own uses of 'mergeBy' fall into this category.
+
+-- TODO: Test that this doesn't introduce any bugs. And benchmark
+-- it to see how much it really saves vs 'mergeBy'.
+wip_unionWith :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
+wip_unionWith f = start
+    where
+    -- | Deals with epsilon entries, before recursing into @go@
+    -- TODO: for all of these, add assertions that null bytestring entails must be Just; instead of pattern matching on it directly.
+    start (Arc k0 (Just v0) s0) (Arc k1 (Just v1) s1) | S.null k0 && S.null k1
+                                                  = epsilon (Just $ f v0 v1) (go s0 s1)
+    start (Arc k0 mv0@(Just _) s0) t1 | S.null k0 = epsilon mv0 (go s0 t1)
+    start t0 (Arc k1 mv1@(Just _) s1) | S.null k1 = epsilon mv1 (go t0 s1)
+    start t0 t1                                   = go t0 t1
+
+    -- | The main recursion
+    go Empty t1    = t1
+    go t0    Empty = t0
+    -- \(\mathcal{O}(n+m)\) for this part where \(n\) and \(m\) are
+    -- sizes of the branchings.
+    go t0@(Branch p0 m0 l0 r0)
+       t1@(Branch p1 m1 l1 r1)
+        | shorter m0 m1  = union0
+        | shorter m1 m0  = union1
+        | p0 == p1       = Branch p0 m0 (go l0 l1) (go r0 r1)
+        -- TODO: a variant of 'branchMerge' which doesn't check for Empty; only does the 'zero' check.
+        | otherwise      = branchMerge p0 t0 p1 t1
+        where
+        union0  | nomatch p1 p0 m0  = branchMerge p0 t0 p1 t1
+                | zero p1 m0        = Branch p0 m0 (go l0 t1) r0
+                | otherwise         = Branch p0 m0 l0 (go r0 t1)
+        union1  | nomatch p0 p1 m1  = branchMerge p0 t0 p1 t1
+                | zero p0 m1        = Branch p1 m1 (go t0 l1) r1
+                | otherwise         = Branch p1 m1 l1 (go t0 r1)
+    --
+    go t0@(Arc k0 mv0 s0)
+       t1@(Arc k1 mv1 s1)
+        | m' == 0 =
+            let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
+            if S.null pre
+            then error "unionWith: no mask, but no prefix string"
+            else
+                let {-# INLINE t0' #-}
+                    t0' = Arc k0' mv0 s0
+                    {-# INLINE t1' #-}
+                    t1' = Arc k1' mv1 s1
+                in
+                case (S.null k0', S.null k1') of
+                (True, True)  -> arcNN pre (mergeMaybe (\v0 v1 -> Just (f v0 v1)) mv0 mv1) (go s0 s1)
+                -- TODO: check that these three are correct re invariants!
+                (True, False) -> Arc pre mv0     (go s0  t1')
+                (False,True)  -> Arc pre mv1     (go t0' s1)
+                (False,False) -> Arc pre Nothing (go t0' t1')
+        -- Inlined 'branchMerge'; the two @Arc@s are disjoint.
+        | zero p0 m'       = Branch p' m' t0 t1
+        | otherwise        = Branch p' m' t1 t0
+        where
+        p0 = arcPrefix k0
+        p1 = arcPrefix k1
+        m' = getMask p0 p1
+        p' = applyMask p0 m'
+    go t0@(Arc k0 _ _)
+       t1@(Branch p1 m1 l r)
+       -- TODO: again, 'branchMerge' without Empty check.
+        | nomatch p0 p1 m1 = branchMerge p1 t1  p0 t0
+        | zero p0 m1       = Branch p1 m1 (go t0 l) r
+        | otherwise        = Branch p1 m1 l (go t0 r)
+        where p0 = arcPrefix k0
+    go t0@(Branch p0 m0 l r)
+       t1@(Arc k1 _ _)
+       -- TODO: again, 'branchMerge' without Empty check.
+        | nomatch p1 p0 m0 = branchMerge p0 t0  p1 t1
+        | zero p1 m0       = Branch p0 m0 (go l t1) r
+        | otherwise        = Branch p0 m0 l (go r t1)
+        where p1 = arcPrefix k1
 
 
 -- TEST CASES: foldr (unionL . uncurry singleton) empty t

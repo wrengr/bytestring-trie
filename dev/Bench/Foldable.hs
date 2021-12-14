@@ -1,4 +1,5 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
+{-# LANGUAGE CPP, BangPatterns #-}
 
 ----------------------------------------------------------------
 --                                                  ~ 2021.12.13
@@ -15,9 +16,12 @@
 
 module Main (main) where
 
+import           Shared.Sum
 import qualified Data.Trie           as T
 import qualified Data.Trie.Internal  as TI
+
 import qualified Data.ByteString     as S
+-- TODO: "Data.Coerce" requires MIN_VERSION_base(4,7,0)
 import           Data.Coerce         (Coercible, coerce)
 import           Data.Semigroup      (Endo(..))
 import           Data.Word           (Word8)
@@ -64,33 +68,7 @@ instance NFData a => NFData (Trie a) where
 {-# INLINE (#.) #-}
 
 ----------------------------------------------------------------
-{-
--- TODO:
-fold_base41600, fold_inlined
-    :: Monoid m => Trie m -> m
-
--- The default definition as of base-4.16.0.0
-fold_base41600 = foldMap_bytestringtrie000207 id
-
--- bytestring-trie-0.2.7 definition
-fold_inlined = go
-    where
-    go Empty              = mempty
-    go (Arc _ Nothing  t) = go t
-    go (Arc _ (Just v) t) = v `mappend` go t
-    go (Branch _ _ l r)   = go l `mappend` go r
--}
-
-----------------------------------------------------------------
-foldr_base41600, foldr_compose, foldr_eta, foldr_cps_eta, foldr_cps, foldr_noClosure
-    :: (a -> b -> b) -> b -> Trie a -> b
-
--- The default definition as of base-4.16.0.0
--- Actually a pretty solid baseline.
-foldr_base41600 f z t =
-    appEndo (foldMap_bytestringtrie000207 (Endo #. f) t) z
-
--- bytestring-trie-0.2.7 definition
+-- | 'foldMap' bytestring-trie-0.2.7 definition, used for defaults.
 foldMap_bytestringtrie000207 :: Monoid m => (a -> m) -> Trie a -> m
 foldMap_bytestringtrie000207 f = go
     where
@@ -98,6 +76,48 @@ foldMap_bytestringtrie000207 f = go
     go (Arc _ Nothing  t) = go t
     go (Arc _ (Just v) t) = f v `mappend` go t
     go (Branch _ _ l r)   = go l `mappend` go r
+
+-- | 'foldMap' bytestring-trie-0.2.7 definition, used for defaults.
+foldl_bytestringtrie000207 :: (b -> a -> b) -> b -> Trie a -> b
+foldl_bytestringtrie000207 f z0 = \t -> go z0 t -- eta for better inlining
+    where
+    go z Empty              = z
+    go z (Arc _ Nothing  t) = go z t
+    go z (Arc _ (Just v) t) = go (f z v) t
+    go z (Branch _ _ l r)   = go (go z l) r
+
+----------------------------------------------------------------
+fold_foldMap, fold_foldr_compose, fold_foldr_eta, fold_inlined
+    :: Monoid m => Trie m -> m
+
+-- The default 'fold' definition as of base-4.16.0.0
+fold_foldMap = foldMap_bytestringtrie000207 id
+
+-- Default 'fold' via default 'foldMap', but inlining the 'id' away.
+-- Far worse, both for runtime and allocation.
+fold_foldr_compose = foldr_compose mappend mempty
+
+-- This is somewhat worse even.
+fold_foldr_eta = foldr_eta mappend mempty
+
+-- bytestring-trie-0.2.7 definition
+-- This is a clear win over 'fold_foldMap': about half the runtime,
+-- and one eighth the allocations.
+fold_inlined = go
+    where
+    go Empty              = mempty
+    go (Arc _ Nothing  t) = go t
+    go (Arc _ (Just v) t) = v `mappend` go t
+    go (Branch _ _ l r)   = go l `mappend` go r
+
+----------------------------------------------------------------
+foldr_foldMap, foldr_compose, foldr_eta, foldr_cps_eta, foldr_cps, foldr_noClosure
+    :: (a -> b -> b) -> b -> Trie a -> b
+
+-- The default definition as of base-4.16.0.0
+-- Actually a pretty solid baseline.
+foldr_foldMap f z t =
+    appEndo (foldMap_bytestringtrie000207 (Endo #. f) t) z
 
 -- bytestring-trie-0.2.7 definition
 -- Identical allocation as EndoDefault; about the same speed, or a
@@ -146,10 +166,45 @@ foldr_noClosure f z (Branch _ _ l r)   =
     foldr_noClosure f (foldr_noClosure f z r) l
 
 ----------------------------------------------------------------
+foldr'_default, foldr'_eta, foldr'_cps_eta, foldr'_cps
+    :: (a -> b -> b) -> b -> Trie a -> b
+
+-- The default definition as of base-4.16.0.0 (including the phrasing
+-- of using a where-clause rather than a lambda).
+-- The worst of the lot.
+foldr'_default f z0 xs =
+    foldl_bytestringtrie000207 f' id xs z0
+    where f' k x z = k $! f x z
+
+-- bytestring-trie-0.2.7 definition
+-- This one is the clear winner, both for time and allocation.
+foldr'_eta f z0 = \t -> go z0 t -- eta for better inlining
+    where
+    go !z Empty              = z
+    go  z (Arc _ Nothing  t) = go z t
+    go  z (Arc _ (Just v) t) = f v $! go z t
+    go  z (Branch _ _ l r)   = go (go z r) l
+
+-- Worse than 'foldr'_eta' but still better than the rest.
+foldr'_cps_eta f z0 = \t -> go t z0 id -- eta for better inlining
+    where
+    go Empty              !z c = c z
+    go (Arc _ Nothing  t)  z c = go t z c
+    go (Arc _ (Just v) t)  z c = go t z (\ !z' -> c $! f v z')
+    go (Branch _ _ l r)    z c = go r z (\ !z' -> go l z' c)
+
+-- Worse than 'foldr'_cps_eta' but still better than 'foldr'_default'
+foldr'_cps f z0 = \t -> go t id z0 -- eta for better inlining
+    where
+    go Empty              c = c
+    go (Arc _ Nothing  t) c = go t c
+    go (Arc _ (Just v) t) c = go t (\ !z -> c $! f v z)
+    go (Branch _ _ l r)   c = go r (go l c)
+
+
+----------------------------------------------------------------
 {-
 -- TODO: the base-4.16.0.0 defaults are shown
-
-fold       = foldMap id
 foldMap  f = foldr (mappend . f) mempty
 foldMap' f = foldl' (\ acc a -> acc <> f a) mempty
 foldr f z t = appEndo (foldMap (Endo #. f) t) z
@@ -212,6 +267,9 @@ generatePerBatch gen f =
         False
 
 ----------------------------------------------------------------
+intToSum :: (Trie (Sum Int) -> a) -> [Trie Int] -> [a]
+intToSum f = fmap f . coerce
+
 -- BUG: since we started generating a collection of tries, we've
 -- started to see different results: each test progressively slower
 -- than the last.  Seems bogus, but not sure what's up since criterion
@@ -221,20 +279,27 @@ main :: IO ()
 main = C.defaultMain
   [ C.env (QC.generate $ QC.vectorOf 5 $ arbitraryTrie 50 20) $ \ ts ->
     C.bgroup "arbitrary"
-    {-
-    -- TODO:
     [ C.bgroup "fold"
-      [ C.bench "base-4.16 default" $ C.nf (fold_base41600 <$>) ts
-      , C.bench "inlined"           $ C.nf (fold_inlined   <$>) ts
+      [ C.bench "via foldMap"       $ C.nf (intToSum fold_foldMap      ) ts
+      , C.bench "via foldr_compose" $ C.nf (intToSum fold_foldr_compose) ts
+      , C.bench "via foldr_eta"     $ C.nf (intToSum fold_foldr_eta    ) ts
+      , C.bench "inlined"           $ C.nf (intToSum fold_inlined      ) ts
       ]
-    -}
-    [ C.bgroup "foldr"
-      [ C.bench "base-4.16 default" $ C.nf (foldr_base41600   (+) 0 <$>) ts
+    , C.bgroup "foldr"
+      [ C.bench "via foldMap"       $ C.nf (foldr_foldMap     (+) 0 <$>) ts
       , C.bench "compose"           $ C.nf (foldr_compose     (+) 0 <$>) ts
       , C.bench "eta"               $ C.nf (foldr_eta         (+) 0 <$>) ts
+      {- -- Commented out because they're terrible.
       , C.bench "cps_eta"           $ C.nf (foldr_cps_eta     (+) 0 <$>) ts
       , C.bench "cps"               $ C.nf (foldr_cps         (+) 0 <$>) ts
       , C.bench "noClosure"         $ C.nf (foldr_noClosure   (+) 0 <$>) ts
+      -- -}
+      ]
+    , C.bgroup "foldr'"
+      [ C.bench "default"           $ C.nf (foldr'_default     (+) 0 <$>) ts
+      , C.bench "eta"               $ C.nf (foldr'_eta         (+) 0 <$>) ts
+      , C.bench "cps_eta"           $ C.nf (foldr'_cps_eta     (+) 0 <$>) ts
+      , C.bench "cps"               $ C.nf (foldr'_cps         (+) 0 <$>) ts
       ]
     ]
   ]

@@ -1112,18 +1112,15 @@ instance Foldable Trie where
         go  m (Branch _ _ l r)   = go (go m l) r
 #endif
     --
-    -- TODO: benchmark this one against the Endo-based default.
-    -- TODO: if it's slower, try expanding out the CPS stuff again.
-    -- (Though to be sure that doesn't interfere with being a
-    -- good-producer for list fusion.)
-    -- TODO: is this safe for deep-strict @f@, or only WHNF-strict?
-    -- (Cf., the bug note at 'foldrWithKeys')
-    -- TODO: do we need to float this definition out of the class
-    --  in order to get it to inline appropriately for list fusion etc?
+    -- TODO: This implementation, a variation with eta-expanded
+    -- recursion, and the 'Endo'-based default are all about the
+    -- same performance.  The eta-expanded version trends towards
+    -- being slightly faster, but it costs ~43% more allocation
+    -- (larger thunks?).  So should we just leave the default or
+    -- eta-expand?
     {-# INLINE foldr #-}
     foldr f z0 = \t -> go t z0 -- eta for better inlining
         where
-        -- TODO: would it be better to eta-expand this?
         go Empty              = id
         go (Arc _ Nothing  t) =       go t
         go (Arc _ (Just v) t) = f v . go t
@@ -1136,15 +1133,6 @@ instance Foldable Trie where
         go  z (Arc _ Nothing  t) = go z t
         go  z (Arc _ (Just v) t) = f v $! go z t
         go  z (Branch _ _ l r)   = go (go z r) l
-    {-
-    -- TODO: benchmark this variant vs the above.
-    foldr' f z0 = \t -> go t z0 id -- eta for better inlining
-        where
-        go Empty              !z c = c z
-        go (Arc _ Nothing  t)  z c = go t z c
-        go (Arc _ (Just v) t)  z c = go t z (\ !z' -> c $! f v z')
-        go (Branch _ _ l r)    z c = go r z (\ !z' -> go l z' c)
-    -}
 #endif
     {-# INLINE foldl #-}
     foldl f z0 = \t -> go z0 t -- eta for better inlining

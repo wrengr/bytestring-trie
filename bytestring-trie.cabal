@@ -147,7 +147,7 @@ Benchmark criterion-Foldable
     -- NOTE: Benchmark Main-Is behaves like Test-Suite Main-Is
     -- (not like Executable Main-Is).
     Main-Is:        Bench/Foldable.hs
-    -- TODO: Other-Modules:  Shared.Utils
+    Other-Modules:  Shared.Sum
     Build-Depends:  base        >= 4.5   && < 4.17
                  ,  bytestring  >= 0.9.2 && < 0.12
                  ,  binary      >= 0.5.1 && < 0.11

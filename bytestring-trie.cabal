@@ -122,9 +122,11 @@ Test-Suite test-all
                  ,  deepseq     >= 1.2   && < 1.5
                  -- We must include our own library for the tests
                  -- to use it; but we must not give a version
-                 -- restriction lest Cabal give warnings.  And if we
-                 -- don't pass -any, then Cabal will fill in ">= 0 &&
-                 -- <= $CurrentVersion" which will also give a warning.
+                 -- restriction lest Cabal give warnings.
+                 -- Also <https://github.com/haskell/cabal/issues/5119>:
+                 -- if we don't pass -any, then Cabal will fill in
+                 -- ">= 0 && <= $ThisVersion" which will also give
+                 -- a warning.
                  ,  bytestring-trie   -any
                  ,  tasty             >= 0.10.1.2 && < 1.5
                  ,  tasty-smallcheck  >= 0.8.0.1  && < 0.9

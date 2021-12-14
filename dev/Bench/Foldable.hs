@@ -69,17 +69,8 @@ instance NFData a => NFData (Trie a) where
 
 ----------------------------------------------------------------
 -- | 'foldMap' bytestring-trie-0.2.7 definition, used for defaults.
-foldMap_bytestringtrie000207 :: Monoid m => (a -> m) -> Trie a -> m
-foldMap_bytestringtrie000207 f = go
-    where
-    go Empty              = mempty
-    go (Arc _ Nothing  t) = go t
-    go (Arc _ (Just v) t) = f v `mappend` go t
-    go (Branch _ _ l r)   = go l `mappend` go r
-
--- | 'foldMap' bytestring-trie-0.2.7 definition, used for defaults.
-foldl_bytestringtrie000207 :: (b -> a -> b) -> b -> Trie a -> b
-foldl_bytestringtrie000207 f z0 = \t -> go z0 t -- eta for better inlining
+foldl_v027 :: (b -> a -> b) -> b -> Trie a -> b
+foldl_v027 f z0 = \t -> go z0 t -- eta for better inlining
     where
     go z Empty              = z
     go z (Arc _ Nothing  t) = go z t
@@ -87,11 +78,11 @@ foldl_bytestringtrie000207 f z0 = \t -> go z0 t -- eta for better inlining
     go z (Branch _ _ l r)   = go (go z l) r
 
 ----------------------------------------------------------------
-fold_foldMap, fold_foldr_compose, fold_foldr_eta, fold_inlined
+fold_foldMap, fold_foldr_compose, fold_foldr_eta, fold_v027
     :: Monoid m => Trie m -> m
 
 -- The default 'fold' definition as of base-4.16.0.0
-fold_foldMap = foldMap_bytestringtrie000207 id
+fold_foldMap = foldMap_v027 id
 
 -- Default 'fold' via default 'foldMap', but inlining the 'id' away.
 -- Far worse, both for runtime and allocation.
@@ -103,12 +94,32 @@ fold_foldr_eta = foldr_eta mappend mempty
 -- bytestring-trie-0.2.7 definition
 -- This is a clear win over 'fold_foldMap': about half the runtime,
 -- and one eighth the allocations.
-fold_inlined = go
+fold_v027 = go
     where
     go Empty              = mempty
     go (Arc _ Nothing  t) = go t
     go (Arc _ (Just v) t) = v `mappend` go t
     go (Branch _ _ l r)   = go l `mappend` go r
+
+----------------------------------------------------------------
+foldMap_foldr_compose, foldMap_foldr_eta, foldMap_v027
+    :: Monoid m => (a -> m) -> Trie a -> m
+
+-- The default 'fold' definition as of base-4.16.0.0
+foldMap_foldr_compose f = foldr_compose (mappend . f) mempty
+foldMap_foldr_eta     f = foldr_eta     (mappend . f) mempty
+
+-- bytestring-trie-0.2.7 definition, also used elsewhere for defaults.
+-- Again, this is the clear winner over the default implementation.
+foldMap_v027 f = go
+    where
+    go Empty              = mempty
+    go (Arc _ Nothing  t) = go t
+    go (Arc _ (Just v) t) = f v `mappend` go t
+    go (Branch _ _ l r)   = go l `mappend` go r
+
+----------------------------------------------------------------
+-- TODO: foldMap' f = foldl' (\ acc a -> acc <> f a) mempty
 
 ----------------------------------------------------------------
 foldr_foldMap, foldr_compose, foldr_eta, foldr_cps_eta, foldr_cps, foldr_noClosure
@@ -117,7 +128,7 @@ foldr_foldMap, foldr_compose, foldr_eta, foldr_cps_eta, foldr_cps, foldr_noClosu
 -- The default definition as of base-4.16.0.0
 -- Actually a pretty solid baseline.
 foldr_foldMap f z t =
-    appEndo (foldMap_bytestringtrie000207 (Endo #. f) t) z
+    appEndo (foldMap_v027 (Endo #. f) t) z
 
 -- bytestring-trie-0.2.7 definition
 -- Identical allocation as EndoDefault; about the same speed, or a
@@ -173,7 +184,7 @@ foldr'_default, foldr'_eta, foldr'_cps_eta, foldr'_cps
 -- of using a where-clause rather than a lambda).
 -- The worst of the lot.
 foldr'_default f z0 xs =
-    foldl_bytestringtrie000207 f' id xs z0
+    foldl_v027 f' id xs z0
     where f' k x z = k $! f x z
 
 -- bytestring-trie-0.2.7 definition
@@ -205,8 +216,6 @@ foldr'_cps f z0 = \t -> go t id z0 -- eta for better inlining
 ----------------------------------------------------------------
 {-
 -- TODO: the base-4.16.0.0 defaults are shown
-foldMap  f = foldr (mappend . f) mempty
-foldMap' f = foldl' (\ acc a -> acc <> f a) mempty
 foldr f z t = appEndo (foldMap (Endo #. f) t) z
 foldr' f z0 xs = foldl f' id xs z0 where f' k x z = k $! f x z
 foldl f z t = appEndo (getDual (foldMap (Dual . Endo . flip f) t)) z
@@ -277,13 +286,18 @@ intToSum f = fmap f . coerce
 -- benchmark...
 main :: IO ()
 main = C.defaultMain
-  [ C.env (QC.generate $ QC.vectorOf 5 $ arbitraryTrie 50 20) $ \ ts ->
+  [ C.env (QC.generate $ QC.vectorOf 10 $ arbitraryTrie 30 10) $ \ ts ->
     C.bgroup "arbitrary"
     [ C.bgroup "fold"
       [ C.bench "via foldMap"       $ C.nf (intToSum fold_foldMap      ) ts
       , C.bench "via foldr_compose" $ C.nf (intToSum fold_foldr_compose) ts
       , C.bench "via foldr_eta"     $ C.nf (intToSum fold_foldr_eta    ) ts
-      , C.bench "inlined"           $ C.nf (intToSum fold_inlined      ) ts
+      , C.bench "v0.2.7"            $ C.nf (intToSum fold_v027         ) ts
+      ]
+    , C.bgroup "foldMap"
+      [ C.bench "via foldr_compose" $ C.nf (intToSum (foldMap_foldr_compose id)) ts
+      , C.bench "via foldr_eta"     $ C.nf (intToSum (foldMap_foldr_eta     id)) ts
+      , C.bench "v0.2.7"            $ C.nf (intToSum (foldMap_v027          id)) ts
       ]
     , C.bgroup "foldr"
       [ C.bench "via foldMap"       $ C.nf (foldr_foldMap     (+) 0 <$>) ts

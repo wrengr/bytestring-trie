@@ -22,6 +22,7 @@ module Main (main) where
 -- [aka GHC 8.8.1]: For some reason we get an \"unused import\"
 -- warning for these versions, even though the Prelude doesn't
 -- actually re-export 'Data.Semigroup.Sum'.
+-- FIXME: getting that unused import issue again for GHC 8.0--8.6.
 import Shared.Sum
 #endif
 import Test.Utils

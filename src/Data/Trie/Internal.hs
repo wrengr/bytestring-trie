@@ -1118,7 +1118,7 @@ instance Foldable Trie where
     -- (larger thunks?).  So should we just leave the default or
     -- eta-expand?
     {-# INLINE foldr #-}
-    foldr f z0 = \t -> go t z0 -- eta for better inlining
+    foldr f z0 = \t -> go t z0 -- take only 2 arguments, for better inlining.
         where
         go Empty              = id
         go (Arc _ Nothing  t) =       go t
@@ -1126,7 +1126,7 @@ instance Foldable Trie where
         go (Branch _ _ l r)   = go l . go r
 #if MIN_VERSION_base(4,6,0)
     {-# INLINE foldr' #-}
-    foldr' f z0 = \t -> go z0 t -- eta for better inlining
+    foldr' f z0 = go z0 -- take only 2 arguments, for better inlining.
         where
         go !z Empty              = z
         go  z (Arc _ Nothing  t) = go z t
@@ -1134,16 +1134,15 @@ instance Foldable Trie where
         go  z (Branch _ _ l r)   = go (go z r) l
 #endif
     {-# INLINE foldl #-}
-    foldl f z0 = \t -> go z0 t -- eta for better inlining
+    foldl f z0 = go z0 -- take only 2 arguments, for better inlining.
         where
-        -- TODO: CPS to restore the purely tail-call for @Branch@?
         go z Empty              = z
         go z (Arc _ Nothing  t) = go z t
         go z (Arc _ (Just v) t) = go (f z v) t
         go z (Branch _ _ l r)   = go (go z l) r
 #if MIN_VERSION_base(4,6,0)
     {-# INLINE foldl' #-}
-    foldl' f z0 = \t -> go z0 t -- eta for better inlining
+    foldl' f z0 = go z0 -- take only 2 arguments, for better inlining
         where
         -- TODO: CPS to restore the purely tail-call for @Branch@?
         go !z Empty              = z

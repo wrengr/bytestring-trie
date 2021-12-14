@@ -24,6 +24,7 @@ import qualified Data.ByteString     as S
 -- TODO: "Data.Coerce" requires MIN_VERSION_base(4,7,0)
 import           Data.Coerce         (Coercible, coerce)
 import           Data.Semigroup      (Endo(..))
+import           Data.Monoid         (Dual(..))
 import           Data.Word           (Word8)
 import           Control.DeepSeq     (NFData(rnf))
 import qualified Test.QuickCheck     as QC
@@ -68,15 +69,6 @@ instance NFData a => NFData (Trie a) where
 {-# INLINE (#.) #-}
 
 ----------------------------------------------------------------
--- | bytestring-trie-0.2.7 definition, used for defaults.
-foldl_v027 :: (b -> a -> b) -> b -> Trie a -> b
-foldl_v027 f z0 = \t -> go z0 t -- eta for better inlining
-    where
-    go z Empty              = z
-    go z (Arc _ Nothing  t) = go z t
-    go z (Arc _ (Just v) t) = go (f z v) t
-    go z (Branch _ _ l r)   = go (go z l) r
-
 -- | bytestring-trie-0.2.7 definition, used for defaults.
 foldl'_v027 :: (b -> a -> b) -> b -> Trie a -> b
 foldl'_v027 f z0 = \t -> go z0 t -- eta for better inlining
@@ -249,13 +241,50 @@ foldr'_cps f z0 = \t -> go t id z0 -- eta for better inlining
     go (Arc _ (Just v) t) c = go t (\ !z -> c $! f v z)
     go (Branch _ _ l r)   c = go r (go l c)
 
+----------------------------------------------------------------
+foldl_default, foldl_default_Coerce, foldl_v027
+    :: (b -> a -> b) -> b -> Trie a -> b
+
+-- | The default definition as of base-4.16.0.0.
+foldl_default f z t =
+    appEndo (getDual (foldMap_v027 (Dual . Endo . flip f) t)) z
+
+-- | Variant of the default that uses @('#.')@ in lieu of @('.')@.
+-- This one performs massively better than 'foldl_default'.
+-- TODO: send a patch to @base@ for this.
+foldl_default_Coerce f z t =
+    appEndo (getDual (foldMap_v027 (Dual #. Endo #. flip f) t)) z
+
+-- | bytestring-trie-0.2.7 definition, also used for defaults.
+-- This one is faster than 'foldl_default_Coerce'; though it allocates
+-- ~56% more than 'foldl_default_Coerce' (albeit ~11% /less/ than
+-- 'foldl_default').
+foldl_v027 f z0 = go z0 -- eta for better inlining
+    where
+    go z Empty              = z
+    go z (Arc _ Nothing  t) = go z t
+    go z (Arc _ (Just v) t) = go (f z v) t
+    go z (Branch _ _ l r)   = go (go z l) r
+
+-- | Since 'foldr_eta' allocates ~43% more than 'foldr_default',
+-- yet 'foldl_v027' allocates ~56% more: see if swapping the order
+-- of arguments in the recursion changes that.
+-- Marginally slower than 'foldl_v027' (<1%).
+-- Allocates ~8% less than 'foldl_v027'; ~19% less than 'foldl_default';
+-- albeit still ~42% more than 'foldl_default_Coerce'.
+foldl_v027_flop f z0 = \t -> go t z0 -- eta for better inlining
+    where
+    go Empty              z = z
+    go (Arc _ Nothing  t) z = go t z
+    go (Arc _ (Just v) t) z = go t (f z v)
+    go (Branch _ _ l r)   z = go r (go l z)
+
+-- We could try CPSing to restore the tail-recursion; but since
+-- that's worse everywhere else, there seems little point.
 
 ----------------------------------------------------------------
 {-
 -- TODO: the base-4.16.0.0 defaults are shown
-foldr f z t = appEndo (foldMap (Endo #. f) t) z
-foldr' f z0 xs = foldl f' id xs z0 where f' k x z = k $! f x z
-foldl f z t = appEndo (getDual (foldMap (Dual . Endo . flip f) t)) z
 foldl' f z0 xs = foldr f' id xs z0 where f' x k z = k $! f z x
 {-# INLINE toList #-} toList t = build (\ c n -> foldr c n t)
 null = foldr (\_ _ -> False) True
@@ -356,6 +385,12 @@ main = C.defaultMain
       , C.bench "v0.2.7"            $ C.nf (foldr'_v027        (+) 0 <$>) ts
       , C.bench "v0.2.7 +cps"       $ C.nf (foldr'_v027_cps    (+) 0 <$>) ts
       , C.bench "cps, no eta"       $ C.nf (foldr'_cps         (+) 0 <$>) ts
+      ]
+    , C.bgroup "foldl"
+      [ C.bench "default (foldMap)" $ C.nf (foldl_default        (+) 0 <$>) ts
+      , C.bench "default + Coerce"  $ C.nf (foldl_default_Coerce (+) 0 <$>) ts
+      , C.bench "v0.2.7"            $ C.nf (foldl_v027           (+) 0 <$>) ts
+      , C.bench "v0.2.7 + flopped"  $ C.nf (foldl_v027_flop      (+) 0 <$>) ts
       ]
     ]
   ]

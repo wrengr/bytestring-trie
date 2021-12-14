@@ -72,7 +72,7 @@ import Data.Word (Word)
 -- size.
 type KeyElem = ByteStringElem
 
--- | Some prefix of the 'KeyElem', as constructed by 'mask'.
+-- | Some prefix of the 'KeyElem', as constructed by 'applyMask'.
 type Prefix  = KeyElem
 
 -- | A single bit, signifying a mask (of all the bits preceding the
@@ -120,7 +120,7 @@ shiftRL x i = unsafeShiftR x i
 
 -- TODO: should we use the (Bits Word8) instance instead of 'elemToNat'
 -- and (Bits Nat)? We need to compare Core, C--, or ASM in order
--- to decide this. The choice will apply to 'zero', 'mask', 'maskW',...
+-- to decide this. The choice will apply to 'zero', 'applyMask', 'maskW',...
 -- If we shouldn't, then we should probably send a patch upstream
 -- to fix the (Bits Word8) instance.
 
@@ -131,7 +131,7 @@ zero :: KeyElem -> Mask -> Bool
 {-# INLINE zero #-}
 zero i m = (elemToNat i) .&. (elemToNat m) == 0
 
--- | Does the 'mask'ed key /not/ match the prefix?  (Hence a subtree
+-- | Does the masked key /not/ match the prefix?  (Hence a subtree
 -- matching the value doesn't exist.)
 nomatch :: KeyElem -> Prefix -> Mask -> Bool
 {-# INLINE nomatch #-}

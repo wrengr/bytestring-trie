@@ -29,8 +29,6 @@ import           Data.Word           (Word8)
 import           Control.DeepSeq     (NFData(rnf))
 import qualified Test.QuickCheck     as QC
 import qualified Criterion.Main      as C
-import qualified Criterion.Measurement.Types as C (Benchmarkable(..))
-import qualified Criterion.Measurement.Types.Internal as C (nf')
 -- TODO: consider using the @gauge@ library instead of @criterion@.
 -- It's a clone of criterion, also by BOS; with the intention of
 -- having reduced dependencies.  It doesn't do the HTML output, but
@@ -416,24 +414,6 @@ arbitraryTrie maxK maxL = do
 -- (Even though none of the folds depend on them...)
 realTrie_to_benchTrie :: T.Trie a -> Trie a
 realTrie_to_benchTrie = TI.cata_ Arc (Branch 0 0) Empty
-
--- | Generate a new argument for each batch. (This code is based
--- on 'C.perBatchEnv')
---
--- BUG: actually this is no good for our needs, since we want to
--- reuse the same generated values for all the benchmarks (else
--- we'll get garbage numbers due to the wide variance in input
--- argument size).  And alas, the \"batch\" notion only exists at
--- the 'C.Benchmarkable' level, not at the 'C.Benchmark' level; so
--- our idea can't be done actually.
-generatePerBatch
-    :: (NFData a, NFData b) => QC.Gen a -> (a -> b) -> C.Benchmarkable
-generatePerBatch gen f =
-    C.Benchmarkable
-        (\_ -> QC.generate gen)
-        (\_ _ -> return ())
-        (C.nf' rnf f)
-        False
 
 ----------------------------------------------------------------
 intToSum :: (Trie (Sum Int) -> a) -> [Trie Int] -> [a]

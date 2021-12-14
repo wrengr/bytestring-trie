@@ -19,6 +19,8 @@ module Test.Validity
     ) where
 
 -- BUG: requires exporting the constructors!
+-- TODO: probably easiers to just move this into "Data.Trie.Internal"
+-- itself; like we did for 'showTrie'
 import           Data.Trie.Internal           (Trie(..))
 import qualified Data.Trie.BitTwiddle   as BT (zero)
 import qualified Data.ByteString        as S  (null)
@@ -50,50 +52,51 @@ et Nothing    n = n
 -- However, the improved performance may not be worth the added
 -- code complexity, since now it's no longer trivial to see that
 -- this does indeed check the invariants.
+-- TODO: we may want to try doing back to CPS/Codensity stuff to
+-- avoid the case analysis of 'et' in the two places it's needed.
 validate :: Trie a -> Maybe BrokenInvariant
 validate = start
     where
-    start0 (Arc _ (Just _) t)           = start1 t -- Skip the non-null check at root.
-    start0 t                            = start1 t -- Otherwise same as usual.
-    -- This used to be the main recursion, but we inlined it into @checkArc@.
-    start1 Empty                        = Nothing
-    start1 (Arc k mv t)                 = checkArc k mv t
-    start1 b@(Branch{})                 = checkBranch b (const Nothing)
-    -- | Validate 'Arc' properties.
-    checkArc k mv       _   | S.null k  = Just (epsilonError mv)
-    checkArc _ (Just _) Empty           = Nothing
-    checkArc _ (Just _) (Arc k mv t)    = checkArc k mv t
-    checkArc _ Nothing  Empty           = Just EmptyAfterReject
-    checkArc _ Nothing  (Arc{})         = Just ArcAfterReject
-    checkArc _ _        b@(Branch{})    = checkBranch b (const Nothing)
+    -- | Handle epsilon values at the root.
+    start (Arc _ (Just _) t)    = checkNNAccept t -- Skip the non-null check at root.
+    start t                     = checkNNAccept t -- Otherwise same as usual.
+    -- | Validate properties of an 'Arc' with non-null bytestring.
+    checkNNArc (Just _) t       = checkNNAccept t
+    checkNNArc Nothing  t       = checkNNReject t
+    -- | Validate properties of accept-'Arc' with non-null bytestring.
+    -- These are also the properties of the root just after any epsilon
+    -- value.
+    checkNNAccept Empty         = Nothing
+    checkNNAccept (Arc k mv t)
+        | S.null k              = Just (epsilonError mv)
+        | otherwise             = checkNNArc mv t
+    checkNNAccept b@(Branch{})  = checkBranch b (const Nothing)
+    -- | Validate properties of reject-'Arc' with non-null bytestring.
+    checkNNReject Empty         = Just EmptyAfterReject
+    checkNNReject (Arc{})       = Just ArcAfterReject
+    checkNNReject b@(Branch{})  = checkBranch b (const Nothing)
     -- | Validate 'Branch' properties.
     -- The code complexity is to avoid O(n^2) traversal of branch
     -- collections, which would happen if we checked @all _ (keyHeads _)@
-    -- in the more stratightforward manner.
-    checkBranch Empty            _      = Just EmptyAfterBranch
+    -- in the more straightforward manner.
+    -- TODO: see how big of a branch collection it takes before
+    -- this complexity is actually worth it.
+    checkBranch Empty            _  = Just EmptyAfterBranch
     checkBranch (Arc k mv t)     pred
-        | S.null k  = Just (epsilonError mv) -- redundant with @checkArc@, but has to be before we take the 'S.head'
-        | otherwise = pred (S.unsafeHead k) `et` checkArc k mv t
+        | S.null k                  = Just (epsilonError mv)
+        | otherwise                 = pred (S.unsafeHead k) `et` checkNNArc mv t
     checkBranch (Branch p m l r) pred
-        | popCount m /= 1               = Just MaskNotPowerOfTwo
-        | otherwise =
-            checkBranch l (predKeyHeadsLeft  p m pred) `et`
-            checkBranch r (predKeyHeadsRight p m pred)
-
-    predKeyHeadsLeft p m pred = \x ->
-        if p /= p .&. x      then Just PrefixNotMatched    else
-        if not (BT.zero x m) then Just MaskBitNotRespected else
-        pred x
-
-    predKeyHeadsRight p m pred = \x ->
-        if p /= p .&. x then Just PrefixNotMatched    else
-        if BT.zero x m  then Just MaskBitNotRespected else
-        pred x
+        | popCount m /= 1           = Just MaskNotPowerOfTwo
+        | otherwise                 =
+            checkBranch l (\x ->
+                if x .&. p /= p      then Just PrefixNotMatched    else
+                if not (BT.zero x m) then Just MaskBitNotRespected else pred x)
+            `et` checkBranch r (\x ->
+                if x .&. p /= p     then Just PrefixNotMatched    else
+                if BT.zero x m      then Just MaskBitNotRespected else pred x)
 
     epsilonError (Just _) = NonRootEpsilon
     epsilonError Nothing  = EpsilonReject
-
-
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------
@@ -183,20 +186,6 @@ maskRespected = go
         , go l
         , go r
         ]
-
--- TODO: see when this becomes faster than the O(n^2) algorithms
--- above, in spite of the cost of constructing all the closures.
--- TODO: might as well combine 'maskPowerOfTwo' in here too, even
--- though it doesn't use 'keyHeads'
-commonPrefix_and_maskRespected :: Trie a -> Bool
-commonPrefix_and_maskRespected = start
-    where
-    start t = go t (const True)
-    go Empty            _    = True
-    go (Arc k _ t)      pred = pred (S.head k) && start t
-    go (Branch p m l r) pred
-        =  go l (\h -> pred h && (p == p .&. h) &&      BT.zero h m)
-        && go r (\h -> pred h && (p == p .&. h) && not (BT.zero h m))
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

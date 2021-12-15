@@ -647,7 +647,7 @@ instance (Binary a) => Binary (Trie a) where
                  1 -> liftM3 Arc    get get get
                  _ -> liftM4 Branch get get get get
 
--- TODO: consider adding *cereal*:'Serialize' instance. (Though that adds dependencies on: array, bytestring-builder, fail, ghc-prim). THe instances for Map/IntMap are similar to the commented ones above, though the getter uses 'fromList' rather than assuming distinct or ascending.
+-- TODO: consider adding _cereal_:'Serialize' instance. (Though that adds dependencies on: array, bytestring-builder, fail, ghc-prim). THe instances for Map/IntMap are similar to the commented ones above, though the getter uses 'fromList' rather than assuming distinct or ascending.
 
 -- TODO: potentially consider <https://github.com/mgsloan/store#readme> as well, though probably not since that has a ton of dependencies.
 
@@ -736,6 +736,13 @@ traverseWithKey f = go Epsilon
 -- Using RLBS only reduces the constant factor of the quadratic.
 
 ------------------------------------------------------------
+-- TODO: would make more sense to use intersection\/zip semantics here,
+-- rather than the overlaid-unionL semantics of the 'Monad'.  Alas,
+-- done is done.  In a future major version we can try changing
+-- that, and introducing newtype wrappers for this overlaid\/unionL
+-- version (and the prospective underlaid\/unionR version).
+-- TODO: see also <https://hackage.haskell.org/package/semialign>
+--
 -- | @since 0.2.2
 instance Applicative Trie where
     pure      = singleton S.empty
@@ -876,15 +883,15 @@ instance MonadPlus Trie where
 -- Pseudo-instances: Filterable, Witherable
 -----------------------------------------------------------}
 
--- We avoid depending on the *filterable* package because it combines
+-- We avoid depending on the _filterable_ package because it combines
 -- too many things into its @Filterable@ class.  And we avoid using
--- the *witherable* package because it has too many dependencies,
+-- the _witherable_ package because it has too many dependencies,
 -- and too many orphan instances.  However, we go with the names
--- (mostly[1]) and laws as phrased by *witherable*.
+-- (mostly[1]) and laws as phrased by _witherable_.
 --
 -- [1]: I'm rather not a fan of @mapMaybe@, despite its pervasiveness.
 -- And similarly for @catMaybes@ etc.  That's actually one of the
--- reasons I prefer the *witherable* package over *filterable*:
+-- reasons I prefer the _witherable_ package over _filterable_:
 -- because of the name 'wither' instead of @mapMaybeA@ :)
 
 
@@ -956,16 +963,16 @@ import Data.Functor.Identity (Identity(Identity))
 -- the laws:
 --
 -- [/Naturality/]
---   @t . 'wither' f ≡ 'wither' (t . f)@
+--   @'wither' (t . f) ≡ t . 'wither' f@
 --   for every /applicative-transformation/ @t@
+--
+-- [/Purity/, or /Identity/]
+--   @'wither' ('pure' . f) ≡ 'pure' . 'filterMap' f@
 --
 -- [/Conservation/]
 --   @'wither' ('fmap' 'Just' . f) ≡ 'traverse' f@
 --
--- [/Identity/, or /Purity/]
---   @'wither' ('pure' . f) ≡ 'pure' . 'filterMap' f@
---
--- [/Horizontal Composition/, or /Strength/]
+-- [/Strength/, or /Horizontal Composition/]
 --   @'wither' f \`under\` 'wither' g ≡ 'wither' (wither_Maybe f \`under\` g)@
 --
 --     where: @under p q = 'Data.Functor.Compose.Compose' . 'fmap' p . q@;
@@ -974,13 +981,20 @@ import Data.Functor.Identity (Identity(Identity))
 -- Note that the horizontal composition law is using two different
 -- applicative functors.  Conversely, a vertical composition law
 -- would have the form: @'wither' f 'Control.Monad.<=<' 'wither' g ≡ ...@;
--- however, we have no such law except when the applicative functor
--- is in fact a commutative monad.
+-- however, we cannot have such a law except when the applicative
+-- functor is in fact a commutative monad (i.e., the order of effects
+-- doesn't matter).
+-- TODO: is commutative monad sufficient, or are there other requirements too?
 --
 -- (The terminology of
 -- <https://ncatlab.org/nlab/show/horizontal+composition \"horizontal\" composition> vs
 -- <https://ncatlab.org/nlab/show/vertical+composition \"vertical\" composition>
--- comes from category theory.)
+-- comes from category theory.  However, IMO, the law we have looks
+-- more like <https://ncatlab.org/nlab/show/tensorial+strength strength>
+-- than horizontal composition.)
+-- TODO: is there a better notion of \"strength\" to reference (or
+-- a better thing of a different name), because that one doesn't
+-- have the @(Fx,Fy) -> F(Fx,y)@ shape of the one I had in mind...
 --
 -- @since 0.2.7
 wither :: Applicative f => (a -> f (Maybe b)) -> Trie a -> f (Trie b)
@@ -1121,15 +1135,24 @@ size' (Branch _ _ l r)   f  n = size' l (size' r f) n
 size' (Arc _ Nothing t)  f  n = size' t f n
 size' (Arc _ (Just _) t) f  n = size' t f (n + 1)
     -- TODO: verify we've retained the correct strictness for this last case
+    -- TODO: benchmark vs getting rid of the CPS (just leaving the
+    -- accumulator); since everywhere else the CPSing introduces a
+    -- performance penalty.
+    -- TODO: also benchmark vs using @F.foldl' (\n _ -> n+1) 0@;
+    -- to see how much specializing on the function actually helps.
 
 
 {-----------------------------------------------------------
 -- Instances: Foldable
 -----------------------------------------------------------}
 
--- TODO: thoroughly benchmark all of these vs their default
--- definitions; to see which are actually worth bothering to
--- implement!
+-- [Note3]: For all the folding functions, we take only the two
+-- algebra arguments on the left of the \"=\", leaving the 'Trie'
+-- argument as a lambda on the right of the \"=\".  This is to allow
+-- the functions to be inlined when passed only the two algebra
+-- arguments, rather than requiring all three arguments before being
+-- inlined.
+
 instance Foldable Trie where
     {-# INLINABLE fold #-}
     fold = go
@@ -1146,6 +1169,7 @@ instance Foldable Trie where
         go (Arc _ (Just v) t) = f v `mappend` go t
         go (Branch _ _ l r)   = go l `mappend` go r
 #if MIN_VERSION_base(4,13,0)
+    -- TODO: float out this definition so folks can still use it on earlier versions of base?
     -- TODO: verify order of 'mappend' on some non-commutative monoid!
     {-# INLINE foldMap' #-}
     foldMap' f = go mempty
@@ -1155,7 +1179,8 @@ instance Foldable Trie where
         -- than the (t,m) order; and both allocate the same.
         -- This differs from the case for 'foldr'' and 'foldl';
         -- though I'm not sure why.
-        -- TODO: Once we disable HPC, now it's looking like the flopped version is faster afterall...
+        -- TODO: Once we disable HPC, now it's looking like the
+        -- flopped version is faster afterall...
         go !m Empty              = m
         go  m (Arc _ Nothing  t) = go m t
         go  m (Arc _ (Just v) t) = go (m `mappend` f v) t
@@ -1169,15 +1194,16 @@ instance Foldable Trie where
     -- (larger thunks?).  So should we just leave the default or
     -- eta-expand?
     {-# INLINE foldr #-}
-    foldr f z0 = \t -> go t z0 -- take only 2 arguments, for better inlining.
+    foldr f z0 = \t -> go t z0 -- See [Note3].
         where
         go Empty              = id
         go (Arc _ Nothing  t) =       go t
         go (Arc _ (Just v) t) = f v . go t
         go (Branch _ _ l r)   = go l . go r
 #if MIN_VERSION_base(4,6,0)
+    -- TODO: float out this definition so folks can still use it on earlier versions of base?
     {-# INLINE foldr' #-}
-    foldr' f z0 = \t -> go t z0 -- take only 2 arguments, for better inlining.
+    foldr' f z0 = \t -> go t z0 -- See [Note3].
         where
         -- Benchmarking on GHC 9.2.1 indicates that for this function
         -- the (t,z) argument order is ~10% faster than (z,t);
@@ -1185,28 +1211,33 @@ instance Foldable Trie where
         -- benchmarking indicates that the @($!)@ in the Branch
         -- case slightly improved things.
         -- TODO: what's going on with the @($!)@; bogus?
-        -- TODO: once HPC disabled, now it's saying the unflopped version without the extra @($!)@ is the faster one! (unflopped with @($!)@ is only marginally slower; probably noise).
+        -- TODO: once HPC disabled, now it's saying the unflopped
+        -- version without the extra @($!)@ is the faster one!
+        -- (unflopped with @($!)@ is only marginally slower; probably
+        -- noise).
         go Empty              !z = z
         go (Arc _ Nothing  t)  z = go t z
         go (Arc _ (Just v) t)  z = f v $! go t z
         go (Branch _ _ l r)    z = go l $! go r z
 #endif
     {-# INLINE foldl #-}
-    foldl f z0 = \t -> go t z0 -- take only 2 arguments, for better inlining.
+    foldl f z0 = \t -> go t z0 -- See [Note3].
         where
         -- Benchmarking on GHC 9.2.1 indicates that for this function
         -- the (t,z) argument order is slightly faster (~0.8%) and
         -- allocates ~8.4% less, compared to the (z,t) order.
         -- I've no idea why the allocation would differ, especially
         -- when it doesn't for 'foldr'' and 'foldMap''.
-        -- TODO: once HPC disabled, now it's showing the flopped version is ~2x faster! bogus?
+        -- TODO: once HPC disabled, now it's showing the flopped
+        -- version is ~2x faster! bogus?
         go Empty              z = z
         go (Arc _ Nothing  t) z = go t z
         go (Arc _ (Just v) t) z = go t (f z v)
         go (Branch _ _ l r)   z = go r (go l z)
 #if MIN_VERSION_base(4,6,0)
+    -- TODO: float out this definition so folks can still use it on earlier versions of base?
     {-# INLINE foldl' #-}
-    foldl' f z0 = go z0 -- take only 2 arguments, for better inlining
+    foldl' f z0 = go z0 -- See [Note3].
         where
         -- Benchmarking on GHC 9.2.1 indicates that for this function
         -- the (z,t) argument order is significantly faster (~10%) and
@@ -1222,6 +1253,7 @@ instance Foldable Trie where
 #endif
     -- TODO: any point in doing foldr1,foldl1?
 #if MIN_VERSION_base(4,8,0)
+    -- TODO: float out this definition so folks can still use it on earlier versions of base?
     {-# INLINE length #-}
     length = size
     {-# INLINE null #-}
@@ -1270,24 +1302,20 @@ instance Foldable Trie where
 -- Extra folding functions
 -----------------------------------------------------------}
 
--- TODO: If our manual definition of foldr/foldl (using function
--- application) is so much faster than the default Endo definition
--- (using function composition), then we should make this use
--- application instead too.
+-- TODO: be sure to keep this in sync with whatever implementation
+-- choice we use for 'F.foldr'; especially since that's the one
+-- method of 'Foldable' where we can't improve substantially over
+-- the default implementation.
 --
--- BUG: not safe for deep strict @f@, only for WHNF-strict like (:)
--- Where to put the strictness to amortize it?
---
--- | Keyed variant of 'foldr'.
+-- | Keyed variant of 'F.foldr'.
 --
 -- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 --
 -- @since 0.2.2
 foldrWithKey :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
 {-# INLINE foldrWithKey #-}
-foldrWithKey f z0 = \t -> go Epsilon t z0 -- eta for better inlining
+foldrWithKey f z0 = \t -> go Epsilon t z0 -- See [Note3].
     where
-    -- TODO: eta-expand and/or CPS?
     -- See [Note2].
     go _ Empty              = id
     go q (Branch _ _ l r)   = go q l . go q r
@@ -1295,20 +1323,29 @@ foldrWithKey f z0 = \t -> go Epsilon t z0 -- eta for better inlining
     go q (Arc k (Just v) t) = f q' v . go (fromStrict q') t
                             where q' = toStrict (q +>? k)
 
-{-
--- TODO: benchmark the non-WithKey variants so we can be comfortable
--- in our implementation choices, before uncommenting these.
+-- TODO: probably need to benchmark these separately from the
+-- non-keyed variants, since the extra recursive argument will
+-- surely sway things like whether to flop or not.
+-- TODO: Consider just giving an
+-- <https://hackage.haskell.org/package/indexed-traversable-0.1.2/docs/Data-Foldable-WithIndex.html>
+-- instance, instead of naming all these separately.  That adds a
+-- lot of additional dependencies just to define the class, but...
+-- Or maybe give an <https://hackage.haskell.org/package/keys-3.12.3/docs/Data-Key.html>
+-- instance. Again, lots of added dependencies just for the class,...
+-- Then again, maybe we should just stick with doing everything
+-- outside of classes; that way we could introduce a Cabal flag for
+-- deciding whether the user wants either of those classes (and
+-- should do the same for Witherable).
 
--- | Keyed variant of 'foldr''.
+-- | Keyed variant of 'F.foldr''.
 --
 -- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 --
 -- @since 0.2.7
 foldrWithKey' :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
 {-# INLINE foldrWithKey' #-}
-foldrWithKey' f z0 = \t -> go Epsilon z0 t -- eta for better inlining
+foldrWithKey' f z0 = go Epsilon z0 -- See [Note3].
     where
-    -- TODO: benchmark this vs the CPS'ed variant, a~la foldr' above.
     -- See [Note2].
     go _ !z Empty              = z
     go q  z (Branch _ _ l r)   = go q (go q z r) l
@@ -1316,16 +1353,15 @@ foldrWithKey' f z0 = \t -> go Epsilon z0 t -- eta for better inlining
     go q  z (Arc k (Just v) t) = f q' v $! go (fromStrict q') z t
                                 where q' = toStrict (q +>? k)
 
--- | Keyed variant of 'foldl'.
+-- | Keyed variant of 'F.foldl'.
 --
 -- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 --
 -- @since 0.2.7
 foldlWithKey :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
 {-# INLINE foldlWithKey #-}
-foldlWithKey f z0 = \t -> go Epsilon z0 t -- eta for better inlining
+foldlWithKey f z0 = go Epsilon z0 -- See [Note3].
     where
-    -- TODO: CPS to restore the tail-call for @Branch@?
     -- See [Note2].
     go _ z Empty              = z
     go q z (Branch _ _ l r)   = go q (go q z l) r
@@ -1333,23 +1369,21 @@ foldlWithKey f z0 = \t -> go Epsilon z0 t -- eta for better inlining
     go q z (Arc k (Just v) t) = go (fromStrict q') (f z q' v) t
                                 where q' = toStrict (q +>? k)
 
--- | Keyed variant of 'foldl''.
+-- | Keyed variant of 'F.foldl''.
 --
 -- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 --
 -- @since 0.2.7
 foldlWithKey' :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
 {-# INLINE foldlWithKey' #-}
-foldlWithKey' f z0 = \t -> go Epsilon z0 t -- eta for better inlining
+foldlWithKey' f z0 = go Epsilon z0 -- See [Note3].
     where
-    -- TODO: CPS to restore the tail-call for @Branch@?
     -- See [Note2].
     go _ !z Empty              = z
     go q  z (Branch _ _ l r)   = go q (go q z l) r
     go q  z (Arc k Nothing  t) = go (q +>! k) z t
     go q  z (Arc k (Just v) t) = go (fromStrict q') (f z q' v) t
                                 where q' = toStrict (q +>? k)
--}
 
 -- | Catamorphism for tries.  Unlike most other functions ('mapBy',
 -- 'contextualMapBy', 'foldrWithKey', etc), this function does /not/
@@ -1366,6 +1400,7 @@ cata_
     -> (b -> b -> b)
     -> b
     -> Trie a -> b
+{-# INLINE cata_ #-}
 cata_ a b e = go
     where
     go Empty            = e
@@ -1398,6 +1433,7 @@ cata a b e = start
     step k (Just v) t           = a k v (start t)
     step k Nothing  t           = b k (collect t [])
 
+    -- TODO: would it be profitable to use 'build' for these lists?
     collect Empty            bs = bs
     collect (Arc k mv t)     bs = step k mv t : bs
     collect (Branch _ _ l r) bs = collect l (collect r bs)
@@ -1504,7 +1540,7 @@ elems = F.foldr (:) []
 -- This function is intended for internal use. For the public-facing
 -- version, see 'Data.Trie.lookupBy'.
 --
--- __NOTE__: /Type changed in 0.2.7/
+-- __Note__: /Type changed in 0.2.7/
 lookupBy_
     :: (a -> Trie a -> b)   -- ^ The query matches a value.
     -> (Trie a -> b)        -- ^ The query doesn't match, but an extension might.
@@ -1758,7 +1794,7 @@ alterBy f q x = alterBy_ (\mv t -> (f q x mv, t)) q
 -- then the @w@ will be overwritten by @v@.
 --
 -- @since 0.2.3
--- __NOTE__: /Type changed in 0.2.6/
+-- __Note__: /Type changed in 0.2.6/
 alterBy_
     :: (Maybe a -> Trie a -> (Maybe a, Trie a))
     -> ByteString -> Trie a -> Trie a

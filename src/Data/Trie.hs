@@ -158,7 +158,7 @@ insert = alterBy (\_ x _ -> Just x)
 -- trie structure, it is somewhat faster than 'alterBy'.
 --
 -- @since 0.2.6
--- __NOTE__: Prior to version 0.2.6 this function was exported from
+-- __Note__: Prior to version 0.2.6 this function was exported from
 -- "Data.Trie.Internal" instead.
 adjustBy :: (ByteString -> a -> a -> a)
          -> ByteString -> a -> Trie a -> Trie a

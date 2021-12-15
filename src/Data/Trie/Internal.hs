@@ -324,6 +324,10 @@ ifJustThenNoEpsilon (Just _) (Arc k (Just _) _) = not (S.null k)
 ifJustThenNoEpsilon _ _ = True
 -}
 
+-- FIXME: [bug26] <https://github.com/wrengr/bytestring-trie/issues/26>
+-- We need to adjust 'arc', 'arc_', 'arcNN', and 'prepend' to behave
+-- more like a zipper, to avoid asymptotic slowdown in corner cases.
+
 -- | Smart constructor to prune @Arc@s that lead nowhere.
 --
 -- __Preconditions__
@@ -368,8 +372,8 @@ prepend :: ByteString -> Trie a -> Trie a
 prepend !_ t@Empty      = t
 prepend  q t@(Branch{}) = Arc q Nothing t
 prepend  q (Arc k mv s) = Arc (S.append q k) mv s
-    -- TODO: should ensure that callers do not nest calls to this
-    -- function, to avoid quadratic slowdown from repeated 'S.append'.
+    -- TODO: see [bug26]; should ensure that callers do not nest
+    -- calls to this function which all take this @Arc@ case.
 
 -- | > mayEpsilon mv ≡ arc S.empty mv
 --
@@ -789,6 +793,7 @@ instance Monad Trie where
 #if (!(MIN_VERSION_base(4,8,0)))
     return = pure
 #endif
+    -- FIXME: See [bug26].
     (>>=) Empty              _ = empty
     (>>=) (Branch p m l r)   f = branch p m (l >>= f) (r >>= f)
     (>>=) (Arc k Nothing  t) f = prepend k (t >>= f)
@@ -895,6 +900,7 @@ instance MonadPlus Trie where
 filterMap :: (a -> Maybe b) -> Trie a -> Trie b
 filterMap f = go
     where
+    -- FIXME: See [bug26].
     go Empty              = empty
     go (Arc k Nothing  t) = prepend k   (go t)
     go (Arc k (Just v) t) = arc k (f v) (go t)
@@ -920,6 +926,7 @@ filterMap f = go
 filter :: (a -> Bool) -> Trie a -> Trie a
 filter f = go
     where
+    -- FIXME: See [bug26].
     go Empty              = empty
     go (Arc k Nothing  t) = prepend k      (go t)
     go (Arc k (Just v) t) = arcB k v (f v) (go t)
@@ -979,6 +986,7 @@ import Data.Functor.Identity (Identity(Identity))
 wither :: Applicative f => (a -> f (Maybe b)) -> Trie a -> f (Trie b)
 wither f = go
     where
+    -- FIXME: See [bug26].
     go Empty              = pure   empty
     go (Arc k Nothing  t) = fmap   (prepend k)   (go t)
     go (Arc k (Just v) t) = liftA2 (arc k) (f v) (go t)
@@ -997,10 +1005,11 @@ wither f = go
 filterA :: Applicative f => (a -> f Bool) -> Trie a -> f (Trie a)
 filterA f = go
     where
-    go Empty              = pure Empty
-    go (Arc k Nothing  t) = prepend k        <$> go t
-    go (Arc k (Just v) t) = arcB k v <$> f v <*> go t
-    go (Branch p m l r)   = branch p m <$> go l <*> go r
+    -- FIXME: See [bug26].
+    go Empty              = pure   empty
+    go (Arc k Nothing  t) = fmap   (prepend k)      (go t)
+    go (Arc k (Just v) t) = liftA2 (arcB k v) (f v) (go t)
+    go (Branch p m l r)   = liftA2 (branch p m) (go l) (go r)
 
 
 -- | Keyed version of 'filterMap'.
@@ -1011,6 +1020,7 @@ mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
 -- Does that actually incur additional overhead?
 mapBy f = go Epsilon
     where
+    -- FIXME: See [bug26].
     -- See [Note2].
     go _ Empty              = empty
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
@@ -1050,6 +1060,7 @@ contextualMap' f = go
 contextualFilterMap :: (a -> Trie a -> Maybe b) -> Trie a -> Trie b
 contextualFilterMap f = go
     where
+    -- FIXME: See [bug26].
     go Empty              = empty
     go (Arc k Nothing  t) = prepend k     (go t)
     go (Arc k (Just v) t) = arc k (f v t) (go t)
@@ -1064,6 +1075,7 @@ contextualFilterMap f = go
 contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
 contextualMapBy f = go Epsilon
     where
+    -- FIXME: See [bug26].
     -- See [Note2].
     go _ Empty              = empty
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
@@ -1739,6 +1751,8 @@ alterBy f q x = alterBy_ (\mv t -> (f q x mv, t)) q
 --  alone?
 
 
+-- Not susceptible to [bug26] because it can only delete a single value\/subtrie.
+--
 -- | A variant of 'alterBy' which also allows modifying the sub-trie.
 -- If the function returns @(Just v, t)@ and @lookup 'S.empty' t == Just w@,
 -- then the @w@ will be overwritten by @v@.
@@ -1831,6 +1845,8 @@ adjust f = start
 -- up the deletion cases.  Especially since the vast majority of
 -- our own uses of 'mergeBy' fall into this category.
 
+-- Not susceptible to [bug26] because it doesn't delete any values.
+--
 -- TODO: Test that this doesn't introduce any bugs. And benchmark
 -- it to see how much it really saves vs 'mergeBy'.
 wip_unionWith :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
@@ -1903,6 +1919,7 @@ wip_unionWith f = start
         where p1 = arcPrefix k1
 
 
+-- FIXME: See [bug26].
 -- TEST CASES: foldr (unionL . uncurry singleton) empty t
 --             foldr (uncurry insert) empty t
 --    where t = map (\s -> (pk s, 0))
@@ -1989,6 +2006,7 @@ mergeMaybe _ mv0@(Just _) Nothing  = mv0
 mergeMaybe f (Just v0)   (Just v1) = f v0 v1
 
 
+-- FIXME: See [bug26].
 -- | Take the intersection of two tries, using a function to resolve
 -- collisions.
 --
@@ -2112,6 +2130,8 @@ mapView _ Nothing        = Nothing
 mapView f (Just (k,v,t)) = Just (k,v, f t)
 
 
+-- Not susceptible to [bug26] because it can only delete a single value.
+--
 -- | Update the 'minAssoc' and return the old 'minAssoc'.
 --
 -- __Note__: Prior to version 0.2.7, this function suffered
@@ -2129,6 +2149,8 @@ updateMinViewBy f = go Epsilon
     go  q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
 
 
+-- Not susceptible to [bug26] because it can only delete a single value.
+--
 -- | Update the 'maxAssoc' and return the old 'maxAssoc'.
 --
 -- __Note__: Prior to version 0.2.7, this function suffered

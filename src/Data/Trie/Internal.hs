@@ -343,21 +343,18 @@ prepend  q (Arc k mv s) = Arc (S.append q k) mv s
 -- * @mayEpsilon mv t | ifJustThenNoEpsilon mv t@
 mayEpsilon :: Maybe a -> Trie a -> Trie a
 {-# INLINE mayEpsilon #-}
-mayEpsilon mv@(Just _) = epsilon mv
-mayEpsilon    Nothing  = id
+mayEpsilon (Just v) = epsilon v
+mayEpsilon Nothing  = id
 
 -- | Canonical name for the empty arc at the top of the trie.
--- N.B., this function only takes 'Maybe' for the sake of avoiding
--- allocation; the argument must always actually be 'Just'.
 --
--- > epsilon ≡ Arc S.empty
+-- > epsilon ≡ Arc S.empty . Just
 --
 -- __Preconditions__
--- * @epsilon mv t | ifJustThenNoEpsilon mv t@
--- * @epsilon (Just _) _@
-epsilon :: Maybe a -> Trie a -> Trie a
+-- * The trie argument must not already have an epsilon value.
+epsilon :: a -> Trie a -> Trie a
 {-# INLINE epsilon #-}
-epsilon = Arc S.empty
+epsilon = Arc S.empty . Just
 
 
 -- | Smart 'Branch' constructor: prunes 'Empty'.  This function
@@ -1818,10 +1815,10 @@ wip_unionWith f = start
     -- | Deals with epsilon entries, before recursing into @go@
     -- TODO: for all of these, add assertions that null bytestring entails must be Just; instead of pattern matching on it directly.
     start (Arc k0 (Just v0) s0) (Arc k1 (Just v1) s1) | S.null k0 && S.null k1
-                                                  = epsilon (Just $ f v0 v1) (go s0 s1)
-    start (Arc k0 mv0@(Just _) s0) t1 | S.null k0 = epsilon mv0 (go s0 t1)
-    start t0 (Arc k1 mv1@(Just _) s1) | S.null k1 = epsilon mv1 (go t0 s1)
-    start t0 t1                                   = go t0 t1
+                                               = epsilon (f v0 v1) (go s0 s1)
+    start (Arc k0 (Just v0) s0) t1 | S.null k0 = epsilon v0 (go s0 t1)
+    start t0 (Arc k1 (Just v1) s1) | S.null k1 = epsilon v1 (go t0 s1)
+    start t0 t1                                = go t0 t1
 
     -- | The main recursion
     go Empty t1    = t1
@@ -1897,10 +1894,10 @@ mergeBy f = start
     -- | Deals with epsilon entries, before recursing into @go@
     -- TODO: for all of these, add assertions that null bytestring entails must be Just; instead of pattern matching on it directly.
     start (Arc k0 (Just v0) s0) (Arc k1 (Just v1) s1) | S.null k0 && S.null k1
-                                                  = mayEpsilon (f v0 v1) (go s0 s1)
-    start (Arc k0 mv0@(Just _) s0) t1 | S.null k0 = epsilon mv0 (go s0 t1)
-    start t0 (Arc k1 mv1@(Just _) s1) | S.null k1 = epsilon mv1 (go t0 s1)
-    start t0 t1                                   = go t0 t1
+                                               = mayEpsilon (f v0 v1) (go s0 s1)
+    start (Arc k0 (Just v0) s0) t1 | S.null k0 = epsilon v0 (go s0 t1)
+    start t0 (Arc k1 (Just v1) s1) | S.null k1 = epsilon v1 (go t0 s1)
+    start t0 t1                                = go t0 t1
 
     -- | The main recursion
     go Empty t1    = t1

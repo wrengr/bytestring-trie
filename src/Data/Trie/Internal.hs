@@ -39,6 +39,12 @@ module Data.Trie.Internal
     (
     -- * Data types
       Trie()
+    -- BUG: can't seem to put this at the top: it'll gobble up the
+    -- following section name and replace it.  (I'm guessing that's
+    -- something to do with the section not having any exported
+    -- entities?)
+    -- *** Performance Warning
+    -- $bug25
 
     -- * Basic functions
     , empty, null, singleton, size
@@ -73,7 +79,7 @@ module Data.Trie.Internal
     -- * Folding and list-conversion functions
     , fromList
     , toList, toListBy, elems
-    , foldrWithKey -- TODO: foldrWithKey', foldlWithKey, foldlWithKey'
+    , foldrWithKey, foldrWithKey', foldlWithKey, foldlWithKey'
     , cata_, cata
 
     -- * Priority-queue functions
@@ -144,7 +150,30 @@ import qualified GHC.Exts (IsList(..))
 
 ------------------------------------------------------------
 ------------------------------------------------------------
+-- $bug25
+-- #bug25#
+-- Many (but not all) functions which need to reconstruct bytestrings
+-- suffer from an asymptotic slowdown; see:
+-- <https://github.com/wrengr/bytestring-trie/issues/25 Bug #25>.
+-- For clarity, all functions affected by this bug will have a link
+-- to this section.  This is not a new bug, it has affected all
+-- prior versions of this library as well.  However, compared to
+-- older versions, /bytestring-trie-0.2.7/ mitigates the severity
+-- of the bug, and in certain cases to avoids it entirely.
+--
+-- In particular, this affects the \"keyed\" variants of functions
+-- (for folding, traversing, filtering, etc), and anything built
+-- from them, including 'toListBy' and various instances which use
+-- it.
+--
+-- Conversely, functions which are unaffected include: those like
+-- 'alterBy' which merely pass the query back to the user as a
+-- convenience; those which only need to reconstruct a single
+-- bytestring (e.g., the priority-queue functions); and
+-- 'Data.Trie.matches'\/'matches_'.
 
+
+------------------------------------------------------------
 -- | Infix variant of 'uncurry'.  Currently only used in 'alterBy_'.
 -- The fixity-level is like @(<$>)@; but I'm making it nonassociative
 -- to avoid any possible\/potential confusion.
@@ -487,17 +516,20 @@ equal1 _ _     _     = False
 -- Instances: Ord, Ord1
 -----------------------------------------------------------}
 
--- BUG: Both of these instances suffer from
--- <https://github.com/wrengr/bytestring-trie/issues/25>. And
--- unnecessarily so, since we should be able to perform the comparison
--- without ever reconstructing the keys at all.
+-- |
+-- __Warning__: This instance suffers unnecessarily from
+-- <Data-Trie-Internal.html#bug25 Bug #25>.
 --
--- | @since 0.2.7
+-- @since 0.2.7
 instance Ord a => Ord (Trie a) where
     compare t0 t1 = compare (toList t0) (toList t1)
 
 #if MIN_VERSION_base(4,9,0)
--- | @since 0.2.7
+-- |
+-- __Warning__: This instance suffers unnecessarily from
+-- <Data-Trie-Internal.html#bug25 Bug #25>.
+--
+-- @since 0.2.7
 instance Ord1 Trie where
     liftCompare cmp t0 t1 =
         liftCompare (liftCompare cmp) (toList t0) (toList t1)
@@ -511,17 +543,19 @@ instance Ord1 Trie where
 -- It doesn't emit truly proper Haskell code though, since ByteStrings
 -- are printed as (ASCII) Strings, but that's not our fault.
 --
--- BUG: Both of these instances suffer from
--- <https://github.com/wrengr/bytestring-trie/issues/25>, because
--- 'toList' does.
+-- |
+-- __Warning__: This instance suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 --
--- | @since 0.2.2
+-- @since 0.2.2
 instance (Show a) => Show (Trie a) where
     showsPrec p t = showParen (p > 10)
                   $ ("fromList " ++) . shows (toList t)
 
 #if MIN_VERSION_base(4,9,0)
--- | @since 0.2.7
+-- |
+-- __Warning__: This instance suffers <Data-Trie-Internal.html#bug25 Bug #25>.
+--
+-- @since 0.2.7
 instance Show1 Trie where
     liftShowsPrec sp sl p t =
         FC.showsUnaryWith (liftShowsPrec sp' sl') "fromList" p (toList t)
@@ -675,9 +709,7 @@ instance Traversable Trie where
 
 -- | Keyed version of 'traverse'.
 --
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the keys.
+-- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 --
 -- @since 0.2.7
 traverseWithKey
@@ -973,9 +1005,7 @@ filterA f = go
 
 -- | Keyed version of 'filterMap'.
 --
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the keys.
+-- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
 -- TODO: why not implement as @contextualMapBy (\k v _ -> f k v)@ ?
 -- Does that actually incur additional overhead?
@@ -1028,9 +1058,7 @@ contextualFilterMap f = go
 
 -- | Contextual variant of 'mapBy', aka keyed variant of 'contextualFilterMap'.
 --
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the keys.
+-- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 --
 -- @since 0.2.3
 contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
@@ -1240,9 +1268,7 @@ instance Foldable Trie where
 --
 -- | Keyed variant of 'foldr'.
 --
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the keys.
+-- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 --
 -- @since 0.2.2
 foldrWithKey :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
@@ -1263,9 +1289,7 @@ foldrWithKey f z0 = \t -> go Epsilon t z0 -- eta for better inlining
 
 -- | Keyed variant of 'foldr''.
 --
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the keys.
+-- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 --
 -- @since 0.2.7
 foldrWithKey' :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
@@ -1282,9 +1306,7 @@ foldrWithKey' f z0 = \t -> go Epsilon z0 t -- eta for better inlining
 
 -- | Keyed variant of 'foldl'.
 --
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the keys.
+-- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 --
 -- @since 0.2.7
 foldlWithKey :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
@@ -1301,9 +1323,7 @@ foldlWithKey f z0 = \t -> go Epsilon z0 t -- eta for better inlining
 
 -- | Keyed variant of 'foldl''.
 --
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the keys.
+-- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 --
 -- @since 0.2.7
 foldlWithKey' :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
@@ -1377,9 +1397,8 @@ cata a b e = start
 
 #if __GLASGOW_HASKELL__ >= 708
 -- |
--- __Warning__: 'toList' currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the keys.
+-- __Warning__: The 'toList' method of this instance suffers
+-- <Data-Trie-Internal.html#bug25 Bug #25>.
 --
 -- @since 0.2.7
 instance GHC.Exts.IsList (Trie a) where
@@ -1409,9 +1428,7 @@ fromList = foldr (uncurry insert) empty
 -- | Convert trie into association list.  The list is ordered
 -- according to the keys.
 --
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the keys.
+-- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 toList :: Trie a -> [(ByteString,a)]
 {-# INLINE toList #-}
 toList = toListBy (,)
@@ -1423,9 +1440,7 @@ toList = toListBy (,)
 -- | Convert a trie into a list using a function. Resulting values
 -- are in key-sorted order.
 --
--- __Warning__: This function currently suffers from an
--- <https://github.com/wrengr/bytestring-trie/issues/25 asymptotic slowdown>
--- due to its need to reconstruct the keys.
+-- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 toListBy :: (ByteString -> a -> b) -> Trie a -> [b]
 {-# INLINE toListBy #-}
 #if !defined(__GLASGOW_HASKELL__)
@@ -2059,6 +2074,9 @@ intersectMaybe _ _         _         = Nothing
 -- value it's mapped to; or 'Nothing' for the empty trie.  When one
 -- entry is a prefix of another, the prefix will be returned.
 --
+-- __Note__: Prior to version 0.2.7, this function suffered
+-- <Data-Trie-Internal.html#bug25 Bug #25>; but it no longer does.
+--
 -- @since 0.2.2
 minAssoc :: Trie a -> Maybe (ByteString, a)
 minAssoc = go Epsilon
@@ -2072,6 +2090,9 @@ minAssoc = go Epsilon
 -- | Return the lexicographically largest 'ByteString' and the
 -- value it's mapped to; or 'Nothing' for the empty trie.  When one
 -- entry is a prefix of another, the longer one will be returned.
+--
+-- __Note__: Prior to version 0.2.7, this function suffered
+-- <Data-Trie-Internal.html#bug25 Bug #25>; but it no longer does.
 --
 -- @since 0.2.2
 maxAssoc :: Trie a -> Maybe (ByteString, a)
@@ -2093,6 +2114,9 @@ mapView f (Just (k,v,t)) = Just (k,v, f t)
 
 -- | Update the 'minAssoc' and return the old 'minAssoc'.
 --
+-- __Note__: Prior to version 0.2.7, this function suffered
+-- <Data-Trie-Internal.html#bug25 Bug #25>; but it no longer does.
+--
 -- @since 0.2.2
 updateMinViewBy :: (ByteString -> a -> Maybe a)
                 -> Trie a -> Maybe (ByteString, a, Trie a)
@@ -2106,6 +2130,9 @@ updateMinViewBy f = go Epsilon
 
 
 -- | Update the 'maxAssoc' and return the old 'maxAssoc'.
+--
+-- __Note__: Prior to version 0.2.7, this function suffered
+-- <Data-Trie-Internal.html#bug25 Bug #25>; but it no longer does.
 --
 -- @since 0.2.2
 updateMaxViewBy :: (ByteString -> a -> Maybe a)

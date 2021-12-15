@@ -75,6 +75,8 @@ import Data.Maybe         (isJust)
 ---------------------------------------------------------------}
 
 -- | Return all keys in the trie, in sorted order.
+--
+-- __Warning__: This function suffers <Data-Trie-Internal.html#bug25 Bug #25>.
 keys :: Trie a -> [ByteString]
 {-# INLINE keys #-}
 keys  = toListBy const

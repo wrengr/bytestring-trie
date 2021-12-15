@@ -51,10 +51,10 @@ main  = do
     [file] <- getArgs
     t <- readTrieFromFile file -- >>= evaluate
 
-    -- `sort`
+    -- \`sort\`
     -- S.putStrLn . S.unlines . T.keys $ t
 
-    -- `wc -l`
+    -- \`wc -l\`
     -- putStrLn . show . T.size $ t
 
 

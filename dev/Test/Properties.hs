@@ -559,7 +559,7 @@ prop_deleteSubmap_keysLackPrefix :: WS -> WTrie a -> Bool
 prop_deleteSubmap_keysLackPrefix (WS q) =
     all (not . S.isPrefixOf q) . T.keys . T.deleteSubmap q . unWT
 
--- | `T.submap` and `T.deleteSubmap` partition every trie for every key.
+-- | 'T.submap' and 'T.deleteSubmap' partition every trie for every key.
 prop_deleteSubmap_disunion :: (Eq a) => WS -> WTrie a -> Bool
 prop_deleteSubmap_disunion (WS q) (WT t) =
     t == (T.submap q t `TC.disunion` T.deleteSubmap q t)

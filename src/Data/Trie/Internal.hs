@@ -145,7 +145,7 @@ import qualified GHC.Exts (IsList(..))
 ------------------------------------------------------------
 ------------------------------------------------------------
 
--- | Infix variant of `uncurry`.  Currently only used in 'alterBy_'.
+-- | Infix variant of 'uncurry'.  Currently only used in 'alterBy_'.
 -- The fixity-level is like @(<$>)@; but I'm making it nonassociative
 -- to avoid any possible\/potential confusion.
 infix 4 $$
@@ -1319,14 +1319,14 @@ foldlWithKey' f z0 = \t -> go Epsilon z0 t -- eta for better inlining
                                 where q' = toStrict (q +>? k)
 -}
 
--- | Catamorphism for tries.  Unlike most other functions (`mapBy`,
--- `contextualMapBy`, `foldrWithKey`, etc), this function does *not*
--- reconstruct the full `ByteString` for each value; instead it
+-- | Catamorphism for tries.  Unlike most other functions ('mapBy',
+-- 'contextualMapBy', 'foldrWithKey', etc), this function does /not/
+-- reconstruct the full 'ByteString' for each value; instead it
 -- only returns the suffix since the previous value or branch point.
 --
 -- This function is a direct\/literal catamorphism of the implementation
 -- datatype, erasing only some bitmasking metadata for the branches.
--- For a more semantic catamorphism, see `cata`.
+-- For a more semantic catamorphism, see 'cata'.
 --
 -- @since 0.2.6
 cata_
@@ -1341,15 +1341,15 @@ cata_ a b e = go
     go (Branch _ _ l r) = b (go l) (go r)
 
 
--- | Catamorphism for tries.  Unlike most other functions (`mapBy`,
--- `contextualMapBy`, `foldrWithKey`, etc), this function does *not*
--- reconstruct the full `ByteString` for each value; instead it
+-- | Catamorphism for tries.  Unlike most other functions ('mapBy',
+-- 'contextualMapBy', 'foldrWithKey', etc), this function does /not/
+-- reconstruct the full 'ByteString' for each value; instead it
 -- only returns the suffix since the previous value or branch point.
 --
 -- This function is a semantic catamorphism; that is, it tries to
 -- express the invariants of the implementation, rather than exposing
 -- the literal structure of the implementation.  For a more literal
--- catamorphism, see `cata_`.
+-- catamorphism, see 'cata_'.
 --
 -- @since 0.2.6
 cata
@@ -1527,7 +1527,7 @@ lookupBy_ found missing clash = start
 --     arc k Nothing  t ≡ singleton k () >> t
 --     arc k (Just v) t ≡ singleton k v  >>= unionR t . singleton S.empty
 --         (...except 'arc' doesn't do the invariant correction
---           of (>>=) for epsilon`elem`t)
+--           of (>>=) for epsilon'elem't)
 --
 -- | Return the subtrie containing all keys beginning with a prefix.
 submap :: ByteString -> Trie a -> Trie a
@@ -2045,7 +2045,7 @@ intersectMaybe f (Just v0) (Just v1) = f v0 v1
 intersectMaybe _ _         _         = Nothing
 
 
--- TODO(github#23): add `differenceBy`
+-- TODO(github#23): add 'differenceBy'
 
 
 {-----------------------------------------------------------

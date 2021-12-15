@@ -258,7 +258,8 @@ quickcheckTests
 #if MIN_VERSION_base(4,9,0)
     , Tasty.testGroup "Semigroup (@Sum Int)"
       [ QC.testProperty
-          -- This one is a bit more expensive: ~1sec instead of <=0.5sec
+          -- This one is a bit more expensive: 1~2sec instead of <=0.5sec
+          -- TODO: see if we can't fix that without ruining the utility of the test.
           "prop_Semigroup"
           (prop_Semigroup :: WTrie (Sum Int) -> WTrie (Sum Int) -> WTrie (Sum Int) -> Bool)
       ]

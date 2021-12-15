@@ -304,6 +304,11 @@ arc :: ByteString -> Maybe a -> Trie a -> Trie a
 arc !k mv@(Just _) = Arc k mv
 arc  k    Nothing  = arc_ k
 
+-- TODO: may actually consider exporting this one (under the name
+-- \"prepend\"), since it could be generally useful and it has no
+-- preconditions.  Of course, that means we'd need to rename the
+-- current 'prepend'.
+--
 -- | > arc_ k ≡ arc k Nothing
 --
 -- This function is only very rarely needed; most of the time you
@@ -357,9 +362,9 @@ epsilon :: a -> Trie a -> Trie a
 epsilon = Arc S.empty . Just
 
 
--- | Smart 'Branch' constructor: prunes 'Empty'.  This function
--- does no other work besides pruning, so the 'Prefix', 'Mask', and
--- ordering of the 'Trie's must all be as if calling the 'Branch'
+-- | Smart @Branch@ constructor: prunes @Empty@.  This function
+-- does no other work besides pruning, so the @Prefix@, @Mask@, and
+-- ordering of the 'Trie's must all be as if calling the @Branch@
 -- constructor directly.
 branch :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
 {-# INLINE branch #-}
@@ -389,7 +394,7 @@ mergeNE p1 t1 p2 t2
 -- we can see 4/8/?*Word8 at a time instead of just one.
 -- But that makes maintaining invariants ...difficult :(
 
--- | Get the equivalent of the 'Prefix' stored in a @Branch@, but
+-- | Get the equivalent of the @Prefix@ stored in a @Branch@, but
 -- for an @Arc@.
 arcPrefix :: ByteString -> Prefix
 {-# INLINE arcPrefix #-}
@@ -1110,6 +1115,7 @@ instance Foldable Trie where
         -- than the (t,m) order; and both allocate the same.
         -- This differs from the case for 'foldr'' and 'foldl';
         -- though I'm not sure why.
+        -- TODO: Once we disable HPC, now it's looking like the flopped version is faster afterall...
         go !m Empty              = m
         go  m (Arc _ Nothing  t) = go m t
         go  m (Arc _ (Just v) t) = go (m `mappend` f v) t
@@ -1139,6 +1145,7 @@ instance Foldable Trie where
         -- benchmarking indicates that the @($!)@ in the Branch
         -- case slightly improved things.
         -- TODO: what's going on with the @($!)@; bogus?
+        -- TODO: once HPC disabled, now it's saying the unflopped version without the extra @($!)@ is the faster one! (unflopped with @($!)@ is only marginally slower; probably noise).
         go Empty              !z = z
         go (Arc _ Nothing  t)  z = go t z
         go (Arc _ (Just v) t)  z = f v $! go t z
@@ -1152,6 +1159,7 @@ instance Foldable Trie where
         -- allocates ~8.4% less, compared to the (z,t) order.
         -- I've no idea why the allocation would differ, especially
         -- when it doesn't for 'foldr'' and 'foldMap''.
+        -- TODO: once HPC disabled, now it's showing the flopped version is ~2x faster! bogus?
         go Empty              z = z
         go (Arc _ Nothing  t) z = go t z
         go (Arc _ (Just v) t) z = go t (f z v)
@@ -1166,6 +1174,7 @@ instance Foldable Trie where
         -- TODO: figure out why\/how the allocation could differ so much; bogus?
         -- TODO: figure out why benchmarking indicates the \"flop_bang\"
         -- version is ~4% faster (albeit ~32% more allocation); bogus?
+        -- TODO: once HPC disabled, the flopped version is showing ~2x faster; bogus?
         go !z Empty              = z
         go  z (Arc _ Nothing  t) = go z t
         go  z (Arc _ (Just v) t) = go (f z v) t

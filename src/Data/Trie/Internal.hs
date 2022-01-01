@@ -17,7 +17,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.12.14
+--                                              ~ 2021.12.31
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  2008--2021 wren romano
@@ -471,6 +471,9 @@ errorLogHead fn q
 -----------------------------------------------------------}
 
 {-
+-- (2021.12.31): remove the definition of @(/=)@ for:
+-- <https://github.com/haskell/core-libraries-committee/issues/3>
+--
 -- 'IntMap' defines their own instance so as to check the Mask
 -- before the Prefix; and they have done so since at least version
 -- 0.5.0.0 (2011).  So I assume the performance benefits of doing
@@ -479,7 +482,6 @@ errorLogHead fn q
 -- TODO: benchmark!!
 instance Eq a => Eq (Trie a) where
     (==) = equal
-    (/=) = unequal
 
 -- TODO: mark this INLINABLE to specialize on the Eq instance?  Why doesn't IntMap?
 -- TODO: Alternatively, why doesn't IntMap simply reuse the 'liftEq' implementation?
@@ -490,14 +492,6 @@ equal (Arc k0 mv0 t0)
       (Arc k1 mv1 t1)      = k0 == k1 && mv0 == mv1 && equal t0 t1
 equal Empty Empty          = True
 equal _     _              = False
-
-unequal :: Eq a => Trie a -> Trie a -> Bool
-unequal (Branch p0 m0 l0 r0)
-        (Branch p1 m1 l1 r1) = m0 /= m1 || p0 /= p1 || unequal l0 l1 || unequal r0 r1
-unequal (Arc k0 mv0 t0)
-        (Arc k1 mv1 t1)      = k0 /= k1 || mv0 /= mv1 || unequal t0 t1
-unequal Empty Empty          = False
-unequal _     _              = True
 -}
 
 #if MIN_VERSION_base(4,9,0)

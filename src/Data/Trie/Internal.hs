@@ -49,6 +49,10 @@ module Data.Trie.Internal
     -- * Basic functions
     , empty, null, singleton, size
 
+    -- * List-conversion functions
+    , fromList
+    , toList, toListBy, elems
+
     -- * Query functions
     , lookupBy_, submap
     , match_, matches_
@@ -60,31 +64,31 @@ module Data.Trie.Internal
     , wip_unionWith
     , mergeBy, intersectBy
 
-    -- * Filtering and mapping functions
-    , traverseWithKey
+    -- * Priority-queue functions
+    , minAssoc, maxAssoc
+    , updateMinViewBy, updateMaxViewBy
+
+    -- * Mapping, filtering, folding, and traversing
+    -- ** Filterable
     , filter
-    , filterA
     , filterMap
-    , wither
     , mapBy
-    -- TODO: effectful 'mapBy'
+    -- ** Witherable
+    , filterA
+    , wither
+    -- TODO: 'witherBy' (effectful 'mapBy')
     -- ** Contextual filtering\/mapping functions
     , contextualMap
     , contextualMap'
     , contextualFilterMap
-    -- TODO: effectful 'contextualFilterMap'
     , contextualMapBy
-    -- TODO: effectful 'contextualMapBy'
-
-    -- * Folding and list-conversion functions
-    , fromList
-    , toList, toListBy, elems
+    -- TODO: 'contextualWither'
+    -- TODO: 'contextualWitherBy' (effectful 'contextualMapBy')
+    -- ** Foldable
     , foldrWithKey, foldrWithKey', foldlWithKey, foldlWithKey'
     , cata_, cata
-
-    -- * Priority-queue functions
-    , minAssoc, maxAssoc
-    , updateMinViewBy, updateMaxViewBy
+    -- ** Traverse
+    , traverseWithKey
 
     -- * Internal utility functions
     , showTrie
@@ -693,6 +697,8 @@ instance Functor Trie where
     v <$ (Branch p m l r)   = Branch p m (v <$ l) (v <$ r)
 #endif
 
+-- TODO: strict version of fmap. Is there a canonical name\/class for this yet?
+
 {-----------------------------------------------------------
 -- Instances: Traversable, Applicative, Monad
 -----------------------------------------------------------}
@@ -890,13 +896,24 @@ instance MonadPlus Trie where
 
 
 -- | Apply a function to all values, potentially removing them.
--- This function satisfies the laws:
+--
+-- ==== __Laws__
+-- [/Fission/]
+--   @'filterMap' f ≡ 'fmap' ('Data.Maybe.fromJust' . f) . 'filter' ('Data.Maybe.isJust' . f)@
+--
+-- [/Fusion/]
+--   @'filterMap' (\\v -> f v '<$' 'Control.Monad.guard' (g v)) ≡ 'fmap' f . 'filter' g@
 --
 -- [/Conservation/]
 --   @'filterMap' ('Just' . f) ≡ 'fmap' f@
 --
 -- [/Composition/]
 --   @'filterMap' f . 'filterMap' g ≡ 'filterMap' (f 'Control.Monad.<=<' g)@
+--
+-- The fission\/fusion laws are essentially the same, they differ
+-- only in which direction is more \"natural\" for use as a rewrite
+-- rule.  The conservation law is just a special case of fusion,
+-- but it's a particularly helpful one to take note of.
 --
 filterMap :: (a -> Maybe b) -> Trie a -> Trie b
 filterMap f = go
@@ -906,22 +923,29 @@ filterMap f = go
     go (Arc k Nothing  t) = prepend k   (go t)
     go (Arc k (Just v) t) = arc k (f v) (go t)
     go (Branch p m l r)   = branch p m (go l) (go r)
--- TODO: rewrite rule for both laws.
+-- TODO: rewrite rule for the latter three laws. (The fission law
+-- is unlikely to be very helpful.)
 -- TODO: why not implement as @contextualFilterMap (const . f)@ ?
 -- Does that actually incur additional overhead?
 
 
--- Some other spellings of the translation:
+-- Some translations:
+--   @'filter' f ≡ 'filterMap' (\\v -> if f v then 'Just' v else 'Nothing')@
 --   @'filter' f ≡ 'filterMap' (('<$') '<*>' 'Control.Monad.guard' . f)@
+--   @'filter' f ≡ 'filterMap' (\\v -> v '<$' 'Control.Monad.guard' (f v))@
 --
 -- | Retain only those values which satisfy some predicate.
 --
---   @'filter' f ≡ 'filterMap' (\\v -> if f v then 'Just' v else 'Nothing')@
---
+-- ==== __Laws__
+-- [/Definition/]
 --   @'filter' f ≡ 'filterMap' (\\v -> v '<$' 'Control.Monad.guard' (f v))@
 --
 -- [/Composition/]
 --   @'filter' f . 'filter' g ≡ 'filter' ('liftA2' ('&&') f g)@
+--
+-- The definition above is a special case of the fusion law for
+-- 'filterMap'.  (Also, the name just means definitional-equality;
+-- it's not the actual implementation used.)
 --
 -- @since 0.2.7
 filter :: (a -> Bool) -> Trie a -> Trie a
@@ -952,15 +976,18 @@ import Data.Functor.Identity (Identity(Identity))
 -- BUG: Is there any other way to get the Haddock to force linebreaks,
 -- other than using birdtracks which have a whole different
 -- stylization?
+-- TODO: is commutative monad sufficient, or are there other
+-- requirements too?  If it does in fact hold for commutative monads,
+-- then we should state it as a law (like we do for naturality).
 --
--- | An effectful version of 'filterMap'.  This function satisfies
--- the laws:
+-- | An effectful version of 'filterMap'.
 --
+-- ==== __Laws__
 -- [/Naturality/]
---   @'wither' (t . f) ≡ t . 'wither' f@
---   for every /applicative-transformation/ @t@
+--   @'wither' (t . f) ≡ t . 'wither' f@,
+--   for any /applicative-transformation/ @t@
 --
--- [/Purity/, or /Identity/]
+-- [/Purity/]
 --   @'wither' ('pure' . f) ≡ 'pure' . 'filterMap' f@
 --
 -- [/Conservation/]
@@ -978,7 +1005,6 @@ import Data.Functor.Identity (Identity(Identity))
 -- however, we cannot have such a law except when the applicative
 -- functor is in fact a commutative monad (i.e., the order of effects
 -- doesn't matter).
--- TODO: is commutative monad sufficient, or are there other requirements too?
 --
 -- (The terminology of
 -- <https://ncatlab.org/nlab/show/horizontal+composition \"horizontal\" composition> vs
@@ -1001,13 +1027,35 @@ wither f = go
     go (Branch p m l r)   = liftA2 (branch p m) (go l) (go r)
 
 -- Some other spellings of the translation:
---   @'filterA' p ≡ 'wither' (\\v -> (\\b -> if b then 'Just' v else 'Nothing') '<$>' p v)@
---   @'filterA' p ≡ 'wither' (\\v -> (\\b -> v '<$' 'Control.Monad.guard' b) '<$>' p v)@
---   @'filterA' p ≡ 'wither' ('fmap' . (. 'Control.Monad.guard') . ('<$') '<*>' p)@
+--   @'filterA' f ≡ 'wither' (\\v -> (\\b -> if b then 'Just' v else 'Nothing') '<$>' f v)@
+--   @'filterA' f ≡ 'wither' (\\v -> (\\b -> v '<$' 'Control.Monad.guard' b) '<$>' f v)@
+--   @'filterA' f ≡ 'wither' ('fmap' . (. 'Control.Monad.guard') . ('<$') '<*>' f)@
+--
+-- TODO: make sure I didn't mess up the pointless-ness of the @underB@ definition in the horizontal composition law.
+-- To get into a prefix form:   @\f g x -> ((. (&&)) (<$> f x)) <$> g x@
+-- Though postfix is cleaner:   @\f g x -> g x <&> ((f x <&>) . (&&))@
+-- Or to look like 'liftA2':    @underF2 f m n = Compose (n <&> ((m <&>) . f))@
+-- More pointless:              @Compose . (((<&>) . g) <*> ((.(&&)) . (<&>) . f))@
+--  Or:                         @Compose . ((fmap . (.(&&)) . (<&>) . f) <*> g)@
 --
 -- | An effectful version of 'filter'.
 --
---   @'filterA' p ≡ 'wither' (\\v -> (v '<$') . 'Control.Monad.guard' '<$>' p v)@
+-- ==== __Laws__
+-- [/Definition/]
+--   @'filterA' f ≡ 'wither' (\\v -> (v '<$') . 'Control.Monad.guard' '<$>' f v)@
+--
+-- [/Naturality/]
+--   @'filterA' (t . f) ≡ t . 'filterA' f@,
+--   for any /applicative-transformation/ @t@
+--
+-- [/Purity/]
+--   @'filterA' ('pure' . f) ≡ 'pure' . 'filter' f@
+--
+-- [/Horizontal Composition/]
+--   @'filterA' f \`under\` 'filterA' g ≡ 'filterA' (underF2 ('&&') f g)@
+--
+--     where: @under p q = 'Data.Functor.Compose.Compose' . 'fmap' p . q@;
+--     and: @underF2 h f g v = 'Data.Functor.Compose.Compose' (g v 'Data.Functor.<&>' ((f v 'Data.Functor.<&>') . h)))@
 --
 -- @since 0.2.7
 filterA :: Applicative f => (a -> f Bool) -> Trie a -> f (Trie a)
@@ -1507,6 +1555,9 @@ toListByFB f t cons nil = foldrWithKey ((cons .) . f) nil t
 --
 -- | Return all values in the trie, in key-sorted order.
 --
+-- __Note__: Prior to version 0.2.7, this function suffered
+-- <Data-Trie-Internal.html#bug25 Bug #25>; but it no longer does.
+--
 -- @since 0.2.2
 elems :: Trie a -> [a]
 {-# INLINE elems #-}
@@ -1879,6 +1930,10 @@ adjust f = start
 --
 -- TODO: Test that this doesn't introduce any bugs. And benchmark
 -- it to see how much it really saves vs 'mergeBy'.
+--
+-- | Take the union of two tries, using a function to resolve
+-- conflicts.  The resulting trie is constructed strictly, but the
+-- results of the combining function are evaluated lazily.
 wip_unionWith :: (a -> a -> a) -> Trie a -> Trie a -> Trie a
 wip_unionWith f = start
     where

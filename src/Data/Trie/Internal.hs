@@ -17,10 +17,10 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.12.31
+--                                              ~ 2022.02.08
 -- |
 -- Module      :  Data.Trie.Internal
--- Copyright   :  2008--2021 wren romano
+-- Copyright   :  2008--2022 wren romano
 -- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  experimental
@@ -216,8 +216,8 @@ of the ByteString, which is purely beneficial.  However, it does
 introduce some invariants since now we must distinguish NonEmptyBS
 vs NullableBS.
 
-    newtype NonEmptyBS = NonEmptyBS ByteString  -- Invariant: never empty
-    newtype NullableBS = NullableBS Bytestring  -- May be empty.
+    newtype NonEmptyBS = NonEmptyBS ByteString  -- Invariant: never null.
+    newtype NullableBS = NullableBS Bytestring  -- May be null.
 
     data Node a   = Accept a (ArcSet a)
                   | Reject   (Branch a)
@@ -262,13 +262,13 @@ Purely beneficial, since there's no point in keeping them distinct anymore.
                   | Start  NullableBS (Node a)
 
 ** Squash Empty/None and Arc/Start together:
-Alas, this complicates the invariants about non-empty strings.
+Alas, this complicates the invariants about non-null strings.
 
     data Node a = Node (Maybe a) (ArcSet a)
                     -- Invariant: if Nothing then must be Branch
     data Trie a = Empty
                 | Arc    ByteString (Node a)
-                    -- Invariant: empty string only allowed if both
+                    -- Invariant: null string only allowed if both
                     -- (a) the Arc is at the root, and
                     -- (b) the Node has a value.
                 | Branch {Prefix} {Mask} (Trie a) (Trie a)
@@ -329,7 +329,7 @@ ifJustThenNoEpsilon _ _ = True
 -}
 
 -- FIXME: [bug26] <https://github.com/wrengr/bytestring-trie/issues/26>
--- We need to adjust 'arc', 'arc_', 'arcNN', and 'prepend' to behave
+-- We need to adjust 'arc', 'prepend', 'arcNN', and 'prependNN' to behave
 -- more like a zipper, to avoid asymptotic slowdown in corner cases.
 
 -- | Smart constructor to prune @Arc@s that lead nowhere.
@@ -339,23 +339,7 @@ ifJustThenNoEpsilon _ _ = True
 arc :: ByteString -> Maybe a -> Trie a -> Trie a
 {-# INLINE arc #-}
 arc !k mv@(Just _) = Arc k mv
-arc  k    Nothing  = arc_ k
-
--- TODO: may actually consider exporting this one (under the name
--- \"prepend\"), since it could be generally useful and it has no
--- preconditions.  Of course, that means we'd need to rename the
--- current 'prepend'.
---
--- | > arc_ k ≡ arc k Nothing
---
--- This function is only very rarely needed; most of the time you
--- already know that the string is non-null, and thus you can call
--- 'prepend' directly.
-arc_ :: ByteString -> Trie a -> Trie a
-{-# INLINE arc_ #-}
-arc_ k
-    | S.null k  = id
-    | otherwise = prepend k
+arc  k    Nothing  = prepend k
 
 -- | Variant of 'arc' where the string is known to be non-null.
 --
@@ -365,17 +349,32 @@ arc_ k
 arcNN :: ByteString -> Maybe a -> Trie a -> Trie a
 {-# INLINE arcNN #-}
 arcNN !k mv@(Just _) = Arc k mv
-arcNN  k    Nothing  = prepend k
+arcNN  k    Nothing  = prependNN k
 
--- | Prepend a non-empty string to a trie.
+-- | Prepend a possibly-null string to a trie.
 --
--- __Preconditions__
--- * @prepend k _ | not (S.null k)@
+-- This function is only very rarely needed; most of the time you
+-- already know that the string is non-null, and thus you can call
+-- 'prependNN' directly.
+--
+-- TODO: may actually consider exporting this one, since it could
+-- be generally useful and it has no preconditions.  Of course,
+-- it's susceptible to [bug25][bug26] if used incorrectly...
 prepend :: ByteString -> Trie a -> Trie a
 {-# INLINE prepend #-}
-prepend !_ t@Empty      = t
-prepend  q t@(Branch{}) = Arc q Nothing t
-prepend  q (Arc k mv s) = Arc (S.append q k) mv s
+prepend k
+    | S.null k  = id
+    | otherwise = prependNN k
+
+-- | Prepend a non-null string to a trie.
+--
+-- __Preconditions__
+-- * @prependNN k _ | not (S.null k)@
+prependNN :: ByteString -> Trie a -> Trie a
+{-# INLINE prependNN #-}
+prependNN !_ t@Empty      = t
+prependNN  q t@(Branch{}) = Arc q Nothing t
+prependNN  q (Arc k mv s) = Arc (S.append q k) mv s
     -- TODO: see [bug26]; should ensure that callers do not nest
     -- calls to this function which all take this @Arc@ case.
 
@@ -399,35 +398,96 @@ epsilon :: a -> Trie a -> Trie a
 epsilon = Arc S.empty . Just
 
 
--- | Smart @Branch@ constructor: prunes @Empty@.  This function
--- does no other work besides pruning, so the @Prefix@, @Mask@, and
--- ordering of the 'Trie's must all be as if calling the @Branch@
--- constructor directly.
+-- | Smart @Branch@ constructor: prunes @Empty@ on both sides.
+-- This function does no other work besides pruning, so the @Prefix@,
+-- @Mask@, and ordering of the 'Trie's must all be as if calling
+-- the @Branch@ constructor directly.
 branch :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
 {-# INLINE branch #-}
 branch !_ !_ Empty r     = r
 branch  _  _ l     Empty = l
 branch  p  m l     r     = Branch p m l r
 
+-- | Smart @Branch@ constructor: prunes @Empty@ on left side only.
+--
+-- __Preconditions__
+-- * the right trie is not @Empty@.
+branchL :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
+{-# INLINE branchL #-}
+branchL !_ !_ Empty r = r
+branchL  p  m l     r = Branch p m l r
+
+-- | Smart @Branch@ constructor: prunes @Empty@ on right side only.
+--
+-- __Preconditions__
+-- * the left trie is not @Empty@.
+branchR :: Prefix -> Mask -> Trie a -> Trie a -> Trie a
+{-# INLINE branchR #-}
+branchR !_ !_ l Empty = l
+branchR  p  m l r     = Branch p m l r
+
 -- | Smart constructor to join two tries into a @Branch@ with maximal
--- prefix sharing.  Requires knowing the prefixes, but can combine
--- either @Branch@es or @Arc@s.
+-- prefix sharing, and in the correct left\/right order.  Requires
+-- knowing the prefixes, but can combine either @Branch@es or @Arc@s.
 --
 -- __Preconditions__
 -- * Both tries must be non-@Empty@.
 -- * The two prefixes /must not/ be able to match entirely!
-mergeNE :: Prefix -> Trie a -> Prefix -> Trie a -> Trie a
-{-# INLINE mergeNE #-}
-mergeNE p1 t1 p2 t2
-    | zero p1 m = Branch p m t1 t2
-    | otherwise = Branch p m t2 t1
+graft :: Prefix -> Trie a -> Prefix -> Trie a -> Trie a
+{-# INLINE graft #-}
+graft p0 t0 p1 t1
+    | zero p0 m = Branch p m t0 t1
+    | otherwise = Branch p m t1 t0
     where
-    m = getMask p1 p2
-    p = applyMask p1 m
+    m = getMask p0 p1
+    p = applyMask p0 m
 
+-- | Shorthand for prepending a non-null string to a 'graft'.  This
+-- is mainly useful for when @(p,k0,k1)@ came from 'breakMaximalPrefix'.
+--
+-- __Preconditions__
+-- * The prefix must be non-null.
+-- * Each trie must agree with their key (hence must also be non-@Empty@).
+-- * The keys must not have matching prefixes.
+wye :: ByteString
+    -> ByteString -> Trie a
+    -> ByteString -> Trie a
+    -> Trie a
+wye p k0 t0 k1 t1 =
+    Arc p Nothing $ graft (arcPrefix k0) t0 (arcPrefix k1) t1
 
--- It would be better if Arc used
--- Data.ByteString.TrieInternal.wordHead somehow, that way
+-- TODO: this is only used by 'mergeBy' (since 'intersectBy' returns
+-- @Empty@ in lieu of @Branch@ for the latter cases); so maybe we
+-- should move this to be a local definition there?
+--
+-- | Smart constructor to join two @Arc@s into a @Branch@ when possible,
+-- and to 'breakMaximalPrefix' otherwise.
+--
+-- __Preconditions__
+-- * Both tries must be non-@Empty@.
+arcMerge
+    :: ByteString -> Trie a
+    -> ByteString -> Trie a
+    -> (ByteString -> ByteString -> ByteString -> Trie a)
+    -> Trie a
+{-# INLINE arcMerge #-}
+arcMerge k0 t0 k1 t1 whenMatch
+    | m == 0 =
+        case breakMaximalPrefix k0 k1 of
+        (pre, k0', k1')
+            -- TODO: change this into an 'assert' instead.
+            | S.null pre -> impossible "arcMerge" -- perfect 'arcPrefix' match, yet no 'breakMaximalPrefix' prefix.
+            | otherwise  -> whenMatch pre k0' k1'
+    | zero p0 m = Branch p m t0 t1
+    | otherwise = Branch p m t1 t0
+    where
+    p0 = arcPrefix k0
+    p1 = arcPrefix k1
+    m  = getMask p0 p1
+    p  = applyMask p0 m
+
+-- It would be better if arcs used
+-- 'Data.ByteString.TrieInternal.wordHead' somehow, that way
 -- we can see 4/8/?*Word8 at a time instead of just one.
 -- But that makes maintaining invariants ...difficult :(
 
@@ -758,23 +818,23 @@ instance Applicative Trie where
     -- could surely derive on its own):
     Empty            *> _  = Empty
     Branch p m l r   *> t1 = branch p m (l *> t1) (r *> t1)
-    Arc k Nothing  s *> t1 = prepend k           (s *> t1)
-    Arc k (Just _) s *> t1 = arc_ k (t1 `unionL` (s *> t1))
+    Arc k Nothing  s *> t1 = prependNN k            (s *> t1)
+    Arc k (Just _) s *> t1 = prepend k (t1 `unionL` (s *> t1))
 
     -- This one is marginally better, since we can use @(<$)@ in the Accept case.
     Empty            <* _  = Empty
     Branch p m l r   <* t1 = branch p m (l <* t1) (r <* t1)
-    Arc k Nothing  s <* t1 = prepend k                  (s <* t1)
-    Arc k (Just v) s <* t1 = arc_ k ((v <$ t1) `unionL` (s <* t1))
+    Arc k Nothing  s <* t1 = prependNN k                   (s <* t1)
+    Arc k (Just v) s <* t1 = prepend k ((v <$ t1) `unionL` (s <* t1))
 
     -- This one took a lot of inlining\/massaging, so might be worth it...
     -- It's easier to see the structure if we define a closure
     -- @(liftA2 f _ t1)@, but unclear if that would hurt the improvement
     -- of the implementation.
-    liftA2 f Empty              _  = empty
+    liftA2 f Empty              _  = Empty
     liftA2 f (Branch p m l r)   t1 = branch p m (liftA2 f l t1) (liftA2 f r t1)
-    liftA2 f (Arc k Nothing  s) t1 = prepend k (liftA2 f s t1)
-    liftA2 f (Arc k (Just v) s) t1 = arc_ k ((f v <$> t1) `unionL` liftA2 f s t1)
+    liftA2 f (Arc k Nothing  s) t1 = prependNN k (liftA2 f s t1)
+    liftA2 f (Arc k (Just v) s) t1 = prepend k ((f v <$> t1) `unionL` liftA2 f s t1)
     -}
 
 ------------------------------------------------------------
@@ -803,10 +863,9 @@ instance Monad Trie where
     -- FIXME: See [bug26].
     (>>=) Empty              _ = empty
     (>>=) (Branch p m l r)   f = branch p m (l >>= f) (r >>= f)
-    (>>=) (Arc k Nothing  t) f = prepend k (t >>= f)
-    (>>=) (Arc k (Just v) t) f = arc_ k (f v `unionL` (t >>= f))
-                               where
-                               unionL = mergeBy (\x _ -> Just x)
+    (>>=) (Arc k Nothing  t) f = prependNN k             (t >>= f)
+    (>>=) (Arc k (Just v) t) f = prepend k (f v `unionL` (t >>= f))
+                               where unionL = mergeBy (\x _ -> Just x)
 
 
 {-----------------------------------------------------------
@@ -916,12 +975,15 @@ instance MonadPlus Trie where
 -- but it's a particularly helpful one to take note of.
 --
 filterMap :: (a -> Maybe b) -> Trie a -> Trie b
-filterMap f = go
+filterMap f = start
     where
+    -- Handle epsilon values before entering the main recursion.
+    start (Arc k (Just v) t) = arc k (f v) (go t)
+    start t                  = go t
     -- FIXME: See [bug26].
     go Empty              = empty
-    go (Arc k Nothing  t) = prepend k   (go t)
-    go (Arc k (Just v) t) = arc k (f v) (go t)
+    go (Arc k Nothing  t) = prependNN k   (go t)
+    go (Arc k (Just v) t) = arcNN k (f v) (go t)
     go (Branch p m l r)   = branch p m (go l) (go r)
 -- TODO: rewrite rule for the latter three laws. (The fission law
 -- is unlikely to be very helpful.)
@@ -949,19 +1011,28 @@ filterMap f = go
 --
 -- @since 0.2.7
 filter :: (a -> Bool) -> Trie a -> Trie a
-filter f = go
+filter f = start
     where
+    -- Handle epsilon values before entering the main recursion.
+    start (Arc k (Just v) t) = arcB k v (f v) (go t)
+    start t                  = go t
     -- FIXME: See [bug26].
     go Empty              = empty
-    go (Arc k Nothing  t) = prepend k      (go t)
-    go (Arc k (Just v) t) = arcB k v (f v) (go t)
+    go (Arc k Nothing  t) = prependNN k      (go t)
+    go (Arc k (Just v) t) = arcNNB k v (f v) (go t)
     go (Branch p m l r)   = branch p m (go l) (go r)
 
 -- | > arcB k v b ≡ arc k (v <$ guard b)
 arcB :: ByteString -> a -> Bool -> Trie a -> Trie a
 {-# INLINE arcB #-}
 arcB k v True  = Arc k (Just v)
-arcB k _ False = arc_ k
+arcB k _ False = prepend k
+
+-- | > arcNNB k v b ≡ arcNN k (v <$ guard b)
+arcNNB :: ByteString -> a -> Bool -> Trie a -> Trie a
+{-# INLINE arcNNB #-}
+arcNNB k v True  = Arc k (Just v)
+arcNNB k _ False = prependNN k
 
 
 {-
@@ -1018,12 +1089,15 @@ import Data.Functor.Identity (Identity(Identity))
 --
 -- @since 0.2.7
 wither :: Applicative f => (a -> f (Maybe b)) -> Trie a -> f (Trie b)
-wither f = go
+wither f = start
     where
+    -- Handle epsilon values before entering the main recursion.
+    start (Arc k (Just v) t) = liftA2 (arc k) (f v) (go t)
+    start t                  = go t
     -- FIXME: See [bug26].
     go Empty              = pure   empty
-    go (Arc k Nothing  t) = fmap   (prepend k)   (go t)
-    go (Arc k (Just v) t) = liftA2 (arc k) (f v) (go t)
+    go (Arc k Nothing  t) = fmap   (prependNN k)   (go t)
+    go (Arc k (Just v) t) = liftA2 (arcNN k) (f v) (go t)
     go (Branch p m l r)   = liftA2 (branch p m) (go l) (go r)
 
 -- Some other spellings of the translation:
@@ -1059,12 +1133,15 @@ wither f = go
 --
 -- @since 0.2.7
 filterA :: Applicative f => (a -> f Bool) -> Trie a -> f (Trie a)
-filterA f = go
+filterA f = start
     where
+    -- Handle epsilon values before entering the main recursion.
+    start (Arc k (Just v) t) = liftA2 (arcB k v) (f v) (go t)
+    start t                  = go t
     -- FIXME: See [bug26].
     go Empty              = pure   empty
-    go (Arc k Nothing  t) = fmap   (prepend k)      (go t)
-    go (Arc k (Just v) t) = liftA2 (arcB k v) (f v) (go t)
+    go (Arc k Nothing  t) = fmap   (prependNN k)      (go t)
+    go (Arc k (Just v) t) = liftA2 (arcNNB k v) (f v) (go t)
     go (Branch p m l r)   = liftA2 (branch p m) (go l) (go r)
 
 
@@ -1074,14 +1151,17 @@ filterA f = go
 mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
 -- TODO: why not implement as @contextualMapBy (\k v _ -> f k v)@ ?
 -- Does that actually incur additional overhead?
-mapBy f = go Nil
+mapBy f = start
     where
+    -- Handle epsilon values before entering the main recursion.
+    start (Arc k (Just v) t) = arc k (f k v) (go (fromStrict k) t)
+    start t                  = go Nil t
     -- FIXME: See [bug26].
     -- See [Note2].
     go _ Empty              = empty
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
-    go q (Arc k Nothing  t) = prepend k (go (q +>! k) t)
-    go q (Arc k (Just v) t) = arc k (f q' v) (go (fromStrict q') t)
+    go q (Arc k Nothing  t) = prependNN k (go (q +>! k) t)
+    go q (Arc k (Just v) t) = arcNN k (f q' v) (go (fromStrict q') t)
                             where q' = toStrict (q +>? k)
 
 
@@ -1114,12 +1194,15 @@ contextualMap' f = go
 --
 -- @since 0.2.3
 contextualFilterMap :: (a -> Trie a -> Maybe b) -> Trie a -> Trie b
-contextualFilterMap f = go
+contextualFilterMap f = start
     where
+    -- Handle epsilon values before entering the main recursion.
+    start (Arc k (Just v) t) = arc k (f v t) (go t)
+    start t                  = go t
     -- FIXME: See [bug26].
     go Empty              = empty
-    go (Arc k Nothing  t) = prepend k     (go t)
-    go (Arc k (Just v) t) = arc k (f v t) (go t)
+    go (Arc k Nothing  t) = prependNN k     (go t)
+    go (Arc k (Just v) t) = arcNN k (f v t) (go t)
     go (Branch p m l r)   = branch p m (go l) (go r)
 
 
@@ -1129,14 +1212,17 @@ contextualFilterMap f = go
 --
 -- @since 0.2.3
 contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
-contextualMapBy f = go Nil
+contextualMapBy f = start
     where
+    -- Handle epsilon values before entering the main recursion.
+    start (Arc k (Just v) t) = arc k (f k v t) (go (fromStrict k) t)
+    start t                  = go Nil t
     -- FIXME: See [bug26].
     -- See [Note2].
     go _ Empty              = empty
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
-    go q (Arc k Nothing  t) = prepend k (go (q +>! k) t)
-    go q (Arc k (Just v) t) = arc k (f q' v t) (go (fromStrict q') t)
+    go q (Arc k Nothing  t) = prependNN k (go (q +>! k) t)
+    go q (Arc k (Just v) t) = arcNN k (f q' v t) (go (fromStrict q') t)
                             where q' = toStrict (q +>? k)
 
 
@@ -1310,23 +1396,23 @@ instance Foldable Trie where
     -}
     -- TODO: why does IntMap define these two specially, rather than using foldl' or foldl1' ?
     {-# INLINABLE maximum #-}
-    maximum = start
+    maximum = go0
         where
-        start Empty              = error "Data.Foldable.maximum @Trie: empty trie"
-        start (Arc _ Nothing  t) = start t
-        start (Arc _ (Just v) t) = go v t
-        start (Branch _ _ l r)   = go (start l) r
+        go0   Empty              = error "Data.Foldable.maximum @Trie: empty trie"
+        go0   (Arc _ Nothing  t) = go0 t
+        go0   (Arc _ (Just v) t) = go v t
+        go0   (Branch _ _ l r)   = go (go0 l) r
         go !w Empty              = w
         go  w (Arc _ Nothing  t) = go w t
         go  w (Arc _ (Just v) t) = go (max w v) t
         go  w (Branch _ _ l r)   = go (go w l) r
     {-# INLINABLE minimum #-}
-    minimum = start
+    minimum = go0
         where
-        start Empty              = error "Data.Foldable.minimum @Trie: empty trie"
-        start (Arc _ Nothing  t) = start t
-        start (Arc _ (Just v) t) = go v t
-        start (Branch _ _ l r)   = go (start l) r
+        go0   Empty              = error "Data.Foldable.minimum @Trie: empty trie"
+        go0   (Arc _ Nothing  t) = go0 t
+        go0   (Arc _ (Just v) t) = go v t
+        go0   (Branch _ _ l r)   = go (go0 l) r
         go !w Empty              = w
         go  w (Arc _ Nothing  t) = go w t
         go  w (Arc _ (Just v) t) = go (min w v) t
@@ -1466,19 +1552,18 @@ cata
     -> (ByteString -> [b] -> b)
     -> b
     -> Trie a -> b
-cata a b e = start
+cata a b e = go
     where
-    start Empty                 = e
-    start (Arc k mv t)          = step k mv t
-    start (Branch _ _ l r)      = b S.empty (collect l (collect r []))
-
-    step k (Just v) t           = a k v (start t)
+    step k (Just v) t           = a k v (go t)
     step k Nothing  t           = b k (collect t [])
-
+    go      Empty               = e
+    go      (Arc k mv t)        = step k mv t
+    go      (Branch _ _ l r)    = b S.empty (collect l (collect r []))
     -- TODO: would it be profitable to use 'build' for these lists?
     collect Empty            bs = bs
     collect (Arc k mv t)     bs = step k mv t : bs
     collect (Branch _ _ l r) bs = collect l (collect r bs)
+
 
 
 {-----------------------------------------------------------
@@ -1614,19 +1699,19 @@ lookupBy_ found missing clash = start
         -- | \(\mathcal{O}(\min(m,W))\), where \(m\) is number of
         -- @Arc@s in this branching, and \(W\) is the word size of
         -- the Prefix,Mask type.
+        findArc Empty         = impossible "lookupBy_" -- see [Note1]
+        findArc t@(Arc{})     = go q t
         findArc (Branch p m l r)
             | nomatch qh p m  = clash
             | zero qh m       = findArc l
             | otherwise       = findArc r
-        findArc t@(Arc{})     = go q t
-        findArc Empty         = impossible "lookupBy_" -- see [Note1]
 
--- [Note1]: Our use of the 'branch' and 'branchMerge' smart
--- constructors ensure that 'Empty' never occurs in a 'Branch' tree
--- ('Empty' can only occur at the root, or under an 'Arc' with
--- value); therefore the @findArc Empty@ case is unreachable.  If
--- we allowed such nodes, however, then this case should return the
--- same result as the 'nomatch' case.
+-- [Note1]: Our use of the 'branch' and 'graft' smart constructors
+-- ensure that 'Empty' never occurs in a 'Branch' tree ('Empty' can
+-- only occur at the root, or under an 'Arc' with value); therefore
+-- the @findArc Empty@ case is unreachable.  If we allowed such
+-- nodes, however, then this case should return the same result as
+-- the 'nomatch' case.
 
 
 -- This function needs to be here, not in "Data.Trie", because of
@@ -1642,7 +1727,7 @@ submap :: ByteString -> Trie a -> Trie a
 {-# INLINE submap #-}
 submap q
     | S.null q  = id
-    | otherwise = lookupBy_ (Arc q . Just) (prepend q) empty q
+    | otherwise = lookupBy_ (Arc q . Just) (prependNN q) empty q
 
 {-
 -- TODO: would it be worth it to define this specialization?  The
@@ -1669,12 +1754,12 @@ lookup = start
         -- | \(\mathcal{O}(\min(m,W))\), where \(m\) is number of
         -- @Arc@s in this branching, and \(W\) is the word size of
         -- the Prefix,Mask type.
+        findArc Empty         = impossible "lookup" -- see [Note1]
+        findArc t@(Arc{})     = go q t
         findArc (Branch p m l r)
             | nomatch qh p m  = Nothing
             | zero qh m       = findArc l
             | otherwise       = findArc r
-        findArc t@(Arc{})     = go q t
-        findArc Empty         = impossible "lookup" -- see [Note1]
 -}
 
 
@@ -1719,12 +1804,12 @@ match_ = flip start
         -- | \(\mathcal{O}(\min(m,W))\), where \(m\) is number of
         -- @Arc@s in this branching, and \(W\) is the word size of
         -- the Prefix,Mask type.
+        findArc Empty         = impossible "match_" -- see [Note1]
+        findArc t@(Arc{})     = match1 n q t
         findArc (Branch p m l r)
             | nomatch qh p m  = Nothing
             | zero qh m       = findArc l
             | otherwise       = findArc r
-        findArc t@(Arc{})     = match1 n q t
-        findArc Empty         = impossible "match_" -- see [Note1]
     -- | Find the next match, or return the previous one if there are no more.
     matchN n0 v0 _ _ Empty        = Just (n0,v0)
     matchN n0 v0 n q (Arc k mv t) =
@@ -1746,12 +1831,12 @@ match_ = flip start
         -- | \(\mathcal{O}(\min(m,W))\), where \(m\) is number of
         -- @Arc@s in this branching, and \(W\) is the word size of
         -- the Prefix,Mask type.
+        findArc Empty         = impossible "match_" -- see [Note1]
+        findArc t@(Arc{})     = matchN n0 v0 n q t
         findArc (Branch p m l r)
             | nomatch qh p m  = Just (n0,v0)
             | zero qh m       = findArc l
             | otherwise       = findArc r
-        findArc t@(Arc{})     = matchN n0 v0 n q t
-        findArc Empty         = impossible "match_" -- see [Note1]
 
 
 -- | Given a query, find all prefixes with associated values in the
@@ -1799,12 +1884,12 @@ matchFB_ = \t q cons nil -> matchFB_' cons q t nil
             -- | \(\mathcal{O}(\min(m,W))\), where \(m\) is number
             -- of @Arc@s in this branching, and \(W\) is the word
             -- size of the Prefix,Mask type.
+            findArc Empty         = impossible "matches_" -- see [Note1]
+            findArc t@(Arc{})     = go n q t
             findArc (Branch p m l r)
                 | nomatch qh p m  = id
                 | zero qh m       = findArc l
                 | otherwise       = findArc r
-            findArc t@(Arc{})     = go n q t
-            findArc Empty         = impossible "matches_" -- see [Note1]
 
 
 {-----------------------------------------------------------
@@ -1857,9 +1942,9 @@ alterBy_ f = start
         | nomatch qh p m  =
             case nothing q of
             Empty -> t
-            s     -> mergeNE p t qh s
-        | zero qh m       = branch p m (go q l) r
-        | otherwise       = branch p m l (go q r)
+            s     -> graft p t qh s
+        | zero qh m       = branchL p m (go q l) r
+        | otherwise       = branchR p m l (go q r)
         where qh = errorLogHead "alterBy_" q
     go q t@(Arc k mv s) =
         let (p,k',q') = breakMaximalPrefix k q in
@@ -1871,20 +1956,19 @@ alterBy_ f = start
             Empty     -> t -- Nothing to add, reuse old Arc
             Branch{}  -> impossible "alterBy_" -- 'arcNN' can't Branch
             l@(Arc{}) ->
-                -- Inlined version of @arc_ p@, capturing
-                -- the invariant that the 'branchMerge' must be a
-                -- Branch (since neither trie argument is Empty).
+                -- Inlined version of @prepend p@, capturing the
+                -- invariant that the 'graft' must be a @Branch@.
                 (if S.null p then id else Arc p Nothing)
                 -- 'arcNN' will always have that the string in @l@
                 -- must begin with @q'@, which is non-null here and
                 -- therefore @arcPrefix q'@ is equivalent to taking
                 -- the 'arcPrefix' of the string in @l@.
-                $ (mergeNE (arcPrefix q') l (arcPrefix k') (Arc k' mv s))
-        (True, True)  -> arc k $$ f mv s
-        (True, False) -> arc k mv (go q' s)
+                $ graft (arcPrefix q') l (arcPrefix k') (Arc k' mv s)
+        (True, True)  -> arcNN k $$ f mv s
+        (True, False) -> arcNN k mv (go q' s)
 
 
--- TODO: benchmark vs the definition with alterBy/liftM
+-- TODO: benchmark vs the definition with alterBy\/liftM
 -- TODO: add a variant that's strict in the function.
 --
 -- /Since: 0.2.6/ for being exported from "Data.Trie.Internal"
@@ -1904,13 +1988,11 @@ adjust f = start
         | nomatch qh p m  = t
         | zero qh m       = Branch p m (go q l) r
         | otherwise       = Branch p m l (go q r)
-        where
-        qh = errorLogHead "adjust" q
+        where qh = errorLogHead "adjust" q
     go q t@(Arc k mv s) =
         let (_,k',q') = breakMaximalPrefix k q in
         case (S.null k', S.null q') of
-        (False, True)  -> t -- don't break Arc inline
-        (False, False) -> t -- don't break Arc branching
+        (False, _)     -> t
         (True,  True)  -> Arc k (f <$> mv) s
         (True,  False) -> Arc k mv (go q' s)
 
@@ -1955,50 +2037,37 @@ wip_unionWith f = start
         | shorter m0 m1  = union0
         | shorter m1 m0  = union1
         | p0 == p1       = Branch p0 m0 (go l0 l1) (go r0 r1)
-        | otherwise      = mergeNE p0 t0 p1 t1
+        | otherwise      = graft p0 t0 p1 t1
         where
-        union0  | nomatch p1 p0 m0  = mergeNE p0 t0 p1 t1
+        union0  | nomatch p1 p0 m0  = graft p0 t0 p1 t1
                 | zero p1 m0        = Branch p0 m0 (go l0 t1) r0
                 | otherwise         = Branch p0 m0 l0 (go r0 t1)
-        union1  | nomatch p0 p1 m1  = mergeNE p0 t0 p1 t1
+        union1  | nomatch p0 p1 m1  = graft p0 t0 p1 t1
                 | zero p0 m1        = Branch p1 m1 (go t0 l1) r1
                 | otherwise         = Branch p1 m1 l1 (go t0 r1)
     --
     go t0@(Arc k0 mv0 s0)
        t1@(Arc k1 mv1 s1)
-        | m' == 0 =
-            let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
-            if S.null pre
-            then error "unionWith: no mask, but no prefix string"
-            else
-                let {-# INLINE t0' #-}
-                    t0' = Arc k0' mv0 s0
-                    {-# INLINE t1' #-}
-                    t1' = Arc k1' mv1 s1
-                in
-                case (S.null k0', S.null k1') of
-                (True, True)  -> arcNN pre (mergeMaybe (\v0 v1 -> Just (f v0 v1)) mv0 mv1) (go s0 s1)
-                -- TODO: check that these three are correct re invariants!
-                (True, False) -> Arc pre mv0     (go s0  t1')
-                (False,True)  -> Arc pre mv1     (go t0' s1)
-                (False,False) -> Arc pre Nothing (go t0' t1')
-        -- Inlined 'branchMerge'; the two @Arc@s are disjoint.
-        | zero p0 m'       = Branch p' m' t0 t1
-        | otherwise        = Branch p' m' t1 t0
-        where
-        p0 = arcPrefix k0
-        p1 = arcPrefix k1
-        m' = getMask p0 p1
-        p' = applyMask p0 m'
+        = arcMerge k0 t0 k1 t1 $ \ pre k0' k1' ->
+            let {-# INLINE t0' #-}
+                t0' = Arc k0' mv0 s0
+                {-# INLINE t1' #-}
+                t1' = Arc k1' mv1 s1
+            in
+            case (S.null k0', S.null k1') of
+            (True, True)  -> arcNN pre (mergeMaybe (\v0 v1 -> Just (f v0 v1)) mv0 mv1) (go s0 s1) -- TODO: if both arcs are reject, then both @s0,s1@ are branches so we can simplify the 'arcNN' to avoid the case analysis in 'prependNN'.
+            (True, False) -> Arc pre mv0 (go s0  t1')
+            (False,True)  -> Arc pre mv1 (go t0' s1)
+            (False,False) -> wye pre k0' t0' k1' t1'
     go t0@(Arc k0 _ _)
        t1@(Branch p1 m1 l r)
-        | nomatch p0 p1 m1 = mergeNE p1 t1  p0 t0
+        | nomatch p0 p1 m1 = graft p1 t1  p0 t0
         | zero p0 m1       = Branch p1 m1 (go t0 l) r
         | otherwise        = Branch p1 m1 l (go t0 r)
         where p0 = arcPrefix k0
     go t0@(Branch p0 m0 l r)
        t1@(Arc k1 _ _)
-        | nomatch p1 p0 m0 = mergeNE p0 t0  p1 t1
+        | nomatch p1 p0 m0 = graft p0 t0  p1 t1
         | zero p1 m0       = Branch p0 m0 (go l t1) r
         | otherwise        = Branch p0 m0 l (go r t1)
         where p1 = arcPrefix k1
@@ -2035,51 +2104,40 @@ mergeBy f = start
         | shorter m0 m1  = union0
         | shorter m1 m0  = union1
         | p0 == p1       = branch p0 m0 (go l0 l1) (go r0 r1)
-        | otherwise      = mergeNE p0 t0 p1 t1
+        | otherwise      = graft p0 t0 p1 t1
         where
-        union0  | nomatch p1 p0 m0  = mergeNE p0 t0 p1 t1
-                | zero p1 m0        = branch p0 m0 (go l0 t1) r0
-                | otherwise         = branch p0 m0 l0 (go r0 t1)
-        union1  | nomatch p0 p1 m1  = mergeNE p0 t0 p1 t1
-                | zero p0 m1        = branch p1 m1 (go t0 l1) r1
-                | otherwise         = branch p1 m1 l1 (go t0 r1)
+        union0  | nomatch p1 p0 m0  = graft p0 t0 p1 t1
+                | zero p1 m0        = branchL p0 m0 (go l0 t1) r0
+                | otherwise         = branchR p0 m0 l0 (go r0 t1)
+        union1  | nomatch p0 p1 m1  = graft p0 t0 p1 t1
+                | zero p0 m1        = branchL p1 m1 (go t0 l1) r1
+                | otherwise         = branchR p1 m1 l1 (go t0 r1)
     --
     go t0@(Arc k0 mv0 s0)
        t1@(Arc k1 mv1 s1)
-        | m' == 0 =
-            let (pre,k0',k1') = breakMaximalPrefix k0 k1 in
-            if S.null pre
-            then error "mergeBy: no mask, but no prefix string"
-            else
-                let {-# INLINE t0' #-}
-                    t0' = Arc k0' mv0 s0
-                    {-# INLINE t1' #-}
-                    t1' = Arc k1' mv1 s1
-                in
-                case (S.null k0', S.null k1') of
-                (True, True)  -> arcNN pre (mergeMaybe f mv0 mv1) (go s0 s1)
-                (True, False) -> arcNN pre mv0 (go s0  t1')
-                (False,True)  -> arcNN pre mv1 (go t0' s1)
-                (False,False) -> prepend pre   (go t0' t1')
-        -- Inlined 'branchMerge'; the two @Arc@s are disjoint.
-        | zero p0 m'       = Branch p' m' t0 t1
-        | otherwise        = Branch p' m' t1 t0
-        where
-        p0 = arcPrefix k0
-        p1 = arcPrefix k1
-        m' = getMask p0 p1
-        p' = applyMask p0 m'
+        = arcMerge k0 t0 k1 t1 $ \ pre k0' k1' ->
+            let {-# INLINE t0' #-}
+                t0' = Arc k0' mv0 s0
+                {-# INLINE t1' #-}
+                t1' = Arc k1' mv1 s1
+            in
+            -- TODO: can be smarter than 'arcNN' here...
+            case (S.null k0', S.null k1') of
+            (True, True)  -> arcNN pre (mergeMaybe f mv0 mv1) (go s0 s1)
+            (True, False) -> arcNN pre mv0 (go s0  t1')
+            (False,True)  -> arcNN pre mv1 (go t0' s1)
+            (False,False) -> wye pre k0' t0' k1' t1'
     go t0@(Arc k0 _ _)
        t1@(Branch p1 m1 l r)
-        | nomatch p0 p1 m1 = mergeNE p1 t1  p0 t0
-        | zero p0 m1       = branch p1 m1 (go t0 l) r
-        | otherwise        = branch p1 m1 l (go t0 r)
+        | nomatch p0 p1 m1 = graft p1 t1  p0 t0
+        | zero p0 m1       = branchL p1 m1 (go t0 l) r
+        | otherwise        = branchR p1 m1 l (go t0 r)
         where p0 = arcPrefix k0
     go t0@(Branch p0 m0 l r)
        t1@(Arc k1 _ _)
-        | nomatch p1 p0 m0 = mergeNE p0 t0  p1 t1
-        | zero p1 m0       = branch p0 m0 (go l t1) r
-        | otherwise        = branch p0 m0 l (go r t1)
+        | nomatch p1 p0 m0 = graft p0 t0  p1 t1
+        | zero p1 m0       = branchL p0 m0 (go l t1) r
+        | otherwise        = branchR p0 m0 l (go r t1)
         where p1 = arcPrefix k1
 
 
@@ -2138,11 +2196,12 @@ intersectBy f = start
                     {-# INLINE t1' #-}
                     t1' = Arc k1' mv1 s1
                 in
+                -- TODO: be smarter about the recursion and 'prependNN'
                 case (S.null k0', S.null k1') of
                 (True, True)  -> arcNN pre (intersectMaybe f mv0 mv1) (go s0 s1)
-                (True, False) -> prepend pre (go s0  t1')
-                (False,True)  -> prepend pre (go t0' s1)
-                (False,False) -> prepend pre (go t0' t1')
+                (True, False) -> prependNN pre (go s0  t1')
+                (False,True)  -> prependNN pre (go t0' s1)
+                (False,False) -> prependNN pre (go t0' t1')
     go t0@(Arc k0 _ _)
        (Branch p1 m1 l r)
         | nomatch p0 p1 m1 = Empty
@@ -2230,8 +2289,8 @@ updateMinViewBy f = go Nil
     go !_ Empty              = Nothing
     go  q (Arc k (Just v) t) = let q' = toStrict (q +>? k)
                                in Just (q',v, arc k (f q' v) t)
-    go  q (Arc k Nothing  t) = mapView (prepend k) (go (q +>! k) t)
-    go  q (Branch p m l r)   = mapView (\l' -> branch p m l' r) (go q l)
+    go  q (Arc k Nothing  t) = mapView (prependNN k) (go (q +>! k) t)
+    go  q (Branch p m l r)   = mapView (\l' -> branchL p m l' r) (go q l)
 
 
 -- Not susceptible to [bug26] because it can only delete a single value.
@@ -2250,8 +2309,8 @@ updateMaxViewBy f = go Nil
     go  q (Arc k (Just v) Empty) = let q' = toStrict (q +>? k)
                                    in Just (q',v, arc k (f q' v) Empty)
     go  q (Arc k mv@(Just _) t)  = mapView (Arc k mv) (go (q +>? k) t)
-    go  q (Arc k Nothing     t)  = mapView (arc_ k)   (go (q +>! k) t)
-    go  q (Branch p m l r)       = mapView (branch p m l) (go q r)
+    go  q (Arc k Nothing     t)  = mapView (prepend k)   (go (q +>! k) t)
+    go  q (Branch p m l r)       = mapView (branchR p m l) (go q r)
 
 ------------------------------------------------------------
 ------------------------------------------------------- fin.

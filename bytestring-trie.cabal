@@ -6,7 +6,7 @@ Cabal-Version:  2.2
 --    <https://github.com/haskell/cabal/issues/4899>
 
 ----------------------------------------------------------------
--- wren gayle romano <wren@cpan.org>                ~ 2021.12.14
+-- wren gayle romano <wren@cpan.org>                ~ 2022.02.08
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
@@ -17,7 +17,7 @@ Homepage:       https://wrengr.org/software/hackage.html
 Bug-Reports:    https://github.com/wrengr/bytestring-trie/issues
 Author:         wren gayle romano
 Maintainer:     wren@cpan.org
-Copyright:      2008–2021 wren gayle romano
+Copyright:      2008–2022 wren gayle romano
 -- Cabal-2.2 requires us to say "BSD-3-Clause" not "BSD3"
 License:        BSD-3-Clause
 License-File:   LICENSE

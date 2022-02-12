@@ -6,7 +6,7 @@ Cabal-Version:  2.2
 --    <https://github.com/haskell/cabal/issues/4899>
 
 ----------------------------------------------------------------
--- wren gayle romano <wren@cpan.org>                ~ 2022.02.08
+-- wren gayle romano <wren@cpan.org>                ~ 2022.02.12
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
@@ -164,6 +164,19 @@ Benchmark bench-Foldable
                  -- have to revisit this later.
                  ,  criterion
                  ,  criterion-measurement
+                 ,  QuickCheck  >= 2.10  && < 2.15
+
+Benchmark bench-MatchOne
+    Import:         library-build-depends
+    Type:           exitcode-stdio-1.0
+    if impl(ghc)
+      GHC-Options:  "-with-rtsopts=-A32m"
+    if impl(ghc >= 8.10)
+      GHC-Options:  "-with-rtsopts=--nonmoving-gc"
+    Hs-Source-Dirs: dev
+    Main-Is:        Bench/MatchOne.hs
+    Build-Depends:  bytestring-trie -any
+                 ,  criterion
                  ,  QuickCheck  >= 2.10  && < 2.15
 
 ----------------------------------------------------------------

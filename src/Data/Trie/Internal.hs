@@ -1767,8 +1767,8 @@ lookup = start
 -- which takes the three continuations?
 
 
--- TODO: is this really beneficial over simply taking the last match
--- from 'matches_'?  Benchmark how much this actually saves.
+-- According to our "Bench.MatchOne" benchmark, this is in fact
+-- much faster than using 'matches_' and relying on list fusion.
 --
 -- | Given a query, find the longest prefix with an associated value
 -- in the trie, returning the length of that prefix and the associated

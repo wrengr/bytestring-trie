@@ -719,7 +719,7 @@ instance Traversable Trie where
 traverseWithKey
     :: Applicative f => (ByteString -> a -> f b) -> Trie a -> f (Trie b)
 {-# INLINE traverseWithKey #-}
-traverseWithKey f = go Epsilon
+traverseWithKey f = go Nil
     where
     -- See [Note2].
     go _ Empty              = pure   Empty
@@ -1074,7 +1074,7 @@ filterA f = go
 mapBy :: (ByteString -> a -> Maybe b) -> Trie a -> Trie b
 -- TODO: why not implement as @contextualMapBy (\k v _ -> f k v)@ ?
 -- Does that actually incur additional overhead?
-mapBy f = go Epsilon
+mapBy f = go Nil
     where
     -- FIXME: See [bug26].
     -- See [Note2].
@@ -1129,7 +1129,7 @@ contextualFilterMap f = go
 --
 -- @since 0.2.3
 contextualMapBy :: (ByteString -> a -> Trie a -> Maybe b) -> Trie a -> Trie b
-contextualMapBy f = go Epsilon
+contextualMapBy f = go Nil
     where
     -- FIXME: See [bug26].
     -- See [Note2].
@@ -1356,7 +1356,7 @@ instance Foldable Trie where
 -- @since 0.2.2
 foldrWithKey :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
 {-# INLINE foldrWithKey #-}
-foldrWithKey f z0 = \t -> go Epsilon t z0 -- See [Note3].
+foldrWithKey f z0 = \t -> go Nil t z0 -- See [Note3].
     where
     -- See [Note2].
     go _ Empty              = id
@@ -1386,7 +1386,7 @@ foldrWithKey f z0 = \t -> go Epsilon t z0 -- See [Note3].
 -- @since 0.2.7
 foldrWithKey' :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
 {-# INLINE foldrWithKey' #-}
-foldrWithKey' f z0 = go Epsilon z0 -- See [Note3].
+foldrWithKey' f z0 = go Nil z0 -- See [Note3].
     where
     -- See [Note2].
     go _ !z Empty              = z
@@ -1402,7 +1402,7 @@ foldrWithKey' f z0 = go Epsilon z0 -- See [Note3].
 -- @since 0.2.7
 foldlWithKey :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
 {-# INLINE foldlWithKey #-}
-foldlWithKey f z0 = go Epsilon z0 -- See [Note3].
+foldlWithKey f z0 = go Nil z0 -- See [Note3].
     where
     -- See [Note2].
     go _ z Empty              = z
@@ -1418,7 +1418,7 @@ foldlWithKey f z0 = go Epsilon z0 -- See [Note3].
 -- @since 0.2.7
 foldlWithKey' :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
 {-# INLINE foldlWithKey' #-}
-foldlWithKey' f z0 = go Epsilon z0 -- See [Note3].
+foldlWithKey' f z0 = go Nil z0 -- See [Note3].
     where
     -- See [Note2].
     go _ !z Empty              = z
@@ -2182,7 +2182,7 @@ intersectMaybe _ _         _         = Nothing
 --
 -- @since 0.2.2
 minAssoc :: Trie a -> Maybe (ByteString, a)
-minAssoc = go Epsilon
+minAssoc = go Nil
     where
     go !_ Empty              = Nothing
     go  q (Arc k (Just v) _) = Just (toStrict (q +>? k), v)
@@ -2199,7 +2199,7 @@ minAssoc = go Epsilon
 --
 -- @since 0.2.2
 maxAssoc :: Trie a -> Maybe (ByteString, a)
-maxAssoc = go Epsilon
+maxAssoc = go Nil
     where
     go !_ Empty                  = Nothing
     go  q (Arc k (Just v) Empty) = Just (toStrict (q +>? k), v)
@@ -2225,7 +2225,7 @@ mapView f (Just (k,v,t)) = Just (k,v, f t)
 -- @since 0.2.2
 updateMinViewBy :: (ByteString -> a -> Maybe a)
                 -> Trie a -> Maybe (ByteString, a, Trie a)
-updateMinViewBy f = go Epsilon
+updateMinViewBy f = go Nil
     where
     go !_ Empty              = Nothing
     go  q (Arc k (Just v) t) = let q' = toStrict (q +>? k)
@@ -2244,7 +2244,7 @@ updateMinViewBy f = go Epsilon
 -- @since 0.2.2
 updateMaxViewBy :: (ByteString -> a -> Maybe a)
                 -> Trie a -> Maybe (ByteString, a, Trie a)
-updateMaxViewBy f = go Epsilon
+updateMaxViewBy f = go Nil
     where
     go !_ Empty                  = Nothing
     go  q (Arc k (Just v) Empty) = let q' = toStrict (q +>? k)

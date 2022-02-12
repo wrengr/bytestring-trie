@@ -250,7 +250,7 @@ indexOfDifference !p1 !p2 !limit = goByte 0
 -- | A \"reversed\" variant of lazy bytestrings; i.e., a snoc-list
 -- of strict bytestrings.
 data RevLazyByteString
-    = Epsilon
+    = Nil
     | RevLazyByteString :+> {-# UNPACK #-} !S.ByteString
     -- Invariant: every 'S.ByteString' is non-null.
 
@@ -272,7 +272,7 @@ xs +>? x        = xs :+> x
 -- | \(\mathcal{O}(1)\). Safely convert a strict BS to RLBS,
 -- maintaining the invariant.
 fromStrict :: S.ByteString -> RevLazyByteString
-fromStrict = (Epsilon +>?)
+fromStrict = (Nil +>?)
 {-# INLINE fromStrict #-}
 
 -- HACK: bytestring-0.10.8.1 (GHC 8.0.2) used 'S.checkedSum' (and
@@ -305,16 +305,16 @@ toStrict :: RevLazyByteString -> S.ByteString
 toStrict = \cs0 -> goLen0 cs0 cs0
     where
     -- It's still possible that the result is empty.
-    goLen0 _               Epsilon            = S.empty
+    goLen0 _               Nil                = S.empty
     goLen0 cs0             (cs :+> PS _ _ 0)  = goLen0 cs0 cs
     goLen0 cs0             (cs :+> c)         = goLen1 cs0 c cs
     -- It's still possible that the result is a single chunk.
-    goLen1 _   b           Epsilon            = b
+    goLen1 _   b           Nil                = b
     goLen1 cs0 b           (cs :+> PS _ _ 0)  = goLen1 cs0 b cs
     goLen1 cs0 (PS _ _ bl) (cs :+> PS _ _ cl) = goLen  cs0 (bl +? cl) cs
     -- General case, just find the total length we'll need.
     goLen  cs0 !total      (cs :+> PS _ _ cl) = goLen  cs0 (total +? cl) cs
-    goLen  cs0  total      Epsilon            =
+    goLen  cs0  total      Nil                =
         S.unsafeCreate total $ \ptr ->
             -- TODO: this gives the correct behavior (re off-by-one
             -- concerns); however, it is bad praxis to use a pointer
@@ -323,7 +323,7 @@ toStrict = \cs0 -> goLen0 cs0 cs0
             -- the allocated region.
             goCopy cs0 (ptr `ptrElemOff` total)
     -- Copy the data
-    goCopy Epsilon                !_   = return ()
+    goCopy Nil                    !_   = return ()
     goCopy (cs :+> PS _  _   0  ) !ptr = goCopy cs ptr
     goCopy (cs :+> PS fp off len) !ptr =
         unsafeWithForeignPtr fp $ \p -> do

@@ -179,5 +179,18 @@ Benchmark bench-MatchOne
                  ,  criterion
                  ,  QuickCheck  >= 2.10  && < 2.15
 
+Benchmark bench-UnionWith
+    Import:         library-build-depends
+    Type:           exitcode-stdio-1.0
+    if impl(ghc)
+      GHC-Options:  "-with-rtsopts=-A32m"
+    if impl(ghc >= 8.10)
+      GHC-Options:  "-with-rtsopts=--nonmoving-gc"
+    Hs-Source-Dirs: dev
+    Main-Is:        Bench/UnionWith.hs
+    Build-Depends:  bytestring-trie -any
+                 ,  criterion
+                 ,  QuickCheck  >= 2.10  && < 2.15
+
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

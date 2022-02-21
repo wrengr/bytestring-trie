@@ -2010,8 +2010,8 @@ adjust f = start
 
 -- Not susceptible to [bug26] because it doesn't delete any values.
 --
--- TODO: Test that this doesn't introduce any bugs. And benchmark
--- it to see how much it really saves vs 'mergeBy'.
+-- Alas, benchmarking indicates that this gives only a very trivial
+-- benefit over 'TC.unionWith' as implemented via 'mergeBy'.
 --
 -- | Take the union of two tries, using a function to resolve
 -- conflicts.  The resulting trie is constructed strictly, but the

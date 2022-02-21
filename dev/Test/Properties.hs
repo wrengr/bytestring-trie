@@ -5,10 +5,10 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.12.14
+--                                                  ~ 2022.02.21
 -- |
 -- Module      :  Test.Properties
--- Copyright   :  2008--2021 wren romano
+-- Copyright   :  2008--2022 wren romano
 -- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
@@ -125,7 +125,20 @@ quickcheckTests
     ]
   , Tasty.localOption (QC.QuickCheckMaxSize 300)
     -- BUG: fix that 'Tasty.localOption'
-  $ Tasty.testGroup "Intersection (@Int)"
+  $ Tasty.testGroup "unionWith (@Int)"
+    [ QC.testProperty
+        "prop_unionL"
+        (prop_unionL    :: WTrie Int -> WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_unionR"
+        (prop_unionR    :: WTrie Int -> WTrie Int -> Bool)
+    , QC.testProperty
+        "prop_unionPlus"
+        (prop_unionPlus :: WTrie Int -> WTrie Int -> Bool)
+    ]
+  , Tasty.localOption (QC.QuickCheckMaxSize 300)
+    -- BUG: fix that 'Tasty.localOption'
+  $ Tasty.testGroup "intersectBy (@Int)"
     [ QC.testProperty
         "prop_intersectL"
         (prop_intersectL    :: WTrie Int -> WTrie Int -> Bool)
@@ -376,7 +389,20 @@ smallcheckTests
         "prop_deleteSubmap_disunion"
         (prop_deleteSubmap_disunion :: WS -> WTrie W -> Bool)
     ]
-  , Tasty.testGroup "Intersection (@W/@Int)"
+  , Tasty.testGroup "unionWith (@W/@Int)"
+    -- Warning: Using depth=4 here is bad (the first two take about
+    -- 26.43sec; the last one much longer).
+    [ SC.testProperty
+        "prop_unionL"
+        (prop_unionL    :: WTrie W -> WTrie W -> Bool)
+    , SC.testProperty
+        "prop_unionR"
+        (prop_unionR    :: WTrie W -> WTrie W -> Bool)
+    , SC.testProperty
+        "prop_unionPlus"
+        (prop_unionPlus :: WTrie Int -> WTrie Int -> Bool)
+    ]
+  , Tasty.testGroup "intersectBy (@W/@Int)"
     -- Warning: Using depth=4 here is bad (the first two take about
     -- 26.43sec; the last one much longer).
     [ SC.testProperty
@@ -563,6 +589,19 @@ prop_deleteSubmap_keysLackPrefix (WS q) =
 prop_deleteSubmap_disunion :: (Eq a) => WS -> WTrie a -> Bool
 prop_deleteSubmap_disunion (WS q) (WT t) =
     t == (T.submap q t `TC.disunion` T.deleteSubmap q t)
+
+prop_unionWith :: Eq a => (a -> a -> a) -> WTrie a -> WTrie a -> Bool
+prop_unionWith f (WT x) (WT y) =
+    TI.wip_unionWith f x y == TC.unionWith f x y
+
+prop_unionL :: Eq a => WTrie a -> WTrie a -> Bool
+prop_unionL = prop_unionWith (\x _ -> x)
+
+prop_unionR :: Eq a => WTrie a -> WTrie a -> Bool
+prop_unionR = prop_unionWith (\_ y -> y)
+
+prop_unionPlus :: (Eq a, Num a) => WTrie a -> WTrie a -> Bool
+prop_unionPlus = prop_unionWith (+)
 
 -- TODO: other than as a helper like below, could we actually
 -- generate interesting enough functions to make this worth testing

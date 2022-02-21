@@ -1524,9 +1524,9 @@ foldlWithKey' f z0 = go Nil z0 -- See [Note3].
 --
 -- @since 0.2.6
 cata_
-    :: (ByteString -> Maybe a -> b -> b)
-    -> (b -> b -> b)
-    -> b
+    :: (ByteString -> Maybe a -> b -> b)    -- ^ Algebra for arc.
+    -> (b -> b -> b)                        -- ^ Algebra for binary branch.
+    -> b                                    -- ^ Algebra for empty trie.
     -> Trie a -> b
 {-# INLINE cata_ #-}
 cata_ a b e = go
@@ -1548,9 +1548,9 @@ cata_ a b e = go
 --
 -- @since 0.2.6
 cata
-    :: (ByteString -> a -> b -> b)
-    -> (ByteString -> [b] -> b)
-    -> b
+    :: (ByteString -> a -> b -> b)  -- ^ Algebra for accepting arcs.
+    -> (ByteString -> [b] -> b)     -- ^ Algebra for n-ary branch with prefix.
+    -> b                            -- ^ Algebra for empty trie.
     -> Trie a -> b
 cata a b e = go
     where

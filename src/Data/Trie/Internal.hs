@@ -17,7 +17,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2022.02.08
+--                                              ~ 2022.02.21
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  2008--2022 wren romano
@@ -961,7 +961,7 @@ instance MonadPlus Trie where
 --   @'filterMap' f ≡ 'fmap' ('Data.Maybe.fromJust' . f) . 'filter' ('Data.Maybe.isJust' . f)@
 --
 -- [/Fusion/]
---   @'filterMap' (\\v -> f v '<$' 'Control.Monad.guard' (g v)) ≡ 'fmap' f . 'filter' g@
+--   @'fmap' f . 'filter' g ≡ 'filterMap' (\\v -> f v '<$' 'Control.Monad.guard' (g v))@
 --
 -- [/Conservation/]
 --   @'filterMap' ('Just' . f) ≡ 'fmap' f@
@@ -1064,28 +1064,37 @@ import Data.Functor.Identity (Identity(Identity))
 -- [/Conservation/]
 --   @'wither' ('fmap' 'Just' . f) ≡ 'traverse' f@
 --
--- [/Strength/, or /Horizontal Composition/]
---   @'wither' f \`under\` 'wither' g ≡ 'wither' (wither_Maybe f \`under\` g)@
+-- [/Horizontal Composition/]
+--   @'wither' f \`under\` 'wither' g ≡ 'wither' (wither_Maybe f \`under\` g)@,
+--   where:
 --
---     where: @under p q = 'Data.Functor.Compose.Compose' . 'fmap' p . q@;
---     and:   @wither_Maybe f = 'fmap' 'Control.Monad.join' . 'traverse' f@
+-- > under :: Functor f
+-- >       => (b -> g c)
+-- >       -> (a -> f b)
+-- >       -> a -> Compose f g c
+-- > under g f = Compose . fmap g . f
+-- >
+-- > -- | Variant of wither for Maybe instead of Trie.
+-- > wither_Maybe :: Applicative f
+-- >              => (a -> f (Maybe b))
+-- >              -> Maybe a -> f (Maybe b)
+-- > wither_Maybe f = fmap join . traverse f
 --
 -- Note that the horizontal composition law is using two different
 -- applicative functors.  Conversely, a vertical composition law
 -- would have the form: @'wither' f 'Control.Monad.<=<' 'wither' g ≡ ...@;
 -- however, we cannot have such a law except when the applicative
 -- functor is in fact a commutative monad (i.e., the order of effects
--- doesn't matter).
---
--- (The terminology of
+-- doesn't matter).  For the curious, the terminology of
 -- <https://ncatlab.org/nlab/show/horizontal+composition \"horizontal\" composition> vs
 -- <https://ncatlab.org/nlab/show/vertical+composition \"vertical\" composition>
--- comes from category theory.  However, IMO, the law we have looks
--- more like <https://ncatlab.org/nlab/show/tensorial+strength strength>
--- than horizontal composition.)
--- TODO: is there a better notion of \"strength\" to reference (or
--- a better thing of a different name), because that one doesn't
--- have the @(Fx,Fy) -> F(Fx,y)@ shape of the one I had in mind...
+-- comes from category theory.
+--
+-- Although the horizontal composition law may look baroque, it is
+-- helpful to compare it to the composition law for 'traverse'
+-- itself:
+--
+-- @'traverse' f \`under\` 'traverse' g ≡ 'traverse' (f \`under\` g)@
 --
 -- @since 0.2.7
 wither :: Applicative f => (a -> f (Maybe b)) -> Trie a -> f (Trie b)
@@ -1105,12 +1114,17 @@ wither f = start
 --   @'filterA' f ≡ 'wither' (\\v -> (\\b -> v '<$' 'Control.Monad.guard' b) '<$>' f v)@
 --   @'filterA' f ≡ 'wither' ('fmap' . (. 'Control.Monad.guard') . ('<$') '<*>' f)@
 --
--- TODO: make sure I didn't mess up the pointless-ness of the @underB@ definition in the horizontal composition law.
--- To get into a prefix form:   @\f g x -> ((. (&&)) (<$> f x)) <$> g x@
--- Though postfix is cleaner:   @\f g x -> g x <&> ((f x <&>) . (&&))@
--- Or to look like 'liftA2':    @underF2 f m n = Compose (n <&> ((m <&>) . f))@
--- More pointless:              @Compose . (((<&>) . g) <*> ((.(&&)) . (<&>) . f))@
---  Or:                         @Compose . ((fmap . (.(&&)) . (<&>) . f) <*> g)@
+-- An alternative variant with a more straightforward derivation
+-- for the definition, but a bizarre type (since the layering of
+-- effects doesn't match the order of arguments).  Though re the
+-- /name/, this one makes more sense than the other one.
+-- > underA2 :: (Applicative f, Applicative g)
+-- >         => (b -> c -> d)
+-- >         -> (a -> g b)
+-- >         -> (a -> f c)
+-- >         -> a -> Compose f g d
+-- > underA2 h g f = liftA2 (liftA2 h) (g `under` pure) (pure `under` f)
+--
 --
 -- | An effectful version of 'filter'.
 --
@@ -1126,10 +1140,19 @@ wither f = start
 --   @'filterA' ('pure' . f) ≡ 'pure' . 'filter' f@
 --
 -- [/Horizontal Composition/]
---   @'filterA' f \`under\` 'filterA' g ≡ 'filterA' (underF2 ('&&') f g)@
+--   @'filterA' f \`under\` 'filterA' g ≡ 'filterA' (underF2 ('&&') f g)@,
+--   where
 --
---     where: @under p q = 'Data.Functor.Compose.Compose' . 'fmap' p . q@;
---     and: @underF2 h f g v = 'Data.Functor.Compose.Compose' (g v 'Data.Functor.<&>' ((f v 'Data.Functor.<&>') . h)))@
+-- > -- Like 'liftA2' for the @(a->)@ monad, but horizontal.
+-- > underF2 :: (Functor f, Functor g)
+-- >         => (b -> c -> d)
+-- >         -> (a -> f b)
+-- >         -> (a -> g c)
+-- >         -> a -> Compose f g d
+-- > underF2 h f g a = Compose (f a <&> ((g a <&>) . h))
+--
+-- For the definition of @under@ and more details about horizontal
+-- composition, see the laws section of 'wither'.
 --
 -- @since 0.2.7
 filterA :: Applicative f => (a -> f Bool) -> Trie a -> f (Trie a)

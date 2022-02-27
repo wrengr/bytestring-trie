@@ -781,7 +781,7 @@ traverseWithKey
 {-# INLINE traverseWithKey #-}
 traverseWithKey f = go Nil
     where
-    -- See [Note2].
+    -- See [Note:LazyRLBS].
     go _ Empty              = pure   Empty
     go q (Branch p m l r)   = liftA2 (Branch p m) (go q l) (go q r)
     go q (Arc k Nothing  t) = fmap   (Arc k Nothing) (go (q +>! k) t)
@@ -789,11 +789,12 @@ traverseWithKey f = go Nil
         let q' = toStrict (q +>? k)
         in liftA2 (Arc k . Just) (f q' v) (go (fromStrict q') t)
 
--- [Note2]: We avoid making the RLBS parameter strict, to avoid
--- incuring the cost of 'toStrict' if the user's function does not
--- force it.  However, if they do force it, then we'll still have
--- the <https://github.com/wrengr/bytestring-trie/issues/25> problem.
--- Using RLBS only reduces the constant factor of the quadratic.
+-- [Note:LazyRLBS]: We avoid making the RLBS parameter strict, to
+-- avoid incuring the cost of 'toStrict' if the user's function
+-- does not force it.  However, if they do force it, then we'll
+-- still have the <https://github.com/wrengr/bytestring-trie/issues/25>
+-- problem.  Using RLBS only reduces the constant factor of the
+-- quadratic.
 
 ------------------------------------------------------------
 -- TODO: would make more sense to use intersection\/zip semantics here,
@@ -1180,7 +1181,7 @@ mapBy f = start
     start (Arc k (Just v) t) = arc k (f k v) (go (fromStrict k) t)
     start t                  = go Nil t
     -- FIXME: See [bug26].
-    -- See [Note2].
+    -- See [Note:LazyRLBS].
     go _ Empty              = empty
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
     go q (Arc k Nothing  t) = prependNN k (go (q +>! k) t)
@@ -1241,7 +1242,7 @@ contextualMapBy f = start
     start (Arc k (Just v) t) = arc k (f k v t) (go (fromStrict k) t)
     start t                  = go Nil t
     -- FIXME: See [bug26].
-    -- See [Note2].
+    -- See [Note:LazyRLBS].
     go _ Empty              = empty
     go q (Branch p m l r)   = branch p m (go q l) (go q r)
     go q (Arc k Nothing  t) = prependNN k (go (q +>! k) t)
@@ -1297,12 +1298,12 @@ size' (Arc _ (Just _) t) f  n = size' t f (n + 1)
 -- Instances: Foldable
 -----------------------------------------------------------}
 
--- [Note3]: For all the folding functions, we take only the two
--- algebra arguments on the left of the \"=\", leaving the 'Trie'
--- argument as a lambda on the right of the \"=\".  This is to allow
--- the functions to be inlined when passed only the two algebra
--- arguments, rather than requiring all three arguments before being
--- inlined.
+-- [Note:FoldEta]: For all the folding functions, we take only the
+-- two algebra arguments on the left of the \"=\", leaving the
+-- 'Trie' argument as a lambda on the right of the \"=\".  This is
+-- to allow the functions to be inlined when passed only the two
+-- algebra arguments, rather than requiring all three arguments
+-- before being inlined.
 
 instance Foldable Trie where
     {-# INLINABLE fold #-}
@@ -1345,7 +1346,7 @@ instance Foldable Trie where
     -- (larger thunks?).  So should we just leave the default or
     -- eta-expand?
     {-# INLINE foldr #-}
-    foldr f z0 = \t -> go t z0 -- See [Note3].
+    foldr f z0 = \t -> go t z0 -- See [Note:FoldEta].
         where
         go Empty              = id
         go (Arc _ Nothing  t) =       go t
@@ -1354,7 +1355,7 @@ instance Foldable Trie where
 #if MIN_VERSION_base(4,6,0)
     -- TODO: float out this definition so folks can still use it on earlier versions of base?
     {-# INLINE foldr' #-}
-    foldr' f z0 = \t -> go t z0 -- See [Note3].
+    foldr' f z0 = \t -> go t z0 -- See [Note:FoldEta].
         where
         -- Benchmarking on GHC 9.2.1 indicates that for this function
         -- the (t,z) argument order is ~10% faster than (z,t);
@@ -1372,7 +1373,7 @@ instance Foldable Trie where
         go (Branch _ _ l r)    z = go l $! go r z
 #endif
     {-# INLINE foldl #-}
-    foldl f z0 = \t -> go t z0 -- See [Note3].
+    foldl f z0 = \t -> go t z0 -- See [Note:FoldEta].
         where
         -- Benchmarking on GHC 9.2.1 indicates that for this function
         -- the (t,z) argument order is slightly faster (~0.8%) and
@@ -1388,7 +1389,7 @@ instance Foldable Trie where
 #if MIN_VERSION_base(4,6,0)
     -- TODO: float out this definition so folks can still use it on earlier versions of base?
     {-# INLINE foldl' #-}
-    foldl' f z0 = go z0 -- See [Note3].
+    foldl' f z0 = go z0 -- See [Note:FoldEta].
         where
         -- Benchmarking on GHC 9.2.1 indicates that for this function
         -- the (z,t) argument order is significantly faster (~10%) and
@@ -1465,9 +1466,9 @@ instance Foldable Trie where
 -- @since 0.2.2
 foldrWithKey :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
 {-# INLINE foldrWithKey #-}
-foldrWithKey f z0 = \t -> go Nil t z0 -- See [Note3].
+foldrWithKey f z0 = \t -> go Nil t z0 -- See [Note:FoldEta].
     where
-    -- See [Note2].
+    -- See [Note:LazyRLBS].
     go _ Empty              = id
     go q (Branch _ _ l r)   = go q l . go q r
     go q (Arc k Nothing  t) =          go (q +>! k) t
@@ -1495,9 +1496,9 @@ foldrWithKey f z0 = \t -> go Nil t z0 -- See [Note3].
 -- @since 0.2.7
 foldrWithKey' :: (ByteString -> a -> b -> b) -> b -> Trie a -> b
 {-# INLINE foldrWithKey' #-}
-foldrWithKey' f z0 = go Nil z0 -- See [Note3].
+foldrWithKey' f z0 = go Nil z0 -- See [Note:FoldEta].
     where
-    -- See [Note2].
+    -- See [Note:LazyRLBS].
     go _ !z Empty              = z
     go q  z (Branch _ _ l r)   = go q (go q z r) l
     go q  z (Arc k Nothing  t) =           go (q +>! k) z t
@@ -1511,9 +1512,9 @@ foldrWithKey' f z0 = go Nil z0 -- See [Note3].
 -- @since 0.2.7
 foldlWithKey :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
 {-# INLINE foldlWithKey #-}
-foldlWithKey f z0 = go Nil z0 -- See [Note3].
+foldlWithKey f z0 = go Nil z0 -- See [Note:FoldEta].
     where
-    -- See [Note2].
+    -- See [Note:LazyRLBS].
     go _ z Empty              = z
     go q z (Branch _ _ l r)   = go q (go q z l) r
     go q z (Arc k Nothing  t) = go (q +>! k) z t
@@ -1527,9 +1528,9 @@ foldlWithKey f z0 = go Nil z0 -- See [Note3].
 -- @since 0.2.7
 foldlWithKey' :: (b -> ByteString -> a -> b) -> b -> Trie a -> b
 {-# INLINE foldlWithKey' #-}
-foldlWithKey' f z0 = go Nil z0 -- See [Note3].
+foldlWithKey' f z0 = go Nil z0 -- See [Note:FoldEta].
     where
-    -- See [Note2].
+    -- See [Note:LazyRLBS].
     go _ !z Empty              = z
     go q  z (Branch _ _ l r)   = go q (go q z l) r
     go q  z (Arc k Nothing  t) = go (q +>! k) z t

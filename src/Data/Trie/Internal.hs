@@ -17,7 +17,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2022.02.21
+--                                              ~ 2022.02.27
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  2008--2022 wren romano
@@ -305,11 +305,11 @@ By this point, purely beneficial.  However, the two unseen invariants remain.
 data Trie a
     = Branch {-# UNPACK #-} !Prefix
              {-# UNPACK #-} !Mask
-                            !(Trie a)
-                            !(Trie a)
-    | Arc    {-# UNPACK #-} !ByteString
+                            !(Trie a) -- Must not be @Empty@.
+                            !(Trie a) -- Must not be @Empty@.
+    | Arc    {-# UNPACK #-} !ByteString -- Has nontrivial invariants.
                             !(Maybe a)
-                            !(Trie a)
+                            !(Trie a) -- Has complex invariants.
     | Empty
     deriving Eq
     -- Prefix/Mask should be deterministic regardless of insertion order

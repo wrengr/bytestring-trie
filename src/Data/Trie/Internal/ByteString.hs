@@ -6,10 +6,10 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2021.12.14
+--                                              ~ 2022.02.27
 -- |
 -- Module      :  Data.Trie.Internal.ByteString
--- Copyright   :  2008--2021 wren romano
+-- Copyright   :  2008--2022 wren romano
 -- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  stable
@@ -22,7 +22,7 @@ module Data.Trie.Internal.ByteString
     ( ByteString, ByteStringElem
     , breakMaximalPrefix
     , RevLazyByteString(..), (+>!), (+>?), fromStrict, toStrict
-        -- TODO: we want to export the 'Epsilon' constructor; but
+        -- TODO: we want to export the 'Nil' constructor; but
         -- do we want to export the patterns?
     ) where
 
@@ -250,9 +250,9 @@ indexOfDifference !p1 !p2 !limit = goByte 0
 -- | A \"reversed\" variant of lazy bytestrings; i.e., a snoc-list
 -- of strict bytestrings.
 data RevLazyByteString
-    = Nil
-    | RevLazyByteString :+> {-# UNPACK #-} !S.ByteString
+    = RevLazyByteString :+> {-# UNPACK #-} !S.ByteString
     -- Invariant: every 'S.ByteString' is non-null.
+    | Nil
 
 -- TODO: should we add an 'assert' even though we don't check in general?
 -- | \(\mathcal{O}(1)\). Unsafely\/uncheckedly append a BS to the

@@ -5,7 +5,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2022.02.21
+--                                                  ~ 2022.02.27
 -- |
 -- Module      :  Test.Properties
 -- Copyright   :  2008--2022 wren romano
@@ -31,6 +31,7 @@ import qualified Test.Tasty.QuickCheck  as QC
 
 import Data.List (nubBy, sortBy)
 import Data.Ord  (comparing)
+import qualified Data.Binary   as B
 import qualified Data.Foldable as F
 
 #if MIN_VERSION_base(4,13,0)
@@ -284,6 +285,11 @@ quickcheckTests
       , QC.testProperty
           "prop_MonoidIdentityR"
           (prop_MonoidIdentityR :: WTrie (Sum Int) -> Bool)
+      ]
+    , Tasty.testGroup "Binary (@Int)"
+      [ QC.testProperty
+          "prop_Binary"
+          (prop_Binary :: WTrie Int -> Bool)
       ]
     ]
   , Tasty.testGroup "Other mapping/filtering (@Int)"
@@ -874,6 +880,9 @@ prop_MonoidIdentityL = ((mempty `mappend`) .==. id) . unWT
 
 prop_MonoidIdentityR :: (Monoid a, Eq a) => WTrie a -> Bool
 prop_MonoidIdentityR = ((`mappend` mempty) .==. id) . unWT
+
+prop_Binary :: (B.Binary a, Eq a) => WTrie a -> Bool
+prop_Binary = ((B.decode . B.encode) .==. id) . unWT
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

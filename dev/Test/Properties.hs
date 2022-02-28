@@ -29,8 +29,13 @@ import qualified Test.Tasty             as Tasty
 import qualified Test.Tasty.SmallCheck  as SC
 import qualified Test.Tasty.QuickCheck  as QC
 
-import Data.List (nubBy, sortBy)
-import Data.Ord  (comparing)
+import Control.Applicative  (liftA2)
+import Control.Monad        (join, (<=<), guard)
+import Data.Functor         ((<&>)) -- TODO: version added?
+import Data.List            (nubBy, sortBy)
+import Data.Maybe           (fromJust, isJust)
+import Data.Ord             (comparing)
+
 import qualified Data.Binary   as B
 import qualified Data.Foldable as F
 
@@ -47,11 +52,24 @@ import Data.Monoid         ((<>))
 #if MIN_VERSION_base(4,9,0)
 import Data.Semigroup      (Sum(..))
 #else
-data Sum a = Sum a
+newtype Sum a = Sum { getSum :: a }
     deriving (Eq, Ord, Read, Show, Bounded, Num)
 instance Num a => Monoid (Sum a) where
     mempty = Sum 0
     mappend (Sum x) (Sum y) = Sum (x + y)
+#endif
+
+#if MIN_VERSION_base(4,9,0)
+import Data.Functor.Classes (Eq1)
+import Data.Functor.Compose (Compose(Compose))
+#else
+-- TODO: actually handle this case!
+#endif
+
+#if MIN_VERSION_base(4,8,0)
+import Data.Functor.Identity (Identity(Identity))
+#else
+-- TODO: actually handle this case!
 #endif
 
 ----------------------------------------------------------------
@@ -250,10 +268,28 @@ quickcheckTests
           (prop_MonadIdentityR :: WTrie Int -> Bool)
       -- TODO: prop_MonadIdentityL, prop_MonadAssoc
       ]
-    , Tasty.testGroup "Foldable (@Int)"
+    , Tasty.testGroup "Foldable (@Int/Sum Int)"
       [ QC.testProperty
+          "prop_foldmapIdentity"
+          (prop_foldmapIdentity :: WTrie (Sum Int) -> Bool)
+      , QC.testProperty
+          "prop_foldmapFusion"
+          (prop_foldmapFusion Sum :: WTrie Int -> Bool)
+      , QC.testProperty
+          "prop_length"
+          (prop_length :: WTrie Int -> Bool)
+      , QC.testProperty
           "prop_foldr_vs_foldrWithKey"
           (prop_foldr_vs_foldrWithKey :: WTrie Int -> Bool)
+      , QC.testProperty
+          "prop_foldr'_vs_foldrWithKey'"
+          (prop_foldr'_vs_foldrWithKey' :: WTrie Int -> Bool)
+      , QC.testProperty
+          "prop_foldl_vs_foldlWithKey"
+          (prop_foldl_vs_foldlWithKey :: WTrie Int -> Bool)
+      , QC.testProperty
+          "prop_foldl'_vs_foldlWithKey'"
+          (prop_foldl'_vs_foldlWithKey' :: WTrie Int -> Bool)
 #if MIN_VERSION_base(4,6,0)
       , QC.testProperty
           "prop_foldr_vs_foldr'"
@@ -268,7 +304,44 @@ quickcheckTests
           (prop_foldMap_vs_foldMap' :: WTrie Int -> Bool)
 #endif
       ]
-    -- TODO: Traversable
+    , Tasty.testGroup "Traversable (@Int)"
+      [ QC.testProperty
+          "prop_TraverseIdentity"
+          (prop_TraverseIdentity :: WTrie Int -> Bool)
+      -- TODO: prop_TraverseNaturality, prop_TraverseComposition
+      , QC.testProperty
+          "prop_SequenceaIdentity"
+          (prop_SequenceaIdentity :: WTrie Int -> Bool)
+      -- TODO: prop_SequenceaNaturality, prop_SequenceaComposition
+      ]
+    , Tasty.testGroup "Filterable (@Int)"
+      [ QC.testProperty
+          "prop_FiltermapFission"
+          (prop_FiltermapFission remTriple :: WTrie Int -> Bool)
+      , QC.testProperty
+          "prop_FiltermapFusion"
+          (prop_FiltermapFusion (`rem` 3) (not . isTriple) :: WTrie Int -> Bool)
+      , QC.testProperty
+          "prop_FiltermapConservation"
+          (prop_FiltermapConservation (+1) :: WTrie Int -> Bool)
+      -- TODO: prop_FiltermapVertComposition
+      , QC.testProperty
+          "prop_FilterDefinition"
+          (prop_FilterDefinition isTriple :: WTrie Int -> Bool)
+      , QC.testProperty
+          "prop_FilterVertComposition"
+          (prop_FilterVertComposition even isTriple :: WTrie Int -> Bool)
+      ]
+    , Tasty.testGroup "Witherable (@Int)"
+      [ QC.testProperty
+          "prop_WitherConservation"
+          (prop_WitherConservation (Identity . (+1)) :: WTrie Int -> Bool)
+      -- TODO: prop_WitherNaturality, prop_WitherPurity, prop_WitherHorizComposition
+      , QC.testProperty
+          "prop_FilteraDefinition"
+          (prop_FilteraDefinition (Identity . even) :: WTrie Int -> Bool)
+      -- TODO: prop_FilteraNaturality, prop_FilteraPurity, prop_FilteraHorizComposition, prop_FilteraHorizComposition_alt
+      ]
 #if MIN_VERSION_base(4,9,0)
     , Tasty.testGroup "Semigroup (@Sum Int)"
       [ QC.testProperty
@@ -707,10 +780,65 @@ prop_keys = (T.keys .==. (fmap fst . T.toList)) . unWT
 prop_elems :: (Eq a) => WTrie a -> Bool
 prop_elems = (T.elems .==. (fmap snd . T.toList)) . unWT
 
--- Make sure these at least have the same order...
+----------------------------------------------------------------
+-- ~~~~~ 'Foldable' properties
+
+-- * The laws as stated in the documentation.
+
+prop_foldmapIdentity :: (Monoid m, Eq m) => WTrie m -> Bool
+prop_foldmapIdentity = (F.fold .==. F.foldMap id) . unWT
+
+prop_foldmapFusion :: (Monoid m, Eq m) => (a -> m) -> WTrie a -> Bool
+prop_foldmapFusion f = (F.foldMap f .==. (F.fold . fmap f)) . unWT
+    -- entails: foldMap f . fmap g ≡ foldMap (f . g)
+
+{- -- TODO:
+foldr f z t ≡ appEndo (F.foldMap (Endo . f) t ) z
+foldl f z t ≡ appEndo (getDual (F.foldMap (Dual . Endo . flip f) t)) z
+-}
+
+-- By definition we already have @T.size ≡ F.length@.
+prop_length :: WTrie a -> Bool
+prop_length = (F.length .==. getSum . F.foldMap (Sum . const 1)) . unWT
+
+{- -- TODO: handle the cases of old @base@
+prop_sum :: (Num a, Eq a) => WTrie a -> Bool
+prop_sum = (F.sum .==. (getSum . F.foldMap' Sum)) . unWT
+
+prop_product :: (Num a, Eq a) => WTrie a -> Bool
+prop_product = (F.product .==. (getProduct . F.foldMap' Product)) . unWT
+
+-- These two laws aren't stated in the documentation, but obviously should be.
+prop_minimum :: (Ord a, Eq a) => NonEmpty (WTrie a) -> Bool
+prop_minimum = (F.minimum .==. (getMin . F.foldMap' Min)) . unWT
+
+prop_maximum :: (Ord a, Eq a) => NonEmpty (WTrie a) -> Bool
+prop_maximum = (F.maximum .==. (getMax . F.foldMap' Max)) . unWT
+-}
+
+
+-- * At least make sure these at least have the same order.
+-- TODO: better equivalence tests
+
 prop_foldr_vs_foldrWithKey :: Eq a => WTrie a -> Bool
 prop_foldr_vs_foldrWithKey =
-    (F.foldr (:) [] .==. TI.foldrWithKey (\_ v vs -> v:vs) []) . unWT
+    (F.foldr (:) [] .==. TI.foldrWithKey (const (:)) []) . unWT
+
+prop_foldr'_vs_foldrWithKey' :: Eq a => WTrie a -> Bool
+prop_foldr'_vs_foldrWithKey' =
+    (F.foldr' (:) [] .==. TI.foldrWithKey' (const (:)) []) . unWT
+
+prop_foldl_vs_foldlWithKey :: Eq a => WTrie a -> Bool
+prop_foldl_vs_foldlWithKey =
+    (F.foldl snoc [] .==. TI.foldlWithKey (const . snoc) []) . unWT
+    where
+    snoc = flip (:)
+
+prop_foldl'_vs_foldlWithKey' :: Eq a => WTrie a -> Bool
+prop_foldl'_vs_foldlWithKey' =
+    (F.foldl' snoc [] .==. TI.foldlWithKey' (const . snoc) []) . unWT
+    where
+    snoc = flip (:)
 
 #if MIN_VERSION_base(4,6,0)
 prop_foldr_vs_foldr' :: (Eq a) => WTrie a -> Bool
@@ -733,6 +861,207 @@ prop_foldMap_vs_foldMap' = (F.foldMap Sum .==. F.foldMap' Sum) . unWT
 
 -- TODO: #if MIN_VERSION_base(4,8,0), check that 'F.null' isn't cyclic definition
 
+----------------------------------------------------------------
+-- ~~~~~ 'Traversable' laws
+
+-- | Horizontal composition of Kleisli arrows.
+under :: Functor f => (b -> g c) -> (a -> f b) -> a -> Compose f g c
+under g f = Compose . fmap g . f
+
+{-
+-- TODO: We can't really autogenerate these, but maybe we could
+-- have a select few interesting ones?
+--
+-- | An \"applicative transformation\".
+data AT f g where
+    AT :: (Applicative f, Applicative g) => forall a. f a -> g a
+        -- Such that:
+        -- @t (pure x) ≡ pure x@
+        -- @t (f <*> x) ≡ t f <*> t x@
+
+prop_TraverseNaturality
+    :: (Applicative f, Applicative g, Eq1 g, Eq b)
+    => AT f g -> (a -> f b) -> WTrie a -> Bool
+prop_TraverseNaturality (AT t) f =
+    ((t . traverse f) .==. traverse (t . f)) . unWT
+-}
+
+prop_TraverseIdentity :: Eq a => WTrie a -> Bool
+prop_TraverseIdentity = (traverse Identity .==. Identity) . unWT
+
+-- TODO: how could we actually test this? Any good @f,g@ to try in particular?
+prop_TraverseComposition
+    :: (Applicative f, Applicative g, Eq1 g, Eq1 f, Eq c)
+    => (b -> g c) -> (a -> f b) -> WTrie a -> Bool
+prop_TraverseComposition g f =
+    (traverse (g `under` f) .==. (traverse g `under` traverse f)) . unWT
+
+-- NOTE: The next two are redundant, since we don't provide a bespoke
+-- implementation of 'sequenceA'.
+
+{-
+prop_SequenceaNaturality
+    :: (Applicative f, Applicative g, Eq1 g, Eq a)
+    => AT f g -> WTrie (f a) -> Bool
+prop_SequenceaNaturality (AT t) =
+    ((t . sequenceA) .==. (sequenceA . fmap t)) . unWT
+-}
+
+prop_SequenceaIdentity :: Eq a => WTrie a -> Bool
+prop_SequenceaIdentity =
+    ((sequenceA . fmap Identity) .==. Identity) . unWT
+
+-- TODO: how could we actually test this? Any good @f,g@ to try in particular?
+prop_SequenceaComposition
+    :: (Applicative f, Applicative g, Eq1 g, Eq1 f, Eq a)
+    => WTrie (g (f a)) -> Bool
+prop_SequenceaComposition =
+    ((sequenceA . fmap Compose) .==. (sequenceA `under` sequenceA)) . unWT
+
+-- TODO: reiterate the laws for 'traverseWithKey'...
+
+----------------------------------------------------------------
+-- ~~~~~ 'Filterable' laws
+-- TODO: how could we actually test these effectively?  Instead of
+-- just with particular example functions?
+
+-- | Shorthand alias for a filtering function.
+type F a b = a -> Maybe b
+
+-- | Shorthand alias for a predicate function.
+type P a = a -> Bool
+
+prop_FiltermapFission :: Eq b => F a b -> WTrie a -> Bool
+prop_FiltermapFission f =
+    (T.filterMap f .==. (fmap (fromJust . f) . TI.filter (isJust . f))) . unWT
+
+prop_FiltermapFusion :: Eq b => (a -> b) -> P a -> WTrie a -> Bool
+prop_FiltermapFusion f g =
+    ((fmap f . TI.filter g) .==. T.filterMap (\v -> f v <$ guard (g v))) . unWT
+
+prop_FiltermapConservation :: Eq b => (a -> b) -> WTrie a -> Bool
+prop_FiltermapConservation f =
+    (T.filterMap (Just . f) .==. fmap f) . unWT
+
+prop_FiltermapVertComposition :: Eq c => F b c -> F a b -> WTrie a -> Bool
+prop_FiltermapVertComposition f g =
+    ((T.filterMap f . T.filterMap g) .==. T.filterMap (f <=< g)) . unWT
+
+prop_FilterDefinition :: Eq a => P a -> WTrie a -> Bool
+prop_FilterDefinition f =
+    (TI.filter f .==. T.filterMap (\v -> v <$ guard (f v))) . unWT
+
+prop_FilterVertComposition :: Eq a => P a -> P a -> WTrie a -> Bool
+prop_FilterVertComposition f g =
+    ((TI.filter f . TI.filter g) .==. TI.filter (liftA2 (&&) f g)) . unWT
+
+-- A handful of interesting predicates...
+isTriple :: Integral a => P a
+isTriple x = rem x 3 == 0
+
+remTriple :: Integral a => F a a
+remTriple x
+    | r == 0    = Nothing
+    | otherwise = Just r
+    where r = rem x 3
+
+quotTriple :: Integral a => F a a
+quotTriple x
+    | r == 0    = Just q
+    | otherwise = Nothing
+    where (q,r) = quotRem x 3
+
+----------------------------------------------------------------
+-- ~~~~~ 'Witherable' laws
+-- TODO: how could we actually test these effectively?
+
+-- | Shorthand alias for a withering function.
+type FA a f b = a -> f (Maybe b)
+
+{-
+prop_WitherNaturality
+    :: (Applicative f, Applicative g, Eq1 g, Eq b)
+    => AT f g -> FA a f b -> WTrie a -> Bool
+prop_WitherNaturality (AT t) f =
+    (TI.wither (t . f) .==. (t . TI.wither f)) . unWT
+-}
+
+{-
+-- TODO: how can we nail down the functor @f@ but in a way that's portable beyond GHC?
+prop_WitherPurity :: (Applicative f, Eq1 f, Eq b) => F a b -> WTrie a -> Bool
+prop_WitherPurity f =
+    (TI.wither (pure . f) .==. (pure . T.filterMap f)) . unWT
+-}
+
+-- HACK: adding the 'Compose' wrapper to force GHC to deduce @Eq
+-- (f (T.Trie b))@ from the provided @(Eq1 f, Eq b)@.
+prop_WitherConservation
+    :: (Applicative f, Eq1 f, Eq b) => (a -> f b) -> WTrie a -> Bool
+prop_WitherConservation f =
+    ((Compose . TI.wither (fmap Just . f)) .==. (Compose . traverse f)) . unWT
+
+prop_WitherHorizComposition
+    :: (Applicative f, Applicative g, Eq1 g, Eq1 f, Eq c)
+    => FA b g c -> FA a f b -> WTrie a -> Bool
+prop_WitherHorizComposition f g =
+    ((TI.wither f `under` TI.wither g) .==. TI.wither (wither_Maybe f `under` g)) . unWT
+
+-- | Variant of wither for Maybe instead of Trie.
+wither_Maybe :: Applicative f => FA a f b -> Maybe a -> f (Maybe b)
+wither_Maybe f = fmap join . traverse f
+
+-- | Shorthand alias for an effectful predicate function.
+type PA a f = a -> f Bool
+
+-- HACK: adding the 'Compose' wrapper to force GHC to deduce @Eq
+-- (f (T.Trie a))@ from the provided @(Eq1 f, Eq a)@.
+prop_FilteraDefinition :: (Applicative f, Eq1 f, Eq a) => PA a f -> WTrie a -> Bool
+prop_FilteraDefinition f =
+    ((Compose . TI.filterA f) .==. (Compose . TI.wither (\v -> (v <$) . guard <$> f v))) . unWT
+
+{-
+prop_FilteraNaturality
+    :: (Applicative f, Applicative g, Eq1 g, Eq a)
+    => AT f g -> PA a f -> WTrie a -> Bool
+prop_FilteraNaturality (AT t) f =
+    (TI.filterA (t . f) .==. (t . TI.filterA f)) . unWT
+-}
+
+{-
+-- TODO: how can we nail down the @f@ but in a way that's portable beyond GHC?
+prop_FilteraPurity :: (Functor f, Eq1 f, Eq a) => P a -> WTrie a -> Bool
+prop_FilteraPurity f =
+    (TI.filterA (pure . f) .==. (pure . TI.filter f)) . unWT
+-}
+
+prop_FilteraHorizComposition
+    :: (Applicative f, Applicative g, Eq1 g, Eq1 f, Eq a)
+    => PA a f -> PA a g -> WTrie a -> Bool
+prop_FilteraHorizComposition f g =
+    ((TI.filterA f `under` TI.filterA g) .==. TI.filterA (underA2 (&&) f g)) . unWT
+
+underA2 :: (Applicative f, Applicative g)
+        => (b -> c -> d)
+        -> (a -> g b)
+        -> (a -> f c)
+        -> a -> Compose f g d
+underA2 h g f = liftA2 (liftA2 h) (g `under` pure) (pure `under` f)
+
+prop_FilteraHorizComposition_alt
+    :: (Applicative f, Applicative g, Eq1 g, Eq1 f, Eq a)
+    => PA a f -> PA a g -> WTrie a -> Bool
+prop_FilteraHorizComposition_alt f g =
+    ((TI.filterA f `under` TI.filterA g) .==. TI.filterA (underF2 (&&) g f)) . unWT
+
+underF2 :: (Functor f, Functor g)
+        => (b -> c -> d)
+        -> (a -> f b)
+        -> (a -> g c)
+        -> a -> Compose f g d
+underF2 h f g a = Compose (f a <&> ((g a <&>) . h))
+
+
+----------------------------------------------------------------
 -- | If there are duplicate keys in the @assocs@, then @f@ will
 -- take the first value.
 _takes_first :: (Eq c) => ([(S.ByteString, c)] -> T.Trie c) -> [(WS, c)] -> Bool
@@ -776,6 +1105,9 @@ prop_fromListWithConst_takes_first = _takes_first (TC.fromListWith const)
 prop_fromListWithLConst_takes_first :: (Eq a) => [(WS, a)] -> Bool
 prop_fromListWithLConst_takes_first = _takes_first (TC.fromListWithL const)
 
+----------------------------------------------------------------
+-- ~~~~~ 'Functor' properties
+
 prop_FunctorIdentity :: Eq a => WTrie a -> Bool
 prop_FunctorIdentity = (fmap id .==. id) . unWT
 
@@ -808,6 +1140,7 @@ prop_fmap_toList :: Eq b => (a -> b) -> WTrie a -> Bool
 prop_fmap_toList f =
     ((T.toList . fmap f) .==. (map (second f) . T.toList)) . unWT
 
+----------------------------------------------------------------
 prop_filterMap_ident :: Eq a => WTrie a -> Bool
 prop_filterMap_ident = (T.filterMap Just .==. id) . unWT
 
@@ -852,6 +1185,9 @@ prop_contextualMapBy_empty = (TI.contextualMapBy f .==. const T.empty) . unWT
     f :: S.ByteString -> a -> T.Trie a -> Maybe a
     f _ _ _ = Nothing
 
+----------------------------------------------------------------
+-- ~~~~~ 'Applicative' laws
+
 prop_ApplicativeIdentity :: Eq a => WTrie a -> Bool
 prop_ApplicativeIdentity = ((pure id <*>) .==. id) . unWT
 
@@ -861,6 +1197,9 @@ prop_ApplicativeHom      = pure f <*> pure x == pure (f x)
 prop_ApplicativeInterchange = u <*> pure y == pure ($ y) <*> u
 -}
 
+----------------------------------------------------------------
+-- ~~~~~ 'Monad' laws
+
 prop_MonadIdentityR :: Eq a => WTrie a -> Bool
 prop_MonadIdentityR = ((>>= return) .==. id) . unWT
 
@@ -869,10 +1208,18 @@ prop_MonadIdentityL = (return a >>= k) == k a
 prop_MonadAssoc     = m >>= (\x -> k x >>= h) == (m >>= k) >>= h
 -}
 
+----------------------------------------------------------------
+-- ~~~~~ 'Semigroup' laws
+
 #if MIN_VERSION_base(4,9,0)
 prop_Semigroup :: (Semigroup a, Eq a) => WTrie a -> WTrie a -> WTrie a -> Bool
 prop_Semigroup (WT a) (WT b) (WT c) = a <> (b <> c) == (a <> b) <> c
+
+-- TODO: laws for 'stimes'
 #endif
+
+----------------------------------------------------------------
+-- ~~~~~ 'Monoid' laws
 
 -- N.B., base-4.11.0.0 is when Semigroup became superclass of Monoid
 prop_MonoidIdentityL :: (Monoid a, Eq a) => WTrie a -> Bool
@@ -880,6 +1227,9 @@ prop_MonoidIdentityL = ((mempty `mappend`) .==. id) . unWT
 
 prop_MonoidIdentityR :: (Monoid a, Eq a) => WTrie a -> Bool
 prop_MonoidIdentityR = ((`mappend` mempty) .==. id) . unWT
+
+----------------------------------------------------------------
+-- ~~~~~ 'Binary' laws
 
 prop_Binary :: (B.Binary a, Eq a) => WTrie a -> Bool
 prop_Binary = ((B.decode . B.encode) .==. id) . unWT

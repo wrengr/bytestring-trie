@@ -1115,16 +1115,16 @@ wither f = start
 --   @'filterA' f ≡ 'wither' (\\v -> (\\b -> v '<$' 'Control.Monad.guard' b) '<$>' f v)@
 --   @'filterA' f ≡ 'wither' ('fmap' . (. 'Control.Monad.guard') . ('<$') '<*>' f)@
 --
--- An alternative variant with a more straightforward derivation
--- for the definition, but a bizarre type (since the layering of
--- effects doesn't match the order of arguments).  Though re the
--- /name/, this one makes more sense than the other one.
--- > underA2 :: (Applicative f, Applicative g)
+-- An alternative variant of 'underA2' which has a nicer type.
+-- Alas, that just makes the twist show up in the law itself; also
+-- the name is peculiar since it's the second argument that's run
+-- under the first.  Decisions decisions.
+-- > underF2 :: (Functor f, Functor g)
 -- >         => (b -> c -> d)
--- >         -> (a -> g b)
--- >         -> (a -> f c)
+-- >         -> (a -> f b)
+-- >         -> (a -> g c)
 -- >         -> a -> Compose f g d
--- > underA2 h g f = liftA2 (liftA2 h) (g `under` pure) (pure `under` f)
+-- > underF2 h f g a = Compose (f a <&> ((g a <&>) . h))
 --
 --
 -- | An effectful version of 'filter'.
@@ -1141,16 +1141,19 @@ wither f = start
 --   @'filterA' ('pure' . f) ≡ 'pure' . 'filter' f@
 --
 -- [/Horizontal Composition/]
---   @'filterA' f \`under\` 'filterA' g ≡ 'filterA' (underF2 ('&&') f g)@,
+--   @'filterA' f \`under\` 'filterA' g ≡ 'filterA' (underA2 ('&&') f g)@,
 --   where
 --
 -- > -- Like 'liftA2' for the @(a->)@ monad, but horizontal.
--- > underF2 :: (Functor f, Functor g)
+-- > -- The function definition should (hopefully) be straightforward
+-- > -- to follow; however, do beware the oddly criss-crossed types
+-- > -- for @g@ and @f@.
+-- > underA2 :: (Applicative f, Applicative g)
 -- >         => (b -> c -> d)
--- >         -> (a -> f b)
--- >         -> (a -> g c)
+-- >         -> (a -> g b)
+-- >         -> (a -> f c)
 -- >         -> a -> Compose f g d
--- > underF2 h f g a = Compose (f a <&> ((g a <&>) . h))
+-- > underA2 h g f = liftA2 (liftA2 h) (g `under` pure) (pure `under` f)
 --
 -- For the definition of @under@ and more details about horizontal
 -- composition, see the laws section of 'wither'.

@@ -58,6 +58,7 @@ module Data.Trie
 
     -- * Mapping functions
     , mapBy, filterMap
+    -- TODO: re-export 'filter', 'filterA', 'wither', etc?
     ) where
 
 import Prelude hiding     (null, lookup)

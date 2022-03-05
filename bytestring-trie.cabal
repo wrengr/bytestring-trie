@@ -6,7 +6,7 @@ Cabal-Version:  2.2
 --    <https://github.com/haskell/cabal/issues/4899>
 
 ----------------------------------------------------------------
--- wren gayle romano <wren@cpan.org>                ~ 2022.02.12
+-- wren gayle romano <wren@cpan.org>                ~ 2022.03.04
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
@@ -148,14 +148,15 @@ Test-Suite test-all
                  -- lazysmallcheck    >= 0.6      && < 0.7
 
 ----------------------------------------------------------------
-Benchmark bench-Foldable
+-- Can't put the "Type:" field in here; or rather even if we do,
+-- it's still required in each of the Benchmark stanzas...
+Common bench-common
     Import:         library-build-depends
-    Type:           exitcode-stdio-1.0
+    if impl(ghc)
+      GHC-Options:  "-with-rtsopts=-A32m"
+    if impl(ghc >= 8.10)
+      GHC-Options:  "-with-rtsopts=--nonmoving-gc"
     Hs-Source-Dirs: dev
-    -- NOTE: Benchmark Main-Is behaves like Test-Suite Main-Is
-    -- (not like Executable Main-Is).
-    Main-Is:        Bench/Foldable.hs
-    Other-Modules:  Shared.Sum
     Build-Depends:  bytestring-trie -any
                  -- TODO: try using @gauge@ instead of @criterion@,
                  -- to reduce the transitive dependencies.
@@ -163,34 +164,38 @@ Benchmark bench-Foldable
                  -- version 0.0.12 doesn't support GHC 9.2; so we'll
                  -- have to revisit this later.
                  ,  criterion
-                 ,  criterion-measurement
                  ,  QuickCheck  >= 2.10  && < 2.15
+
+Benchmark bench-Main
+    Import:         bench-common
+    Type:           exitcode-stdio-1.0
+    -- NOTE: Benchmark Main-Is behaves like Test-Suite Main-Is
+    -- (not like Executable Main-Is).
+    Main-Is:        Bench/Main.hs
+    if impl(ghc)
+      GHC-Options:  -main-is Bench.Main.main
+    Other-Modules:  Bench.Foldable
+                 ,  Shared.Sum
+
+Benchmark bench-Foldable
+    Import:         bench-common
+    Type:           exitcode-stdio-1.0
+    Main-Is:        Bench/Foldable.hs
+    if impl(ghc)
+      GHC-Options:  -main-is Bench.Foldable.main
+    Other-Modules:  Shared.Sum
+    Build-Depends:  criterion-measurement
+    -- TODO: does this still need `criterion-measurement`?
 
 Benchmark bench-MatchOne
-    Import:         library-build-depends
+    Import:         bench-common
     Type:           exitcode-stdio-1.0
-    if impl(ghc)
-      GHC-Options:  "-with-rtsopts=-A32m"
-    if impl(ghc >= 8.10)
-      GHC-Options:  "-with-rtsopts=--nonmoving-gc"
-    Hs-Source-Dirs: dev
     Main-Is:        Bench/MatchOne.hs
-    Build-Depends:  bytestring-trie -any
-                 ,  criterion
-                 ,  QuickCheck  >= 2.10  && < 2.15
 
 Benchmark bench-UnionWith
-    Import:         library-build-depends
+    Import:         bench-common
     Type:           exitcode-stdio-1.0
-    if impl(ghc)
-      GHC-Options:  "-with-rtsopts=-A32m"
-    if impl(ghc >= 8.10)
-      GHC-Options:  "-with-rtsopts=--nonmoving-gc"
-    Hs-Source-Dirs: dev
     Main-Is:        Bench/UnionWith.hs
-    Build-Depends:  bytestring-trie -any
-                 ,  criterion
-                 ,  QuickCheck  >= 2.10  && < 2.15
 
 ----------------------------------------------------------------
 ----------------------------------------------------------- fin.

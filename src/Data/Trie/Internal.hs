@@ -1324,7 +1324,8 @@ instance Foldable Trie where
         go (Arc _ (Just v) t) = f v `mappend` go t
         go (Branch _ _ l r)   = go l `mappend` go r
 #if MIN_VERSION_base(4,13,0)
-    -- TODO: float out this definition so folks can still use it on earlier versions of base?
+    -- TODO: float out this definition so folks can still use it
+    -- on earlier versions of base?
     -- TODO: verify order of 'mappend' on some non-commutative monoid!
     {-# INLINE foldMap' #-}
     foldMap' f = go mempty
@@ -1341,39 +1342,33 @@ instance Foldable Trie where
         go  m (Arc _ (Just v) t) = go (m `mappend` f v) t
         go  m (Branch _ _ l r)   = go (go m l) r
 #endif
-    --
-    -- TODO: This implementation, a variation with eta-expanded
-    -- recursion, and the 'Endo'-based default are all about the
-    -- same performance.  The eta-expanded version trends towards
-    -- being slightly faster, but it costs ~43% more allocation
-    -- (larger thunks?).  So should we just leave the default or
-    -- eta-expand?
-    {-# INLINE foldr #-}
-    foldr f z0 = \t -> go t z0 -- See [Note:FoldEta].
-        where
-        go Empty              = id
-        go (Arc _ Nothing  t) =       go t
-        go (Arc _ (Just v) t) = f v . go t
-        go (Branch _ _ l r)   = go l . go r
+    -- (2022.03.05): Reverting 'foldr' to the default 'foldMap'
+    -- with 'Endo' definition, since newer benchmarks indicate that
+    -- for larger tries is a huge win over the previous imlementation
+    -- (which was only marginally better anyways).
 #if MIN_VERSION_base(4,6,0)
-    -- TODO: float out this definition so folks can still use it on earlier versions of base?
+    -- TODO: float out this definition so folks can still use it
+    -- on earlier versions of base?
     {-# INLINE foldr' #-}
-    foldr' f z0 = \t -> go t z0 -- See [Note:FoldEta].
+    foldr' f z0 = go z0 -- See [Note:FoldEta].
         where
-        -- Benchmarking on GHC 9.2.1 indicates that for this function
-        -- the (t,z) argument order is ~10% faster than (z,t);
-        -- allocation is the same for both.  Also, weirdly,
-        -- benchmarking indicates that the @($!)@ in the Branch
-        -- case slightly improved things.
+        -- Benchmarking on GHC 9.2.1 indicates that for this function:
+        -- for smaller tries, the (t,z) argument order is ~10% faster
+        -- than (z,t) and allocation is the same for both; however,
+        -- for larger tries the (t,z) argument order is ~6% slower
+        -- than (z,t).
+        --
+        -- Also, weirdly, benchmarking indicates that the @($!)@
+        -- in the Branch case slightly improved things.
         -- TODO: what's going on with the @($!)@; bogus?
         -- TODO: once HPC disabled, now it's saying the unflopped
         -- version without the extra @($!)@ is the faster one!
         -- (unflopped with @($!)@ is only marginally slower; probably
         -- noise).
-        go Empty              !z = z
-        go (Arc _ Nothing  t)  z = go t z
-        go (Arc _ (Just v) t)  z = f v $! go t z
-        go (Branch _ _ l r)    z = go l $! go r z
+        go !z Empty              = z
+        go  z (Arc _ Nothing  t) = go z t
+        go  z (Arc _ (Just v) t) = f v $! go z t
+        go  z (Branch _ _ l r)   = go (go z r) l
 #endif
     {-# INLINE foldl #-}
     foldl f z0 = \t -> go t z0 -- See [Note:FoldEta].
@@ -1385,12 +1380,14 @@ instance Foldable Trie where
         -- when it doesn't for 'foldr'' and 'foldMap''.
         -- TODO: once HPC disabled, now it's showing the flopped
         -- version is ~2x faster! bogus?
+        -- TODO: (2022.03.05) Rerun this benchmark on larger tries.
         go Empty              z = z
         go (Arc _ Nothing  t) z = go t z
         go (Arc _ (Just v) t) z = go t (f z v)
         go (Branch _ _ l r)   z = go r (go l z)
 #if MIN_VERSION_base(4,6,0)
-    -- TODO: float out this definition so folks can still use it on earlier versions of base?
+    -- TODO: float out this definition so folks can still use it
+    -- on earlier versions of base?
     {-# INLINE foldl' #-}
     foldl' f z0 = go z0 -- See [Note:FoldEta].
         where
@@ -1401,6 +1398,7 @@ instance Foldable Trie where
         -- TODO: figure out why benchmarking indicates the \"flop_bang\"
         -- version is ~4% faster (albeit ~32% more allocation); bogus?
         -- TODO: once HPC disabled, the flopped version is showing ~2x faster; bogus?
+        -- TODO: (2022.03.05) Rerun this benchmark on larger tries.
         go !z Empty              = z
         go  z (Arc _ Nothing  t) = go z t
         go  z (Arc _ (Just v) t) = go (f z v) t
@@ -1408,7 +1406,8 @@ instance Foldable Trie where
 #endif
     -- TODO: any point in doing foldr1,foldl1?
 #if MIN_VERSION_base(4,8,0)
-    -- TODO: float out this definition so folks can still use it on earlier versions of base?
+    -- TODO: float out this definition so folks can still use it
+    -- on earlier versions of base?
     {-# INLINE length #-}
     length = size
     {-# INLINE null #-}

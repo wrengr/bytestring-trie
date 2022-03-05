@@ -5,7 +5,7 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2022.02.27
+--                                                  ~ 2022.03.05
 -- |
 -- Module      :  Test.Properties
 -- Copyright   :  2008--2022 wren romano
@@ -31,7 +31,9 @@ import qualified Test.Tasty.QuickCheck  as QC
 
 import Control.Applicative  (liftA2)
 import Control.Monad        (join, (<=<), guard)
-import Data.Functor         ((<&>)) -- TODO: version added?
+#if MIN_VERSION_base(4,13,0)
+import Data.Functor         ((<&>)) -- Or else we'll define it ourselves.
+#endif
 import Data.List            (nubBy, sortBy)
 import Data.Maybe           (fromJust, isJust)
 import Data.Ord             (comparing)
@@ -40,7 +42,7 @@ import qualified Data.Binary   as B
 import qualified Data.Foldable as F
 
 #if MIN_VERSION_base(4,13,0)
--- [aka GHC 8.8.1]: Prelude re-exports 'Semigroup'.
+-- [aka GHC 8.8.1]: Prelude re-exports 'Semigroup' and '<>'.
 #elif MIN_VERSION_base(4,9,0)
 -- [aka GHC 8.0.1]: "Data.Semigroup" added to base.
 import Data.Semigroup      (Semigroup(..))
@@ -50,26 +52,34 @@ import Data.Monoid         ((<>))
 #endif
 
 #if MIN_VERSION_base(4,9,0)
-import Data.Semigroup      (Sum(..))
-#else
+import Data.Semigroup       (Sum(..)) -- Or else we'll define it ourselves.
+import Data.Functor.Classes (Eq1)
+import Data.Functor.Compose (Compose(Compose))
+#endif
+
+#if MIN_VERSION_base(4,8,0)
+import Data.Functor.Identity (Identity(Identity))
+#endif
+
+----------------------------------------------------------------
+#if !(MIN_VERSION_base(4,13,0))
+-- [aka GHC 8.8.1]
+(<&>) :: Functor f => f a -> (a -> b) -> f b
+(<&>) = flip fmap
+#endif
+
+#if !(MIN_VERSION_base(4,9,0))
 newtype Sum a = Sum { getSum :: a }
     deriving (Eq, Ord, Read, Show, Bounded, Num)
 instance Num a => Monoid (Sum a) where
     mempty = Sum 0
     mappend (Sum x) (Sum y) = Sum (x + y)
+
+-- TODO: reimplement 'Data.Functor.Compose.Compose'
 #endif
 
-#if MIN_VERSION_base(4,9,0)
-import Data.Functor.Classes (Eq1)
-import Data.Functor.Compose (Compose(Compose))
-#else
--- TODO: actually handle this case!
-#endif
-
-#if MIN_VERSION_base(4,8,0)
-import Data.Functor.Identity (Identity(Identity))
-#else
--- TODO: actually handle this case!
+#if !(MIN_VERSION_base(4,8,0))
+-- TODO: reimplement 'Data.Functor.Identity.Identity'
 #endif
 
 ----------------------------------------------------------------

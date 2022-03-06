@@ -1342,10 +1342,19 @@ instance Foldable Trie where
         go  m (Arc _ (Just v) t) = go (m `mappend` f v) t
         go  m (Branch _ _ l r)   = go (go m l) r
 #endif
-    -- (2022.03.05): Reverting 'foldr' to the default 'foldMap'
-    -- with 'Endo' definition, since newer benchmarks indicate that
-    -- for larger tries is a huge win over the previous imlementation
-    -- (which was only marginally better anyways).
+    -- FIXME: (2022.03.06): N.B., the benchmarks are quite erratic
+    -- regarding whether this implementation is better than the
+    -- 'foldMap'-with-'Endo' definition or not; whichever one is
+    -- favored at some particular time is always massively favored
+    -- over the other.  Most recently this implementation is being
+    -- favored.
+    {-# INLINE foldr #-}
+    foldr f z0 = \t -> go t z0 -- See [Note:FoldEta].
+        where
+        go Empty              = id
+        go (Arc _ Nothing  t) =       go t
+        go (Arc _ (Just v) t) = f v . go t
+        go (Branch _ _ l r)   = go l . go r
 #if MIN_VERSION_base(4,6,0)
     -- TODO: float out this definition so folks can still use it
     -- on earlier versions of base?

@@ -168,14 +168,14 @@ Common bench-common
                  ,  criterion
                  ,  QuickCheck  >= 2.10  && < 2.15
 
-Benchmark bench-Main
+Benchmark bench-Regression
     Import:         bench-common
     Type:           exitcode-stdio-1.0
     -- NOTE: Benchmark Main-Is behaves like Test-Suite Main-Is
     -- (not like Executable Main-Is).
-    Main-Is:        Bench/Main.hs
+    Main-Is:        Bench/Regression.hs
     if impl(ghc)
-      GHC-Options:  -main-is Bench.Main.main
+      GHC-Options:  -main-is Bench.Regression.main
     Other-Modules:  Shared.BaseCompat
                  ,  Bench.Foldable
 

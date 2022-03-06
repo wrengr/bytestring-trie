@@ -2,9 +2,9 @@
 {-# LANGUAGE BangPatterns #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2022.03.04
+--                                                  ~ 2022.03.06
 -- |
--- Module      :  Bench.Main
+-- Module      :  Bench.Regression
 -- Copyright   :  2008--2022 wren romano
 -- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
@@ -13,7 +13,7 @@
 --
 ----------------------------------------------------------------
 
-module Bench.Main (main, readTrieFromFile) where
+module Bench.Regression (main, readTrieFromFile) where
 -- Exporting 'readTrieFromFile' for reuse in GHCi while debugging.
 
 import Bench.Foldable (realTrie_to_benchTrie, bgroup_Foldable)

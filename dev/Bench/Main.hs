@@ -25,6 +25,7 @@ import qualified Data.ByteString    as S
 import qualified Criterion.Main     as C
 import qualified System.IO          as Sys (withFile, IOMode(..), hIsEOF)
 import qualified System.Environment as Sys (getProgName, getArgs, withArgs)
+import qualified System.Exit        as Sys (exitFailure)
 ----------------------------------------------------------------
 
 -- | Read a file and insert each line into a trie with its (base-0)
@@ -40,6 +41,9 @@ readTrieFromFile file = Sys.withFile file Sys.ReadMode (go 0 T.empty)
             line <- S.hGetLine h
             go (i+1) (T.insert line i t) h
 
+-- TODO: maybe add some more CLI structure, for things like choosing
+-- to use random inputs instead of file, or parameters of randomness,
+-- etc.
 main :: IO ()
 main  = do
     args <- Sys.getArgs
@@ -48,6 +52,7 @@ main  = do
         prog <- Sys.getProgName
         putStrLn "ERROR: Missing file argument"
         putStrLn $ "Usage: " ++ prog ++ " FILE [criterionFlags]"
+        Sys.exitFailure
       file:rest ->
         Sys.withArgs rest $ C.defaultMain
           [ C.env (realTrie_to_benchTrie <$> readTrieFromFile file) $ \ t ->

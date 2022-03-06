@@ -178,7 +178,8 @@ foldr_default, foldr_compose, foldr_eta, foldr_cps_eta, foldr_cps, foldr_noClosu
     :: (a -> b -> b) -> b -> Trie a -> b
 
 -- | The default definition as of base-4.16.0.0
--- Actually a pretty solid baseline.
+-- Actually a pretty solid baseline, for small tries.  And for
+-- larger tries it's far and away the clear winner.
 foldr_default f z t =
     appEndo (foldMap_v027 (Endo #. f) t) z
 
@@ -311,6 +312,7 @@ foldl_default f z t =
 -- | Variant of the default that uses @('#.')@ in lieu of @('.')@.
 -- This one performs massively better than 'foldl_default'.
 -- TODO: send a patch to @base@ for this.
+-- Hrm, for larger tries it looks like the benefit is only minimal...
 foldl_default_Coerce f z t =
     appEndo (getDual (foldMap_v027 (Dual #. Endo #. flip f) t)) z
 
@@ -328,9 +330,11 @@ foldl_v027 f z0 = go z0 -- eta for better inlining
 -- | Since 'foldr_eta' allocates ~43% more than 'foldr_default',
 -- yet 'foldl_v027' allocates ~56% more: see if swapping the order
 -- of arguments in the recursion changes that.
--- Marginally slower than 'foldl_v027' (<1%).
--- Allocates ~8% less than 'foldl_v027'; ~19% less than 'foldl_default';
--- albeit still ~42% more than 'foldl_default_Coerce'.
+-- For small tries:
+-- * Marginally slower than 'foldl_v027' (<1%).
+-- * Allocates ~8% less than 'foldl_v027'; ~19% less than 'foldl_default';
+-- * albeit still ~42% more than 'foldl_default_Coerce'.
+-- For larger tries: far and away the best of the lot.
 foldl_v027_flop f z0 = \t -> go t z0 -- eta for better inlining
     where
     go Empty              z = z
@@ -357,7 +361,8 @@ foldl'_defaultEta f z0 xs =
     where f' x k z = k $! f z x
 
 -- | bytestring-trie-0.2.7 definition, also used for defaults.
--- Clear winner.
+-- Clear winner, for small tries. For large tries it's about halfway
+-- between the two defaults above, and the two flops below.
 foldl'_v027 f z0 = go z0 -- eta for better inlining
     where
     go !z Empty              = z
@@ -365,7 +370,8 @@ foldl'_v027 f z0 = go z0 -- eta for better inlining
     go  z (Arc _ (Just v) t) = go (f z v) t
     go  z (Branch _ _ l r)   = go (go z l) r
 
--- | Worse than 'foldl'_v027': ~10% slower, ~119% more allocation.
+-- | For small tries: worse than 'foldl'_v027': ~10% slower, ~119%
+-- more allocation.  But for large tries it's much faster.
 foldl'_v027_flop f z0 = \t -> go t z0 -- eta for better inlining
     where
     go Empty              !z = z
@@ -373,8 +379,13 @@ foldl'_v027_flop f z0 = \t -> go t z0 -- eta for better inlining
     go (Arc _ (Just v) t)  z = go t (f z v)
     go (Branch _ _ l r)    z = go r (go l z)
 
--- HACK: why does this perform better?!
--- ~4.4% faster than 'foldl'_v027'; but allocates ~32% more still.
+-- FIXME: why on earth does this perform better?! Why aren't bang
+-- patterns giving me the same thing?!
+--
+-- | For small tries: ~4.4% faster than 'foldl'_v027'; but allocates
+-- ~32% more still.  For large tries it's only marginally faster
+-- than 'foldl'_v027_flop' (which is to say massively faster than
+-- 'foldl'_v027')
 foldl'_v027_flop_bang f z0 = \t -> go t z0 -- eta for better inlining
     where
     go Empty              !z = z

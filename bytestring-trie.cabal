@@ -6,7 +6,7 @@ Cabal-Version:  2.2
 --    <https://github.com/haskell/cabal/issues/4899>
 
 ----------------------------------------------------------------
--- wren gayle romano <wren@cpan.org>                ~ 2022.03.04
+-- wren gayle romano <wren@cpan.org>                ~ 2022.03.05
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
@@ -123,7 +123,7 @@ Test-Suite test-all
     -- unlike Executable Main-Is, which is relative to this cabal
     -- file's directory instead.
     Main-Is:        Test/Main.hs
-    Other-Modules:  Shared.Sum
+    Other-Modules:  Shared.BaseCompat
                  ,  Test.Utils
                  ,  Test.Properties
                  -- Test.Validity
@@ -153,9 +153,11 @@ Test-Suite test-all
 Common bench-common
     Import:         library-build-depends
     if impl(ghc)
-      GHC-Options:  "-with-rtsopts=-A32m"
+      GHC-Options:  -with-rtsopts=-A32m
     if impl(ghc >= 8.10)
-      GHC-Options:  "-with-rtsopts=--nonmoving-gc"
+      GHC-Options:  -with-rtsopts=--nonmoving-gc
+    if impl(ghc)
+      GHC-Options:  -Wall -O2 -rtsopts
     Hs-Source-Dirs: dev
     Build-Depends:  bytestring-trie -any
                  -- TODO: try using @gauge@ instead of @criterion@,
@@ -174,8 +176,8 @@ Benchmark bench-Main
     Main-Is:        Bench/Main.hs
     if impl(ghc)
       GHC-Options:  -main-is Bench.Main.main
-    Other-Modules:  Bench.Foldable
-                 ,  Shared.Sum
+    Other-Modules:  Shared.BaseCompat
+                 ,  Bench.Foldable
 
 Benchmark bench-Foldable
     Import:         bench-common
@@ -183,9 +185,7 @@ Benchmark bench-Foldable
     Main-Is:        Bench/Foldable.hs
     if impl(ghc)
       GHC-Options:  -main-is Bench.Foldable.main
-    Other-Modules:  Shared.Sum
-    Build-Depends:  criterion-measurement
-    -- TODO: does this still need `criterion-measurement`?
+    Other-Modules:  Shared.BaseCompat
 
 Benchmark bench-MatchOne
     Import:         bench-common

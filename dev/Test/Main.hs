@@ -5,10 +5,10 @@
            #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2021.12.14
+--                                                  ~ 2022.03.05
 -- |
 -- Module      :  Test.Main
--- Copyright   :  2008--2021 wren romano
+-- Copyright   :  2008--2022 wren romano
 -- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
@@ -19,11 +19,8 @@
 module Main (main) where
 
 #if !(MIN_VERSION_base(4,13,0))
--- [aka GHC 8.8.1]: For some reason we get an \"unused import\"
--- warning for these versions, even though the Prelude doesn't
--- actually re-export 'Data.Semigroup.Sum'.
--- FIXME: getting that unused import issue again for GHC 8.0--8.6.
-import Shared.Sum
+-- [GHC 8.8.1]: This guard is just to avoid an \"unused import\" warning.
+import Shared.BaseCompat
 #endif
 import Test.Utils
 import Test.Properties (smallcheckTests, quickcheckTests)
@@ -39,16 +36,6 @@ import qualified Test.Tasty.Runners     as Tasty (installSignalHandlers, parseOp
 import qualified Test.Tasty             as Tasty
 import qualified Test.Tasty.SmallCheck  as SC
 import qualified Test.Tasty.QuickCheck  as QC
-
-#if MIN_VERSION_base(4,13,0)
--- [aka GHC 8.8.1]: Prelude re-exports 'Semigroup'.
-#elif MIN_VERSION_base(4,9,0)
--- [aka GHC 8.0.1]: "Data.Semigroup" added to base.
-import Data.Semigroup      (Semigroup((<>)))
-#elif MIN_VERSION_base(4,5,0)
--- [aka GHC 7.4.1]: @(<>)@ added to "Data.Monoid".
-import Data.Monoid         ((<>))
-#endif
 
 ----------------------------------------------------------------
 ----------------------------------------------------------------

@@ -20,6 +20,7 @@ module Unused.CriterionExts (generatePerBatch) where
 import           Control.DeepSeq                      (NFData(rnf))
 import qualified Test.QuickCheck                      as QC
 import qualified Criterion.Main                       as C
+-- N.B., this requires the @criterion-measurement@ library; not just @criterion@
 import qualified Criterion.Measurement.Types          as C (Benchmarkable(..))
 import qualified Criterion.Measurement.Types.Internal as C (nf')
 -- N.B., the @gauge@ clone of @criterion@ doesn't export @nf'@.

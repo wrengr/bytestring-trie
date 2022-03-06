@@ -1,5 +1,5 @@
 {-# OPTIONS_GHC -Wall -fwarn-tabs #-}
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE CPP, BangPatterns #-}
 
 ----------------------------------------------------------------
 --                                                  ~ 2022.03.04
@@ -16,14 +16,20 @@
 
 module Bench.Foldable (main, realTrie_to_benchTrie, bgroup_Foldable) where
 
-import           Shared.Sum
+import           Shared.BaseCompat
 import qualified Data.Trie           as T
 import qualified Data.Trie.Internal  as TI
 
 import qualified Data.ByteString     as S
--- TODO: "Data.Coerce" requires MIN_VERSION_base(4,7,0)
+#if MIN_VERSION_base(4,7,0)
+-- [GHC 7.8.1]: "Data.Coerce" added to base.
 import           Data.Coerce         (Coercible, coerce)
+#endif
+#if MIN_VERSION_base(4,9,0)
+-- [GHC 8.0.1]: "Data.Semigroup" added to base.
 import           Data.Semigroup      (Endo(..))
+#endif
+-- TODO: version limits for 'Dual'?
 import           Data.Monoid         (Dual(..))
 import           Data.Word           (Word8)
 import           Control.DeepSeq     (NFData(rnf))

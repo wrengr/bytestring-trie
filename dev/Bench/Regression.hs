@@ -2,7 +2,7 @@
 {-# LANGUAGE CPP, BangPatterns #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2022.03.06
+--                                                  ~ 2022.03.12
 -- |
 -- Module      :  Bench.Regression
 -- Copyright   :  2008--2022 wren romano
@@ -112,10 +112,8 @@ bgroup_Foldable =
 #if MIN_VERSION_base(4,13,0)
   , benchE "foldMap'"  $ C.nf (F.foldMap' Sum)
 #endif
--- FIXME: this is monstrously slower than everything else.  I take
--- it our old implementation is indeed faster than the default?  Or
--- I guess it could be the fundamental inefficiency of 'foldr' vs
--- the other three.
+-- (2021.03.12): according to this benchmark, our hand-rolled 'foldr'
+-- is indeed monstrously faster than the default implementation.
   , benchE "foldr"     $ C.nf (F.foldr  (+) 0)
 #if MIN_VERSION_base(4,6,0)
   , benchE "foldr'"    $ C.nf (F.foldr' (+) 0)

@@ -1,9 +1,10 @@
-0.2.7 (2022-03-12):
+0.2.7 (>= 2022-03-13):
   * Added:
     - Instances: Eq1, Ord, Ord1, IsList, Show1, Read, Read1, NFData.
     - Methods:   Semigroup(stimes), Foldable(fold,foldMap')
     - Functions: Data.Trie.Internal.{filter,filterA,wither}
   * Performance Improvements:
+    - Significantly sped up `size`
     - Misc other changes to the Foldable instance.
     - Reordered data constructors, for better branch-prediction.
     - Fixed quadratic slowdown for priority-queue functions.

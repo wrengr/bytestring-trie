@@ -78,15 +78,16 @@ benchE name b = \e -> C.bench name (b e)
 
 ----------------------------------------------------------------
 #if MIN_VERSION_base(4,7,0)
+{-
 -- | From "Data.Functor.Utils", but isn't exported.  Is used heavily
 -- by the default implementations, since they use so many newtype
 -- wrappers.
 (#.) :: Coercible b c => (b -> c) -> (a -> b) -> (a -> c)
 (#.) _ = coerce
 {-# INLINE (#.) #-}
+-}
 
 -- My own variant, ignoring the second argument instead.
--- TODO: would be good to rephrase this into @(#.)@ for eta\/inlining reasons.
 (.#) :: Coercible a b => (b -> c) -> (a -> b) -> (a -> c)
 (.#) f _ = coerce f
 {-# INLINE (.#) #-}
@@ -122,13 +123,15 @@ bgroup_Foldable =
 #if MIN_VERSION_base(4,6,0)
   , benchE "foldl'"    $ C.nf (F.foldl' (+) 0)
 #endif
-{-
-  #if MIN_VERSION_base(4,8,0)
+#if MIN_VERSION_base(4,8,0)
   , benchE "length" $ C.nf F.length
-  , benchE "length" $ C.nf F.maximum -- Must first ensure non-empty!
-  , benchE "length" $ C.nf F.minimum -- Must first ensure non-empty!
-  #endif
--}
+  {-
+  , benchE "maximum" $ C.nf F.maximum -- Must first ensure non-empty!
+  , benchE "minimum" $ C.nf F.minimum -- Must first ensure non-empty!
+  -}
+#else
+  , benchE "size" $ C.nf T.size
+#endif
   ]
 
 ----------------------------------------------------------------

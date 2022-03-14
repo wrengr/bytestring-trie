@@ -17,7 +17,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2022.02.27
+--                                              ~ 2022.03.13
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  2008--2022 wren romano
@@ -1281,20 +1281,16 @@ singleton k v = Arc k (Just v) Empty
 -- | \(\mathcal{O}(n)\). Get count of elements in trie.
 size  :: Trie a -> Int
 {-# INLINE size #-}
-size t = size' t id 0
+size = size' 0
 
--- | \(\mathcal{O}(n)\). CPS accumulator helper for calculating 'size'.
-size' :: Trie a -> (Int -> Int) -> Int -> Int
-size' Empty              f !n = f n
-size' (Branch _ _ l r)   f  n = size' l (size' r f) n
-size' (Arc _ Nothing t)  f  n = size' t f n
-size' (Arc _ (Just _) t) f  n = size' t f (n + 1)
-    -- TODO: verify we've retained the correct strictness for this last case
-    -- TODO: benchmark vs getting rid of the CPS (just leaving the
-    -- accumulator); since everywhere else the CPSing introduces a
-    -- performance penalty.
-    -- TODO: also benchmark vs using @F.foldl' (\n _ -> n+1) 0@;
-    -- to see how much specializing on the function actually helps.
+-- This is just @F.foldl' (\n _ -> n+1) 0@ manually inlined\/specialized.
+-- Thus, see our implementation of 'foldl'' to see why we use this
+-- particular phrasing out of the very many alternatives.
+size' :: Int -> Trie a -> Int
+size' !n Empty              = n
+size'  n (Arc _ Nothing  t) = size' n t
+size'  n (Arc _ (Just _) t) = size' (n + 1) t
+size'  n (Branch _ _ l r)   = size' (size' n l) r
 
 
 {-----------------------------------------------------------

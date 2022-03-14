@@ -154,8 +154,12 @@ Common bench-common
     Import:         library-build-depends
     if impl(ghc)
       GHC-Options:  -with-rtsopts=-A32m
-    if impl(ghc >= 8.10)
-      GHC-Options:  -with-rtsopts=--nonmoving-gc
+    -- TODO: this was recommended somewhere for benchmarks, but is
+    -- --nonmoving-gc actually good for our use case? (It's
+    -- concurrent-mark&sweep for the old generations; instead of
+    -- the default stop-the-world generational copying collector)
+    --if impl(ghc >= 8.10)
+    --  GHC-Options:  -with-rtsopts=--nonmoving-gc
     if impl(ghc)
       GHC-Options:  -Wall -O2 -rtsopts
     Hs-Source-Dirs: dev

@@ -4,8 +4,14 @@
            , FlexibleContexts
            #-}
 
+-- HACK: Enable this to locally disable -Wunused-top-binds for some
+-- HOF properties that I haven't figured out how to decently test
+-- yet.  This CPP hack allows to quickly "uncomment" all such code,
+-- to make sure it still typechecks et al.
+#define HideUnusedTopBonds
+
 ----------------------------------------------------------------
---                                                  ~ 2022.03.05
+--                                                  ~ 2022.03.13
 -- |
 -- Module      :  Test.Properties
 -- Copyright   :  2008--2022 wren romano
@@ -31,7 +37,10 @@ import qualified Test.Tasty.SmallCheck  as SC
 import qualified Test.Tasty.QuickCheck  as QC
 
 import Control.Applicative  (liftA2)
-import Control.Monad        (join, (<=<), guard)
+#ifndef HideUnusedTopBonds
+import Control.Monad        (join, (<=<))
+#endif
+import Control.Monad        (guard)
 import Data.List            (nubBy, sortBy)
 import Data.Maybe           (fromJust, isJust)
 import Data.Ord             (comparing)
@@ -843,9 +852,11 @@ prop_foldMap_vs_foldMap' = (F.foldMap Sum .==. F.foldMap' Sum) . unWT
 ----------------------------------------------------------------
 -- ~~~~~ 'Traversable' laws
 
+#ifndef HideUnusedTopBonds
 -- | Horizontal composition of Kleisli arrows.
 under :: Functor f => (b -> g c) -> (a -> f b) -> a -> Compose f g c
 under g f = Compose . fmap g . f
+#endif
 
 {-
 -- TODO: We can't really autogenerate these, but maybe we could
@@ -869,11 +880,13 @@ prop_TraverseIdentity :: Eq a => WTrie a -> Bool
 prop_TraverseIdentity = (traverse Identity .==. Identity) . unWT
 
 -- TODO: how could we actually test this? Any good @f,g@ to try in particular?
+#ifndef HideUnusedTopBonds
 prop_TraverseComposition
     :: (Applicative f, Applicative g, Eq1 g, Eq1 f, Eq c)
     => (b -> g c) -> (a -> f b) -> WTrie a -> Bool
 prop_TraverseComposition g f =
     (traverse (g `under` f) .==. (traverse g `under` traverse f)) . unWT
+#endif
 
 -- NOTE: The next two are redundant, since we don't provide a bespoke
 -- implementation of 'sequenceA'.
@@ -891,11 +904,13 @@ prop_SequenceaIdentity =
     ((sequenceA . fmap Identity) .==. Identity) . unWT
 
 -- TODO: how could we actually test this? Any good @f,g@ to try in particular?
+#ifndef HideUnusedTopBonds
 prop_SequenceaComposition
     :: (Applicative f, Applicative g, Eq1 g, Eq1 f, Eq a)
     => WTrie (g (f a)) -> Bool
 prop_SequenceaComposition =
     ((sequenceA . fmap Compose) .==. (sequenceA `under` sequenceA)) . unWT
+#endif
 
 -- TODO: reiterate the laws for 'traverseWithKey'...
 
@@ -922,9 +937,11 @@ prop_FiltermapConservation :: Eq b => (a -> b) -> WTrie a -> Bool
 prop_FiltermapConservation f =
     (T.filterMap (Just . f) .==. fmap f) . unWT
 
+#ifndef HideUnusedTopBonds
 prop_FiltermapVertComposition :: Eq c => F b c -> F a b -> WTrie a -> Bool
 prop_FiltermapVertComposition f g =
     ((T.filterMap f . T.filterMap g) .==. T.filterMap (f <=< g)) . unWT
+#endif
 
 prop_FilterDefinition :: Eq a => P a -> WTrie a -> Bool
 prop_FilterDefinition f =
@@ -944,18 +961,22 @@ remTriple x
     | otherwise = Just r
     where r = rem x 3
 
+#ifndef HideUnusedTopBonds
 quotTriple :: Integral a => F a a
 quotTriple x
     | r == 0    = Just q
     | otherwise = Nothing
     where (q,r) = quotRem x 3
+#endif
 
 ----------------------------------------------------------------
 -- ~~~~~ 'Witherable' laws
 -- TODO: how could we actually test these effectively?
 
+#ifndef HideUnusedTopBonds
 -- | Shorthand alias for a withering function.
 type FA a f b = a -> f (Maybe b)
+#endif
 
 {-
 prop_WitherNaturality
@@ -979,6 +1000,7 @@ prop_WitherConservation
 prop_WitherConservation f =
     ((Compose . TI.wither (fmap Just . f)) .==. (Compose . traverse f)) . unWT
 
+#ifndef HideUnusedTopBonds
 prop_WitherHorizComposition
     :: (Applicative f, Applicative g, Eq1 g, Eq1 f, Eq c)
     => FA b g c -> FA a f b -> WTrie a -> Bool
@@ -988,6 +1010,7 @@ prop_WitherHorizComposition f g =
 -- | Variant of wither for Maybe instead of Trie.
 wither_Maybe :: Applicative f => FA a f b -> Maybe a -> f (Maybe b)
 wither_Maybe f = fmap join . traverse f
+#endif
 
 -- | Shorthand alias for an effectful predicate function.
 type PA a f = a -> f Bool
@@ -1013,6 +1036,7 @@ prop_FilteraPurity f =
     (TI.filterA (pure . f) .==. (pure . TI.filter f)) . unWT
 -}
 
+#ifndef HideUnusedTopBonds
 prop_FilteraHorizComposition
     :: (Applicative f, Applicative g, Eq1 g, Eq1 f, Eq a)
     => PA a f -> PA a g -> WTrie a -> Bool
@@ -1038,6 +1062,7 @@ underF2 :: (Functor f, Functor g)
         -> (a -> g c)
         -> a -> Compose f g d
 underF2 h f g a = Compose (f a <&> ((g a <&>) . h))
+#endif
 
 
 ----------------------------------------------------------------

@@ -2,7 +2,7 @@
 {-# LANGUAGE CPP #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2022.03.05
+--                                                  ~ 2022.03.12
 -- |
 -- Module      :  Shared.BaseCompat
 -- Copyright   :  2008--2022 wren romano
@@ -12,6 +12,9 @@
 -- Portability :  portable (CPP)
 --
 -- Compatibility shim for various versions of @base@.
+--
+-- TODO: depending how much more we need in here, consider instead
+-- just using the @base-compat-batteries@ package instead.
 ----------------------------------------------------------------
 module Shared.BaseCompat
     (

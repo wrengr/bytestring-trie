@@ -18,8 +18,8 @@
 ----------------------------------------------------------------
 module Main (main) where
 
-#if !(MIN_VERSION_base(4,13,0))
--- [GHC 8.8.1]: This guard is just to avoid an \"unused import\" warning.
+#if !(MIN_VERSION_base(4,11,0))
+-- [GHC 8.4.1]: This guard is just to avoid an \"unused import\" warning.
 import Shared.BaseCompat
 #endif
 import Test.Utils

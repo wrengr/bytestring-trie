@@ -1,4 +1,4 @@
-0.2.7 (>= 2022-03-13):
+0.2.7 (2022-03-14):
   * Added:
     - Instances: Eq1, Ord, Ord1, IsList, Show1, Read, Read1, NFData.
     - Methods:   Semigroup(stimes), Foldable(fold,foldMap')

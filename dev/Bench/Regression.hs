@@ -94,8 +94,6 @@ benchE name b = \e -> C.bench name (b e)
 #endif
 
 ----------------------------------------------------------------
--- Hopefully the @fmap Sum@ will be rewritten into 'coerce'.  Though
--- we may want to do that explicitly...
 bgroup_Foldable :: BenchmarkE (T.Trie Int)
 bgroup_Foldable =
   bgroupE "Foldable"

@@ -17,7 +17,7 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2022.03.13
+--                                              ~ 2022.04.03
 -- |
 -- Module      :  Data.Trie.Internal
 -- Copyright   :  2008--2022 wren romano
@@ -150,6 +150,10 @@ import GHC.Exts (build)
 #endif
 #if __GLASGOW_HASKELL__ >= 708
 import qualified GHC.Exts (IsList(..))
+#endif
+#if MIN_VERSION_base(4,7,0)
+-- [GHC 7.8.1]: "Data.Coerce" added to base.
+import Data.Coerce (coerce)
 #endif
 
 ------------------------------------------------------------
@@ -315,6 +319,14 @@ data Trie a
     -- Prefix/Mask should be deterministic regardless of insertion order
     -- TODO: prove this is so.
 
+-- [Note:Closure] aka: Local 'go' functions and capturing
+-- ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+-- Copied from 'IntMap': Care must be taken when using 'go' function
+-- which captures an argument.  Sometimes (for example when the
+-- argument is passed to a data constructor, as in insert), GHC
+-- heap-allocates more than necessary. Therefore C-- code must be
+-- checked for increased allocation when creating and modifying
+-- such functions.
 
 {-----------------------------------------------------------
 -- Smart constructors
@@ -723,7 +735,7 @@ instance NFData a => NFData (Trie a) where
 
 {-
 -- TODO: do we want/need these?
-#if __GLASGOW_HASKELL__
+#ifdef __GLASGOW_HASKELL__
 instance Data.Data.Data (Trie a) where ...
 -- See 'IntMap' for how to do this without sacrificing abstraction.
 #endif
@@ -738,23 +750,37 @@ INSTANCE_TYPEABLE(Trie)
 -- Instances: Functor
 -----------------------------------------------------------}
 
--- TODO: IntMap floats the definition of 'fmap' out of the instance
--- so that it can provide rewrite rules (for @map f . map g@ and
--- for @map coerce@).  Should we do the same?
 instance Functor Trie where
-    fmap f = go
-        where
-        go Empty              = Empty
-        go (Arc k Nothing  t) = Arc k Nothing      (go t)
-        go (Arc k (Just v) t) = Arc k (Just (f v)) (go t)
-        go (Branch p m l r)   = Branch p m (go l) (go r)
-#if __GLASGOW_HASKELL__
+    {-# INLINE fmap #-}
+    fmap = fmapTrie
+#ifdef __GLASGOW_HASKELL__
     -- Non-default definition since 0.2.7
-    -- Avoiding closure over @v@ because that's what IntMap does.
+    -- Leaving this definition inline and avoiding closure over @v@
+    -- because that's what 'IntMap' does.
     _ <$ Empty              = Empty
     v <$ (Arc k Nothing  t) = Arc k Nothing  (v <$ t)
     v <$ (Arc k (Just _) t) = Arc k (Just v) (v <$ t)
     v <$ (Branch p m l r)   = Branch p m (v <$ l) (v <$ r)
+#endif
+
+-- | Implementation of 'fmap', floated out so that we can give it rewrite rules.
+fmapTrie :: (a -> b) -> Trie a -> Trie b
+fmapTrie f = go
+    where
+    go Empty              = Empty
+    go (Arc k Nothing  t) = Arc k Nothing      (go t)
+    go (Arc k (Just v) t) = Arc k (Just (f v)) (go t)
+    go (Branch p m l r)   = Branch p m (go l) (go r)
+#ifdef __GLASGOW_HASKELL__
+{-# NOINLINE [1] fmapTrie #-}
+{-# RULES
+"fmapTrie/fmapTrie" forall f g xs .
+    fmapTrie f (fmapTrie g xs) = fmapTrie (f . g) xs
+  #-}
+-- 'IntMap' doesn't bother giving a rule for 'id'; so I guess we won't either.
+#if MIN_VERSION_base(4,7,0)
+{-# RULES "fmapTrie/coerce" fmapTrie coerce = coerce #-}
+#endif
 #endif
 
 -- TODO: strict version of fmap. Is there a canonical name\/class for this yet?
@@ -764,6 +790,8 @@ instance Functor Trie where
 -----------------------------------------------------------}
 
 instance Traversable Trie where
+    -- TODO: 'IntMap' marks this INLINE and floats out an INLINE
+    -- top-level definition; no rules though, afaict.
     traverse f = go
         where
         go Empty              = pure   Empty
@@ -905,6 +933,7 @@ instance (Monoid a) => Monoid (Trie a) where
 #else
     mappend = mergeBy $ \x y -> Just (x `mappend` y)
 #endif
+    -- TODO: Can we improve `mconcat` over the default?
 
 
 {-----------------------------------------------------------
@@ -1422,7 +1451,7 @@ instance Foldable Trie where
     {-
     -- TODO: need to move these definitions here...
     -- TODO: may want to give a specialized implementation of 'member' then
-    {-# INLINE elem #-}
+    {-# INLINE elem #-} -- TODO: 'IntMap' uses INLINABLE with a local definition; rather than INLINE with the top-level definition... Also, that TLD remarks to see [Note:Closure]
     elem = member
     -}
     -- TODO: why does IntMap define these two specially, rather than using foldl' or foldl1' ?
@@ -1691,6 +1720,10 @@ elems = F.foldr (:) []
 {-----------------------------------------------------------
 -- Query functions (just recurse)
 -----------------------------------------------------------}
+
+-- TODO: All the lookup-like functions for 'IntMap' remark to see
+-- [Note:Closure]; so we should double check our 'lookupBy_' adheres
+-- to that performance guideline.
 
 -- | Generic function to find a value (if it exists) and the subtrie
 -- rooted at the prefix. The first function argument is called if and
@@ -2262,6 +2295,11 @@ intersectMaybe _ _         _         = Nothing
 -- TODO: should verify that all of these are now free of the quadratic
 -- slowdown from reconstructing keys. They should be, but just to
 -- verify that some new quadratic hasn't accidentally crept in...
+
+-- TODO: Maybe we should follow 'IntMap' and separate out NOINLINE
+-- versions of these functions which construct a specialized View
+-- type, vs INLINE wrappers that convert the View into the
+-- Maybe/pair/etc.
 
 -- | Return the lexicographically smallest 'ByteString' and the
 -- value it's mapped to; or 'Nothing' for the empty trie.  When one

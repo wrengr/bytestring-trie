@@ -97,15 +97,14 @@ benchE name b = \e -> C.bench name (b e)
 bgroup_Foldable :: BenchmarkE (T.Trie Int)
 bgroup_Foldable =
   bgroupE "Foldable"
-  [ benchE "fold" $ C.nf
--- FIXME: the version using @(. fmap Sum)@ is monstrously slower
--- than the version using 'coerce'.  On the one hand that makes
--- sense, but on the other hand it means we really should provide
--- rewrite rules for our Functor instance.
+  -- Before floating 'fmapTrie' out so we could define rewrite rules
+  -- for it, the fold below using @(.)@ was monstrously slower than
+  -- the one using @(.#)@; however, since floating 'fmapTrie' out,
+  -- now the version using @(.)@ is /faster!/
+  -- TODO: figure out why they're not the same...
+  [ benchE "fold(.)"   $ C.nf (F.fold . fmap Sum)
 #if MIN_VERSION_base(4,7,0)
-      (F.fold .# fmap Sum)
-#else
-      (F.fold . fmap Sum)
+  , benchE "fold(.#)"  $ C.nf (F.fold .# fmap Sum)
 #endif
   , benchE "foldMap"   $ C.nf (F.foldMap  Sum)
 #if MIN_VERSION_base(4,13,0)

@@ -1334,7 +1334,11 @@ size'  n (Branch _ _ l r)   = size' (size' n l) r
 -- before being inlined.
 
 instance Foldable Trie where
-    {-# INLINABLE fold #-}
+    -- TODO: 'IntMap' marks 'fold' as INLINABLE; however, that seems
+    -- to introduce a bit of slowdown with respect to 'foldMap'
+    -- (which goes away when marked INLINE instead); so we should
+    -- do more to discern which inlinement is preferable.
+    {-# INLINE fold #-}
     fold = go
         where
         go Empty              = mempty

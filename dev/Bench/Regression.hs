@@ -2,7 +2,7 @@
 {-# LANGUAGE CPP, BangPatterns #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2022.03.12
+--                                                  ~ 2022.04.03
 -- |
 -- Module      :  Bench.Regression
 -- Copyright   :  2008--2022 wren romano
@@ -97,12 +97,22 @@ benchE name b = \e -> C.bench name (b e)
 bgroup_Foldable :: BenchmarkE (T.Trie Int)
 bgroup_Foldable =
   bgroupE "Foldable"
-  -- Before floating 'fmapTrie' out so we could define rewrite rules
-  -- for it, the fold below using @(.)@ was monstrously slower than
-  -- the one using @(.#)@; however, since floating 'fmapTrie' out,
-  -- now the version using @(.)@ is /faster!/
-  -- TODO: figure out why they're not the same...
-  [ benchE "fold(.)"   $ C.nf (F.fold . fmap Sum)
+  -- BUG: For these two 'fold' tests, whichever one we put first
+  -- runs much more slowly than the one we put second!  Thus, there's
+  -- some sort of bug in how 'C.env' is forcing things.  And adding
+  -- calls to 'Control.Exception.evaluate' and 'Control.DeepSeq.rnf'
+  -- doesn't help any.  So for now we just put a nonce test first
+  -- to do whatever forcing is necessary.
+  [ benchE "IGNORE_THIS" $ C.nf (F.fold . fmap Sum)
+  -- Before adding rewrite rules for the 'Functor' type class, the
+  -- test using @(.)@ used to run monstrously slower than the version
+  -- using @(.#)@; indicating that those rewrites didn't automatically
+  -- come for free.  Since defining our own rewrite rules, the two
+  -- versions seem about the same and it varies which one comes out
+  -- faster.  Marking 'fold' as INLINE (instead of INLINABLE) causes
+  -- the @(.)@ variant to be closer to 'foldMap' than to the
+  -- 'fold' @(.#)@ variant.
+  , benchE "fold(.)"   $ C.nf (F.fold . fmap Sum)
 #if MIN_VERSION_base(4,7,0)
   , benchE "fold(.#)"  $ C.nf (F.fold .# fmap Sum)
 #endif

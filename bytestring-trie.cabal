@@ -58,8 +58,8 @@ Tested-With:
     GHC ==8.10.3,
     GHC ==9.0.1,
     GHC ==9.2.4,
-    GHC ==9.4.1
-    -- TODO: add 9.6.1 to the github CI.
+    GHC ==9.4.4,
+    GHC ==9.6.1
 
 -- These are the versions of our dependencies which ship with the
 -- above.  Alas, we can't merge this with the above because cabal

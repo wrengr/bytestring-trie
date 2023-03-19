@@ -17,10 +17,10 @@
 {-# LANGUAGE Trustworthy #-}
 #endif
 ------------------------------------------------------------
---                                              ~ 2022.04.03
+--                                              ~ 2023.03.19
 -- |
 -- Module      :  Data.Trie.Internal
--- Copyright   :  2008--2022 wren romano
+-- Copyright   :  2008--2023 wren romano
 -- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  experimental
@@ -129,7 +129,10 @@ import qualified Data.Foldable as F
 -- the Prelude re-exports all the other methods of 'Applicative'
 -- since base-4.8, it does not re-export 'liftA2' (at least not up
 -- through base-4.16.0.0 / GHC 9.2.1).
+#if !(MIN_VERSION_base(4,18,0))
+-- [base-4.18 / GHC 9.6.1]: Prelude now re-exports 'liftA2'.
 import Control.Applicative (liftA2)
+#endif
 #if MIN_VERSION_base(4,8,0)
 -- [aka GHC 7.10.1]: Prelude re-exports 'Applicative', @(<$>)@,
 -- 'Foldable', and 'Traversable'. But not 'liftA2'.

@@ -7,7 +7,7 @@
 --                                                  ~ 2021.12.14
 -- |
 -- Module      :  Data.Trie.Convenience
--- Copyright   :  2008--2021 wren romano
+-- Copyright   :  2008--2023 wren romano
 -- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional

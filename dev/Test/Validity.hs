@@ -4,7 +4,7 @@
 --                                                  ~ 2021.12.14
 -- |
 -- Module      :  Test.Validity
--- Copyright   :  2021 wren romano, 2004--2021 libraries@haskell.org
+-- Copyright   :  2021--2023 wren romano, 2004--2021 libraries@haskell.org
 -- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional

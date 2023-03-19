@@ -5,7 +5,7 @@
 --                                                  ~ 2022.04.03
 -- |
 -- Module      :  Bench.Regression
--- Copyright   :  2008--2022 wren romano
+-- Copyright   :  2008--2023 wren romano
 -- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional

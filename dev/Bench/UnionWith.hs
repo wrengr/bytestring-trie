@@ -2,10 +2,10 @@
 {-# LANGUAGE CPP, BangPatterns #-}
 
 ----------------------------------------------------------------
---                                                  ~ 2022.02.21
+--                                                  ~ 2023.03.19
 -- |
 -- Module      :  Bench.UnionWith
--- Copyright   :  2008--2022 wren romano
+-- Copyright   :  2008--2023 wren romano
 -- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
@@ -20,7 +20,10 @@ import qualified Data.Trie           as T
 import qualified Data.Trie.Internal  as TI
 import qualified Data.Trie.Convenience as TC
 import qualified Data.ByteString     as S
+#if !(MIN_VERSION_base(4,18,0))
+-- [base-4.18 / GHC 9.6.1]: Prelude now re-exports 'liftA2'.
 import           Control.Applicative (liftA2)
+#endif
 import           Control.DeepSeq     (NFData)
 import qualified Test.QuickCheck     as QC
 import qualified Criterion.Main      as C

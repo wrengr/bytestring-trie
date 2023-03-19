@@ -11,10 +11,10 @@
 #define HideUnusedTopBonds
 
 ----------------------------------------------------------------
---                                                  ~ 2022.03.13
+--                                                  ~ 2023.03.19
 -- |
 -- Module      :  Test.Properties
--- Copyright   :  2008--2022 wren romano
+-- Copyright   :  2008--2023 wren romano
 -- License     :  BSD-3-Clause
 -- Maintainer  :  wren@cpan.org
 -- Stability   :  provisional
@@ -36,7 +36,10 @@ import qualified Test.Tasty             as Tasty
 import qualified Test.Tasty.SmallCheck  as SC
 import qualified Test.Tasty.QuickCheck  as QC
 
+#if !(MIN_VERSION_base(4,18,0))
+-- [base-4.18 / GHC 9.6.1]: Prelude now re-exports 'liftA2'.
 import Control.Applicative  (liftA2)
+#endif
 #ifndef HideUnusedTopBonds
 import Control.Monad        (join, (<=<))
 #endif

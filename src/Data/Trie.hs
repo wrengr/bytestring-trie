@@ -31,7 +31,7 @@
 -- detailed enough for most users. For an extended interface with
 -- many additional functions, see "Data.Trie.Convenience". For
 -- functions that give more detailed (potentially abstraction-breaking)
--- access to the data strucuture, or for experimental functions
+-- access to the data structure, or for experimental functions
 -- which aren't quite ready for the public API, see "Data.Trie.Internal".
 ----------------------------------------------------------------
 
@@ -111,7 +111,7 @@ getMatch q (n,x) =
     (p,q') -> (p, x, q')
 
 -- | Given a query, find the longest prefix with an associated value
--- in the trie, and return that prefix, it's value, and the remainder
+-- in the trie, and return that prefix, its value, and the remainder
 -- of the query.
 --
 -- @since 0.2.4
@@ -120,7 +120,7 @@ match :: Trie a -> ByteString -> Maybe (ByteString, a, ByteString)
 match t q = getMatch q <$> match_ t q
 
 -- | Given a query, find the shortest prefix with an associated value
--- in the trie, and return that prefix, it's value, and the remainder
+-- in the trie, and return that prefix, its value, and the remainder
 -- of the query.
 --
 -- @since 0.2.6

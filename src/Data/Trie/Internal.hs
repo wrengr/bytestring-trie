@@ -69,6 +69,7 @@ module Data.Trie.Internal
     , updateMinViewBy, updateMaxViewBy
 
     -- * Mapping, filtering, folding, and traversing
+    , imapTrie
     -- ** Filterable
     , filter
     , filterMap
@@ -970,6 +971,20 @@ instance MonadPlus Trie where
 {-----------------------------------------------------------
 -- Extra mapping and filtering functions
 -----------------------------------------------------------}
+
+-- | Map with access to the index but without possibility of removal,
+-- which is slightly more efficient. This corresponds to `imap` in the
+-- `FunctorWithIndex` class from `indexed-traversals`.
+imapTrie :: (ByteString -> a -> b) -> Trie a -> Trie b
+imapTrie f = let
+  go _ Empty = Empty
+  go q (Arc k Nothing t) = Arc k Nothing $ go (q +>! k) t
+  go q (Arc k (Just v) t) = let
+    q' = toStrict (q +>? k)
+    in Arc k (Just $ f q' v) (go (fromStrict q') t)
+  go q (Branch p m l r) = Branch p m (go q l) (go q r)
+  in go Nil
+
 
 {-----------------------------------------------------------
 -- Pseudo-instances: Filterable, Witherable

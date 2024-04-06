@@ -99,8 +99,8 @@ Common library-build-depends
     -- we verified (for GHC 7.4.1).  We no longer maintain CI tests
     -- that far back, but they still seem to work according to Hackage:
     -- <https://matrix.hackage.haskell.org/#/package/bytestring-lexing>
-    Build-Depends: base       >= 4.5   && < 4.19
-                 , bytestring >= 0.9.2 && < 0.12
+    Build-Depends: base       >= 4.5   && < 4.20
+                 , bytestring >= 0.9.2 && < 0.13
                  , binary     >= 0.5.1 && < 0.11
                  , deepseq    >= 1.2   && < 1.5
 

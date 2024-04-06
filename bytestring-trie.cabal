@@ -6,11 +6,11 @@ Cabal-Version:  2.2
 --    <https://github.com/haskell/cabal/issues/4899>
 
 ----------------------------------------------------------------
--- wren gayle romano <wren@cpan.org>                ~ 2023-03-19
+-- wren gayle romano <wren@cpan.org>                ~ 2024-04-05
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
-Version:        0.2.7.2
+Version:        0.2.7.3
 Build-Type:     Simple
 Stability:      provisional
 Homepage:       https://wrengr.org/software/hackage.html
@@ -58,8 +58,9 @@ Tested-With:
     GHC ==8.10.3,
     GHC ==9.0.1,
     GHC ==9.2.4,
-    GHC ==9.4.4,
-    GHC ==9.6.1
+    GHC ==9.4.8,
+    GHC ==9.6.4,
+    GHC ==9.8.1
 
 -- These are the versions of our dependencies which ship with the
 -- above.  Alas, we can't merge this with the above because cabal

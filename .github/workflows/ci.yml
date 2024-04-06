@@ -31,7 +31,7 @@ jobs:
         # Which is good, because we require Cabal>=2.2 which only
         # ships with GHC>=8.4
         os: [ubuntu-latest]
-        ghc: ['8.0.2', '8.2.2', '8.4.4', '8.6.5', '8.8.4', '8.10.3', '9.0.1', '9.2.4', '9.4.4', '9.6.1']
+        ghc: ['8.0.2', '8.2.2', '8.4.4', '8.6.5', '8.8.4', '8.10.3', '9.0.1', '9.2.4', '9.4.8', '9.6.4', '9.8.1']
         include:
         # This package has no build details specific to Win/Mac,
         # so building for the latest GHC should be sufficient
@@ -42,7 +42,7 @@ jobs:
           ghc: 'latest'
     steps:
     - uses: actions/checkout@v4
-    - uses: haskell/actions/setup@v2.4.7
+    - uses: haskell-actions/setup@v2.6.1
       id: setup-haskell-cabal
       with:
         ghc-version: ${{ matrix.ghc }}

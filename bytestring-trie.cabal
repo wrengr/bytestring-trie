@@ -102,7 +102,7 @@ Common library-build-depends
     Build-Depends: base       >= 4.5   && < 4.20
                  , bytestring >= 0.9.2 && < 0.13
                  , binary     >= 0.5.1 && < 0.11
-                 , deepseq    >= 1.2   && < 1.5
+                 , deepseq    >= 1.2   && < 1.6
 
 -- TODO: in lieu of using CPP to expose internals to the tests/benchmarks,
 -- we should consider using:

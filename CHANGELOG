@@ -1,3 +1,7 @@
+0.2.7.4 (2024-08-29):
+  * Technical Debt:
+    - Relaxed upper-bounds for GHC 9.10
+    - Tightened lower-bounds to match only what CI still verifies.
 0.2.7.3 (2024-04-05):
   * Technical Debt:
     - Updated for GHC 9.8

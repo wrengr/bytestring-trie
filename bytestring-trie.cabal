@@ -6,18 +6,18 @@ Cabal-Version:  2.2
 --    <https://github.com/haskell/cabal/issues/4899>
 
 ----------------------------------------------------------------
--- wren gayle romano <wren@cpan.org>                ~ 2024-04-05
+-- wren gayle romano <wren@cpan.org>                ~ 2024-08-29
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
-Version:        0.2.7.3
+Version:        0.2.7.4
 Build-Type:     Simple
 Stability:      provisional
 Homepage:       https://wrengr.org/software/hackage.html
 Bug-Reports:    https://github.com/wrengr/bytestring-trie/issues
 Author:         wren gayle romano
 Maintainer:     wren@cpan.org
-Copyright:      2008–2023 wren gayle romano
+Copyright:      2008–2024 wren gayle romano
 -- Cabal-2.2 requires us to say "BSD-3-Clause" not "BSD3"
 License:        BSD-3-Clause
 License-File:   LICENSE
@@ -45,10 +45,12 @@ Description:    An efficient finite map from bytestrings to values.
 Extra-source-files:
     AUTHORS, CHANGELOG, README.md
 
--- This package should still work as far back as GHC 7.4.1:
---    <https://matrix.hackage.haskell.org/#/package/bytestring-lexing>
--- However, we only list here what we still verify via CI:
---    <https://github.com/wrengr/bytestring-trie/actions?query=workflow%3Aci>
+-- This package ought to work as far back as GHC 7.4.1; however,
+-- I've tightened the lower bounds on the Build-Depends to match
+-- only what we still verify via CI:
+-- <https://gitlab.haskell.org/ghc/ghc/-/wikis/commentary/libraries/version-history>
+-- <https://matrix.hackage.haskell.org/#/package/bytestring-lexing>
+-- <https://github.com/wrengr/bytestring-trie/actions?query=workflow%3Aci>
 Tested-With:
     GHC ==8.0.2,
     GHC ==8.2.2,
@@ -59,24 +61,9 @@ Tested-With:
     GHC ==9.0.1,
     GHC ==9.2.4,
     GHC ==9.4.8,
-    GHC ==9.6.4,
-    GHC ==9.8.1
-
--- These are the versions of our dependencies which ship with the
--- above.  Alas, we can't merge this with the above because cabal
--- files only have full-line comments, not end-of-line comments.
--- <https://gitlab.haskell.org/ghc/ghc/-/wikis/commentary/libraries/version-history>
---     GHC  Cabal   base   bytestring binary    deepseq
---     8.0  1.24    4.9    0.10.8.1   0.8.3.0   1.4.2.0
---     8.2  2.0     4.10   0.10.8.2   0.8.5.1   1.4.3.0
---     8.4  2.2     4.11   ==         ==        ==
---     8.6  2.4     4.12   ==         0.8.6.0   1.4.4.0
---     8.8  3.0     4.13   0.10.9+    0.8.7.0   ==
---     8.10 3.2     4.14   0.10.10+   0.8.8.0   ==
---     9.0  3.4     4.15   0.10.12    ==        1.4.5.0
---     9.2  3.6     4.16   0.11.1     0.8.9.0   1.4.6.0
---     9.4  3.8.1   4.17   0.11.3.1   0.8.9.1   1.4.8.0
---     9.6  3.10.1  4.18   0.11.4     ==        1.4.8.1
+    GHC ==9.6.5,
+    GHC ==9.8.2,
+    GHC ==9.10.1
 
 Source-Repository head
     Type:     git
@@ -94,15 +81,10 @@ Source-Repository head
 -- N.B., the "import:" field must be the first thing in a stanza.
 Common library-build-depends
     Default-Language: Haskell2010
-    -- The lower bounds are (probably still) more restrictive than
-    -- necessary, but once upon a time they were the lowest bounds
-    -- we verified (for GHC 7.4.1).  We no longer maintain CI tests
-    -- that far back, but they still seem to work according to Hackage:
-    -- <https://matrix.hackage.haskell.org/#/package/bytestring-lexing>
-    Build-Depends: base       >= 4.5   && < 4.20
-                 , bytestring >= 0.9.2 && < 0.13
-                 , binary     >= 0.5.1 && < 0.11
-                 , deepseq    >= 1.2   && < 1.6
+    Build-Depends: base       >= 4.9    && < 4.21
+                 , bytestring >= 0.10.8 && < 0.13
+                 , binary     >= 0.8.3  && < 0.9
+                 , deepseq    >= 1.4.2  && < 1.6
 
 -- TODO: in lieu of using CPP to expose internals to the tests/benchmarks,
 -- we should consider using:

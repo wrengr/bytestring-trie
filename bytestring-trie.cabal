@@ -10,7 +10,7 @@ Cabal-Version:  2.2
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
-Version:        0.2.7.4
+Version:        0.2.7.5
 Build-Type:     Simple
 Stability:      provisional
 Homepage:       https://wrengr.org/software/hackage.html
@@ -122,16 +122,16 @@ Test-Suite test-all
     -- if we don't pass -any, then Cabal will fill in ">= 0 && <= $ThisVersion"
     -- which will also give a warning.
     Build-Depends:  bytestring-trie   -any
-                 ,  tasty             >= 0.10.1.2 && < 1.5
+                 ,  tasty             >= 0.10.1.2 && < 1.6
                  ,  tasty-smallcheck  >= 0.8.0.1  && < 0.9
-                 ,  tasty-quickcheck  >= 0.8.3.2  && < 0.11
+                 ,  tasty-quickcheck  >= 0.8.3.2  && < 0.12
                  -- N.B., @tasty-hunit@ is just a partial API clone;
                  -- whereas @tasty-hunit-compat@ is a proper integration
                  -- with HUnit itself.  Also, tasty-hunit-compat actually
                  -- depends on tasty-hunit; if you're wanting to minimize
                  -- dependencies.
                  ,  tasty-hunit                      < 0.11
-                 ,  QuickCheck        >= 2.10     && < 2.15
+                 ,  QuickCheck        >= 2.10     && < 2.16
                  ,  smallcheck        >= 1.1.1    && < 1.3
                  -- lazysmallcheck    >= 0.6      && < 0.7
 
@@ -163,7 +163,7 @@ Common bench-common
                  -- The parallel-3.2.2.0 package has metadata revisions
                  -- to allow building with base-4.18.
                  ,  criterion
-                 ,  QuickCheck  >= 2.10  && < 2.15
+                 ,  QuickCheck  >= 2.10  && < 2.16
 
 Benchmark bench-Regression
     Import:         bench-common

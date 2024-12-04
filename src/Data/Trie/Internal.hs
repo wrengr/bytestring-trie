@@ -38,7 +38,7 @@
 module Data.Trie.Internal
     (
     -- * Data types
-      Trie()
+      Trie(..)
     -- BUG: can't seem to put this at the top: it'll gobble up the
     -- following section name and replace it.  (I'm guessing that's
     -- something to do with the section not having any exported

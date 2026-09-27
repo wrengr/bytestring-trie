@@ -6,7 +6,7 @@ Cabal-Version:  2.2
 --    <https://github.com/haskell/cabal/issues/4899>
 
 ----------------------------------------------------------------
--- wren gayle romano <wren@cpan.org>                ~ 2026-02-26
+-- wren gayle romano <wren@cpan.org>                ~ 2026-09-27
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
@@ -17,7 +17,7 @@ Homepage:       https://wrengr.org/software/hackage.html
 Bug-Reports:    https://github.com/wrengr/bytestring-trie/issues
 Author:         wren gayle romano
 Maintainer:     wren@cpan.org
-Copyright:      2008–2025 wren gayle romano
+Copyright:      2008–2026 wren gayle romano
 -- Cabal-2.2 requires us to say "BSD-3-Clause" not "BSD3"
 License:        BSD-3-Clause
 License-File:   LICENSE
@@ -83,7 +83,7 @@ Source-Repository head
 -- N.B., the "import:" field must be the first thing in a stanza.
 Common library-build-depends
     Default-Language: Haskell2010
-    Build-Depends: base       >= 4.9    && < 4.22
+    Build-Depends: base       >= 4.9    && < 4.23
                  , bytestring >= 0.10.8 && < 0.13
                  , binary     >= 0.8.3  && < 0.9
                  , deepseq    >= 1.4.2  && < 1.6

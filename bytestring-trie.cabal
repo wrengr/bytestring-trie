@@ -6,7 +6,7 @@ Cabal-Version:  2.2
 --    <https://github.com/haskell/cabal/issues/4899>
 
 ----------------------------------------------------------------
--- wren gayle romano <wren@cpan.org>                ~ 2025-02-11
+-- wren gayle romano <wren@cpan.org>                ~ 2026-02-26
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
@@ -64,7 +64,8 @@ Tested-With:
     GHC ==9.6.5,
     GHC ==9.8.2,
     GHC ==9.10.1,
-    GHC ==9.12.1
+    GHC ==9.12.1,
+    GHC ==9.14.1
 
 Source-Repository head
     Type:     git

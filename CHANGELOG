@@ -1,3 +1,6 @@
+0.2.7.7 (2026-09-27):
+  * Technical Debt:
+    - Relaxed upper-bounds for GHC 9.14
 0.2.7.6 (2025-02-11):
   * Technical Debt:
     - Relaxed upper-bounds for GHC 9.12

@@ -10,7 +10,7 @@ Cabal-Version:  2.2
 ----------------------------------------------------------------
 
 Name:           bytestring-trie
-Version:        0.2.7.6
+Version:        0.2.7.7
 Build-Type:     Simple
 Stability:      provisional
 Homepage:       https://wrengr.org/software/hackage.html
